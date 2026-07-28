@@ -553,16 +553,73 @@ class _UploadPage extends StatelessWidget {
   const _UploadPage();
 
   static const Color navy = Color(0xFF102A43);
+  static const Color railwayBlue = Color(0xFF1769AA);
+
+  void _showDetectionPreview(BuildContext context, String source) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Smart Scan',
+                  style: TextStyle(
+                    color: navy,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '$source selected. File selection and AI document detection '
+                  'will be connected next.',
+                  style: const TextStyle(color: Color(0xFF52667A), height: 1.4),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Smart Scan will detect:',
+                  style: TextStyle(color: navy, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 10),
+                const Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _DetectionLabel(label: 'Base Roster'),
+                    _DetectionLabel(label: '10-Day Amendment'),
+                    _DetectionLabel(label: '7-Day Amendment'),
+                    _DetectionLabel(label: '48-Hour Amendment'),
+                    _DetectionLabel(label: 'Annual Leave Roster'),
+                    _DetectionLabel(label: 'Job Card'),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'If Smart Scan is unsure, you will be asked to label the '
+                  'document manually before it is processed.',
+                  style: TextStyle(color: Color(0xFF52667A), height: 1.4),
+                ),
+                const SizedBox(height: 18),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Got it'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    const documentTypes = [
-      'Base Roster',
-      '10-Day Amendment',
-      '7-Day Amendment',
-      '48-Hour Amendment',
-      'Job Card',
-    ];
-
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 720),
@@ -570,7 +627,7 @@ class _UploadPage extends StatelessWidget {
           padding: const EdgeInsets.all(20),
           children: [
             const Text(
-              'Smart Scan',
+              'Upload document',
               style: TextStyle(
                 color: navy,
                 fontSize: 26,
@@ -579,21 +636,59 @@ class _UploadPage extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             const Text(
-              'Choose the type of railway document you want to upload.',
+              'Choose where your document is coming from. Smart Scan will '
+              'identify the document type automatically.',
               style: TextStyle(color: Color(0xFF52667A), height: 1.4),
             ),
             const SizedBox(height: 22),
-            for (final type in documentTypes) ...[
-              _UploadDocumentTile(
-                title: type,
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('$type upload will be added next.')),
-                  );
-                },
+            _UploadSourceTile(
+              icon: Icons.camera_alt_outlined,
+              title: 'Camera',
+              subtitle: 'Take a new photo of the document',
+              onTap: () => _showDetectionPreview(context, 'Camera'),
+            ),
+            const SizedBox(height: 12),
+            _UploadSourceTile(
+              icon: Icons.photo_library_outlined,
+              title: 'Photo Library',
+              subtitle: 'Choose an existing photo or image',
+              onTap: () => _showDetectionPreview(context, 'Photo Library'),
+            ),
+            const SizedBox(height: 12),
+            _UploadSourceTile(
+              icon: Icons.picture_as_pdf_outlined,
+              title: 'PDF or File',
+              subtitle: 'Choose a PDF or supported document file',
+              onTap: () => _showDetectionPreview(context, 'PDF or File'),
+            ),
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F1F8),
+                borderRadius: BorderRadius.circular(16),
               ),
-              const SizedBox(height: 12),
-            ],
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.auto_awesome_outlined, color: railwayBlue),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Smart Scan detects Base Rosters, 10-Day, 7-Day and '
+                      '48-Hour amendments, Annual Leave Rosters and Job Cards. '
+                      'You can label the document manually if detection is '
+                      'uncertain.',
+                      style: TextStyle(
+                        color: navy,
+                        height: 1.4,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -601,10 +696,17 @@ class _UploadPage extends StatelessWidget {
   }
 }
 
-class _UploadDocumentTile extends StatelessWidget {
-  const _UploadDocumentTile({required this.title, required this.onTap});
+class _UploadSourceTile extends StatelessWidget {
+  const _UploadSourceTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
 
+  final IconData icon;
   final String title;
+  final String subtitle;
   final VoidCallback onTap;
 
   static const Color navy = Color(0xFF102A43);
@@ -627,31 +729,63 @@ class _UploadDocumentTile extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                width: 48,
-                height: 48,
+                width: 52,
+                height: 52,
                 decoration: BoxDecoration(
                   color: const Color(0xFFE8F1F8),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(13),
                 ),
-                child: const Icon(
-                  Icons.description_outlined,
-                  color: railwayBlue,
-                ),
+                child: Icon(icon, color: railwayBlue),
               ),
               const SizedBox(width: 14),
               Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    color: navy,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: navy,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(color: Color(0xFF52667A)),
+                    ),
+                  ],
                 ),
               ),
               const Icon(Icons.chevron_right, color: Color(0xFF7B8794)),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DetectionLabel extends StatelessWidget {
+  const _DetectionLabel({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8F1F8),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFF1769AA),
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
