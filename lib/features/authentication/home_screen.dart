@@ -32,11 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _HomePage(email: email),
       const _RosterPage(),
       const _UploadPage(),
-      const _PlaceholderPage(
-        icon: Icons.description_outlined,
-        title: 'Documents',
-        description: 'Your uploaded roster documents will appear here.',
-      ),
+      const _DocumentsPage(),
       _ProfilePage(email: email, onSignOut: _signOut),
     ];
 
@@ -662,49 +658,239 @@ class _UploadDocumentTile extends StatelessWidget {
   }
 }
 
-class _PlaceholderPage extends StatelessWidget {
-  const _PlaceholderPage({
-    required this.icon,
-    required this.title,
-    required this.description,
-  });
-
-  final IconData icon;
-  final String title;
-  final String description;
+class _DocumentsPage extends StatelessWidget {
+  const _DocumentsPage();
 
   static const Color navy = Color(0xFF102A43);
   static const Color railwayBlue = Color(0xFF1769AA);
 
   @override
   Widget build(BuildContext context) {
+    const documents = [
+      _RosterDocument(
+        title: 'Base Roster',
+        subtitle: 'Current base roster',
+        status: 'Active',
+        uploaded: 'Uploaded today',
+        priority: 1,
+      ),
+      _RosterDocument(
+        title: '10-Day Amendment',
+        subtitle: 'Amendment to base roster',
+        status: 'Applied',
+        uploaded: 'Uploaded today',
+        priority: 2,
+      ),
+      _RosterDocument(
+        title: '7-Day Amendment',
+        subtitle: 'Overrides earlier roster information',
+        status: 'Applied',
+        uploaded: 'Uploaded today',
+        priority: 3,
+      ),
+      _RosterDocument(
+        title: '48-Hour Amendment',
+        subtitle: 'Highest-priority roster amendment',
+        status: 'Applied',
+        uploaded: 'Uploaded today',
+        priority: 4,
+      ),
+      _RosterDocument(
+        title: 'Job Card',
+        subtitle: 'Reference information for a specific duty',
+        status: 'Reference only',
+        uploaded: 'Uploaded today',
+        priority: 0,
+      ),
+    ];
+
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: ListView(
+          padding: const EdgeInsets.all(20),
           children: [
-            Icon(icon, size: 64, color: railwayBlue),
-            const SizedBox(height: 20),
-            Text(
-              title,
-              style: const TextStyle(
+            const Text(
+              'Document history',
+              style: TextStyle(
                 color: navy,
-                fontSize: 28,
+                fontSize: 26,
                 fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 10),
-            Text(
-              description,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Color(0xFF52667A),
-                fontSize: 16,
-                height: 1.4,
+            const SizedBox(height: 6),
+            const Text(
+              'Roster documents are applied in priority order.',
+              style: TextStyle(color: Color(0xFF52667A), height: 1.4),
+            ),
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F1F8),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline, color: railwayBlue),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Priority: Base Roster → 10-Day → 7-Day → 48-Hour. '
+                      'Job Cards provide duty-specific information.',
+                      style: TextStyle(
+                        color: navy,
+                        height: 1.4,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
+            const SizedBox(height: 18),
+            for (final document in documents) ...[
+              _DocumentCard(document: document),
+              const SizedBox(height: 12),
+            ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RosterDocument {
+  const _RosterDocument({
+    required this.title,
+    required this.subtitle,
+    required this.status,
+    required this.uploaded,
+    required this.priority,
+  });
+
+  final String title;
+  final String subtitle;
+  final String status;
+  final String uploaded;
+  final int priority;
+}
+
+class _DocumentCard extends StatelessWidget {
+  const _DocumentCard({required this.document});
+
+  final _RosterDocument document;
+
+  static const Color navy = Color(0xFF102A43);
+  static const Color railwayBlue = Color(0xFF1769AA);
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${document.title} details will be added next.'),
+            ),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFD9E2EC)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F1F8),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: const Icon(
+                  Icons.description_outlined,
+                  color: railwayBlue,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            document.title,
+                            style: const TextStyle(
+                              color: navy,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F1F8),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            document.status,
+                            style: const TextStyle(
+                              color: railwayBlue,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      document.subtitle,
+                      style: const TextStyle(color: Color(0xFF52667A)),
+                    ),
+                    const SizedBox(height: 7),
+                    Row(
+                      children: [
+                        Text(
+                          document.uploaded,
+                          style: const TextStyle(
+                            color: Color(0xFF7B8794),
+                            fontSize: 12,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          document.priority == 0
+                              ? 'Does not override roster'
+                              : 'Priority ${document.priority}',
+                          style: const TextStyle(
+                            color: Color(0xFF7B8794),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(Icons.chevron_right, color: Color(0xFF7B8794)),
+            ],
+          ),
         ),
       ),
     );
