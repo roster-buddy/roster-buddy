@@ -30,11 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final pages = <Widget>[
       _HomePage(email: email),
-      const _PlaceholderPage(
-        icon: Icons.calendar_month_outlined,
-        title: 'Roster',
-        description: 'Your Sunday-to-Saturday roster will appear here.',
-      ),
+      const _RosterPage(),
       const _UploadPage(),
       const _PlaceholderPage(
         icon: Icons.description_outlined,
@@ -253,6 +249,304 @@ class _HomePage extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RosterPage extends StatefulWidget {
+  const _RosterPage();
+
+  @override
+  State<_RosterPage> createState() => _RosterPageState();
+}
+
+class _RosterPageState extends State<_RosterPage> {
+  static const Color navy = Color(0xFF102A43);
+  static const Color workingGreen = Color(0xFF2E7D32);
+  static const Color restYellow = Color(0xFFF9C74F);
+  static const Color leaveRed = Color(0xFFD64545);
+  static const Color unresolvedGrey = Color(0xFF7B8794);
+
+  int _weekOffset = 0;
+
+  String get _weekLabel {
+    if (_weekOffset == 0) return 'This week';
+    if (_weekOffset == -1) return 'Last week';
+    if (_weekOffset == 1) return 'Next week';
+
+    return _weekOffset < 0
+        ? '${_weekOffset.abs()} weeks ago'
+        : 'In $_weekOffset weeks';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const duties = [
+      _RosterDuty(
+        day: 'Sunday',
+        date: '2 Aug',
+        status: 'Rest day',
+        details: 'No booked duty',
+        colour: restYellow,
+        darkText: true,
+        icon: Icons.bedtime_outlined,
+      ),
+      _RosterDuty(
+        day: 'Monday',
+        date: '3 Aug',
+        status: 'Working',
+        details: 'Early duty · Times to be confirmed',
+        colour: workingGreen,
+        icon: Icons.work_outline,
+      ),
+      _RosterDuty(
+        day: 'Tuesday',
+        date: '4 Aug',
+        status: 'Working',
+        details: 'Duty details awaiting roster data',
+        colour: workingGreen,
+        icon: Icons.work_outline,
+      ),
+      _RosterDuty(
+        day: 'Wednesday',
+        date: '5 Aug',
+        status: 'Training',
+        details: 'Training duty',
+        colour: workingGreen,
+        icon: Icons.school_outlined,
+      ),
+      _RosterDuty(
+        day: 'Thursday',
+        date: '6 Aug',
+        status: 'Unresolved',
+        details: 'Further document information required',
+        colour: unresolvedGrey,
+        icon: Icons.help_outline,
+      ),
+      _RosterDuty(
+        day: 'Friday',
+        date: '7 Aug',
+        status: 'Annual leave',
+        details: 'Booked annual leave',
+        colour: leaveRed,
+        icon: Icons.beach_access_outlined,
+      ),
+      _RosterDuty(
+        day: 'Saturday',
+        date: '8 Aug',
+        status: 'Rest day',
+        details: 'No booked duty',
+        colour: restYellow,
+        darkText: true,
+        icon: Icons.bedtime_outlined,
+      ),
+    ];
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  tooltip: 'Previous week',
+                  onPressed: () {
+                    setState(() {
+                      _weekOffset--;
+                    });
+                  },
+                  icon: const Icon(Icons.chevron_left),
+                ),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Text(
+                        _weekLabel,
+                        style: const TextStyle(
+                          color: navy,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      const Text(
+                        'Sunday to Saturday',
+                        style: TextStyle(color: Color(0xFF52667A)),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Next week',
+                  onPressed: () {
+                    setState(() {
+                      _weekOffset++;
+                    });
+                  },
+                  icon: const Icon(Icons.chevron_right),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: const [
+                _RosterLegend(
+                  label: 'Working / Training',
+                  colour: workingGreen,
+                ),
+                _RosterLegend(
+                  label: 'Rest day',
+                  colour: restYellow,
+                  darkText: true,
+                ),
+                _RosterLegend(label: 'Annual leave', colour: leaveRed),
+                _RosterLegend(label: 'Unresolved', colour: unresolvedGrey),
+              ],
+            ),
+            const SizedBox(height: 20),
+            for (final duty in duties) ...[
+              _RosterDutyCard(duty: duty),
+              const SizedBox(height: 10),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RosterDuty {
+  const _RosterDuty({
+    required this.day,
+    required this.date,
+    required this.status,
+    required this.details,
+    required this.colour,
+    required this.icon,
+    this.darkText = false,
+  });
+
+  final String day;
+  final String date;
+  final String status;
+  final String details;
+  final Color colour;
+  final IconData icon;
+  final bool darkText;
+}
+
+class _RosterDutyCard extends StatelessWidget {
+  const _RosterDutyCard({required this.duty});
+
+  final _RosterDuty duty;
+
+  @override
+  Widget build(BuildContext context) {
+    final textColour = duty.darkText ? const Color(0xFF2F3E46) : Colors.white;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: duty.colour,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: textColour.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(duty.icon, color: textColour),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        duty.day,
+                        style: TextStyle(
+                          color: textColour,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      duty.date,
+                      style: TextStyle(
+                        color: textColour,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  duty.status,
+                  style: TextStyle(
+                    color: textColour,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  duty.details,
+                  style: TextStyle(
+                    color: textColour.withValues(alpha: 0.9),
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RosterLegend extends StatelessWidget {
+  const _RosterLegend({
+    required this.label,
+    required this.colour,
+    this.darkText = false,
+  });
+
+  final String label;
+  final Color colour;
+  final bool darkText;
+
+  @override
+  Widget build(BuildContext context) {
+    final textColour = darkText ? const Color(0xFF2F3E46) : Colors.white;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: colour,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: textColour,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
