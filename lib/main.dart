@@ -25,9 +25,7 @@ class RosterBuddyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1769AA),
-        ),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1769AA)),
         scaffoldBackgroundColor: const Color(0xFFF4F7FA),
       ),
       home: const WelcomeScreen(),

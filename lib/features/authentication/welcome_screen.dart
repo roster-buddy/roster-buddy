@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'sign_in_screen.dart';
+import 'sign_up_screen.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
@@ -99,12 +100,16 @@ class WelcomeScreen extends StatelessWidget {
                     width: double.infinity,
                     height: 54,
                     child: OutlinedButton(
-                      onPressed: () {},
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const SignUpScreen(),
+                          ),
+                        );
+                      },
                       style: OutlinedButton.styleFrom(
                         foregroundColor: navy,
-                        side: const BorderSide(
-                          color: Color(0xFFBCC8D3),
-                        ),
+                        side: const BorderSide(color: Color(0xFFBCC8D3)),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
@@ -121,10 +126,7 @@ class WelcomeScreen extends StatelessWidget {
                   const SizedBox(height: 22),
                   const Text(
                     'Version 0.1.0',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF7B8C9D),
-                    ),
+                    style: TextStyle(fontSize: 12, color: Color(0xFF7B8C9D)),
                   ),
                 ],
               ),
@@ -142,24 +144,16 @@ class CloudStatusIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 11,
-        vertical: 7,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFFD9E2EC),
-        ),
+        border: Border.all(color: const Color(0xFFD9E2EC)),
       ),
       child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          CircleAvatar(
-            radius: 5,
-            backgroundColor: Color(0xFF21A366),
-          ),
+          CircleAvatar(radius: 5, backgroundColor: Color(0xFF21A366)),
           SizedBox(width: 7),
           Text(
             'Connected',
