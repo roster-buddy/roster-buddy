@@ -256,6 +256,11 @@ class HomeScreen extends StatelessWidget {
             label: 'Roster',
           ),
           NavigationDestination(
+            icon: Icon(Icons.upload_file_outlined),
+            selectedIcon: Icon(Icons.upload_file),
+            label: 'Upload',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.description_outlined),
             selectedIcon: Icon(Icons.description),
             label: 'Documents',
