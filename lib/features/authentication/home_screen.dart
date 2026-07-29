@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:file_picker/file_picker.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -61,7 +62,16 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
+        onDestinationSelected: (index) async {
+          if (index == 2) {
+            setState(() {
+              _selectedIndex = 2;
+            });
+
+            await const _UploadPage()._pickDocument(context);
+            return;
+          }
+
           setState(() {
             _selectedIndex = index;
           });
@@ -555,6 +565,114 @@ class _UploadPage extends StatelessWidget {
   static const Color navy = Color(0xFF102A43);
   static const Color railwayBlue = Color(0xFF1769AA);
 
+  Future<void> _pickDocument(BuildContext context) async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf', 'png', 'jpg', 'jpeg'],
+      allowMultiple: false,
+      withData: true,
+    );
+
+    if (result == null || !context.mounted) return;
+
+    final file = result.files.single;
+    final sizeInKb = (file.size / 1024).ceil();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) {
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Document selected',
+                  style: TextStyle(
+                    color: navy,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F1F8),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.description_outlined,
+                        size: 38,
+                        color: railwayBlue,
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              file.name,
+                              style: const TextStyle(
+                                color: navy,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '$sizeInKb KB',
+                              style: const TextStyle(color: Color(0xFF52667A)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Smart Scan will analyse this document and identify it as:',
+                  style: TextStyle(color: navy, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 12),
+                const Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _DetectionLabel(label: 'Base Roster'),
+                    _DetectionLabel(label: '10-Day Amendment'),
+                    _DetectionLabel(label: '7-Day Amendment'),
+                    _DetectionLabel(label: '48-Hour Amendment'),
+                    _DetectionLabel(label: 'Annual Leave Roster'),
+                    _DetectionLabel(label: 'Job Card'),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Automatic document recognition will be connected next. '
+                  'If Smart Scan is uncertain, you will be asked to select '
+                  'the document type manually before processing.',
+                  style: TextStyle(color: Color(0xFF52667A), height: 1.4),
+                ),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.auto_awesome),
+                  label: const Text('Continue to Smart Scan'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _showDetectionPreview(BuildContext context, String source) {
     showModalBottomSheet<void>(
       context: context,
@@ -577,33 +695,8 @@ class _UploadPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  '$source selected. File selection and AI document detection '
-                  'will be connected next.',
+                  '$source selection will be connected next.',
                   style: const TextStyle(color: Color(0xFF52667A), height: 1.4),
-                ),
-                const SizedBox(height: 18),
-                const Text(
-                  'Smart Scan will detect:',
-                  style: TextStyle(color: navy, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 10),
-                const Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _DetectionLabel(label: 'Base Roster'),
-                    _DetectionLabel(label: '10-Day Amendment'),
-                    _DetectionLabel(label: '7-Day Amendment'),
-                    _DetectionLabel(label: '48-Hour Amendment'),
-                    _DetectionLabel(label: 'Annual Leave Roster'),
-                    _DetectionLabel(label: 'Job Card'),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                const Text(
-                  'If Smart Scan is unsure, you will be asked to label the '
-                  'document manually before it is processed.',
-                  style: TextStyle(color: Color(0xFF52667A), height: 1.4),
                 ),
                 const SizedBox(height: 18),
                 FilledButton(
@@ -659,7 +752,7 @@ class _UploadPage extends StatelessWidget {
               icon: Icons.picture_as_pdf_outlined,
               title: 'PDF or File',
               subtitle: 'Choose a PDF or supported document file',
-              onTap: () => _showDetectionPreview(context, 'PDF or File'),
+              onTap: () => _pickDocument(context),
             ),
             const SizedBox(height: 24),
             Container(
