@@ -635,6 +635,20 @@ class _UploadPage extends StatelessWidget {
             fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
           );
 
+      final documentRecord = await Supabase.instance.client
+          .from('roster_documents')
+          .insert({
+            'user_id': user.id,
+            'storage_path': uploadedPath,
+            'original_filename': file.name,
+            'file_size_bytes': file.size,
+            'processing_status': 'uploaded',
+          })
+          .select('id')
+          .single();
+
+      final documentId = documentRecord['id'] as String;
+
       if (!context.mounted) return;
 
       Navigator.of(context, rootNavigator: true).pop();
@@ -726,7 +740,7 @@ class _UploadPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 18),
                   Text(
-                    'Storage reference: $uploadedPath',
+                    'Document record: $documentId\nStorage reference: $uploadedPath',
                     style: const TextStyle(
                       color: Color(0xFF7B8794),
                       fontSize: 12,
