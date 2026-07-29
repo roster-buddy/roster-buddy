@@ -576,101 +576,197 @@ class _UploadPage extends StatelessWidget {
     if (result == null || !context.mounted) return;
 
     final file = result.files.single;
-    final sizeInKb = (file.size / 1024).ceil();
+    final bytes = file.bytes;
+    final user = Supabase.instance.client.auth.currentUser;
 
-    await showModalBottomSheet<void>(
+    if (bytes == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('The selected file could not be read.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please sign in before uploading a document.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final safeFileName = file.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+
+    final storagePath =
+        '${user.id}/${DateTime.now().millisecondsSinceEpoch}_$safeFileName';
+
+    showDialog<void>(
       context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) {
-        return SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Document selected',
-                  style: TextStyle(
-                    color: navy,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8F1F8),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.description_outlined,
-                        size: 38,
-                        color: railwayBlue,
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              file.name,
-                              style: const TextStyle(
-                                color: navy,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '$sizeInKb KB',
-                              style: const TextStyle(color: Color(0xFF52667A)),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'Smart Scan will analyse this document and identify it as:',
-                  style: TextStyle(color: navy, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 12),
-                const Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _DetectionLabel(label: 'Base Roster'),
-                    _DetectionLabel(label: '10-Day Amendment'),
-                    _DetectionLabel(label: '7-Day Amendment'),
-                    _DetectionLabel(label: '48-Hour Amendment'),
-                    _DetectionLabel(label: 'Annual Leave Roster'),
-                    _DetectionLabel(label: 'Job Card'),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                const Text(
-                  'Automatic document recognition will be connected next. '
-                  'If Smart Scan is uncertain, you will be asked to select '
-                  'the document type manually before processing.',
-                  style: TextStyle(color: Color(0xFF52667A), height: 1.4),
-                ),
-                const SizedBox(height: 20),
-                FilledButton.icon(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.auto_awesome),
-                  label: const Text('Continue to Smart Scan'),
-                ),
-              ],
+      barrierDismissible: false,
+      builder: (_) {
+        return const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Uploading document…'),
+                ],
+              ),
             ),
           ),
         );
       },
     );
+
+    try {
+      final uploadedPath = await Supabase.instance.client.storage
+          .from('roster-documents')
+          .uploadBinary(
+            storagePath,
+            bytes,
+            fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
+          );
+
+      if (!context.mounted) return;
+
+      Navigator.of(context, rootNavigator: true).pop();
+
+      final sizeInKb = (file.size / 1024).ceil();
+
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (context) {
+          return SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.cloud_done_outlined, color: Color(0xFF2E7D32)),
+                      SizedBox(width: 10),
+                      Text(
+                        'Upload complete',
+                        style: TextStyle(
+                          color: navy,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F1F8),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.description_outlined,
+                          size: 38,
+                          color: railwayBlue,
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                file.name,
+                                style: const TextStyle(
+                                  color: navy,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '$sizeInKb KB',
+                                style: const TextStyle(
+                                  color: Color(0xFF52667A),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'The document is stored securely. Smart Scan will now '
+                    'identify it as one of these document types:',
+                    style: TextStyle(color: Color(0xFF52667A), height: 1.4),
+                  ),
+                  const SizedBox(height: 12),
+                  const Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _DetectionLabel(label: 'Base Roster'),
+                      _DetectionLabel(label: '10-Day Amendment'),
+                      _DetectionLabel(label: '7-Day Amendment'),
+                      _DetectionLabel(label: '48-Hour Amendment'),
+                      _DetectionLabel(label: 'Annual Leave Roster'),
+                      _DetectionLabel(label: 'Job Card'),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Storage reference: $uploadedPath',
+                    style: const TextStyle(
+                      color: Color(0xFF7B8794),
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  FilledButton.icon(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.auto_awesome),
+                    label: const Text('Continue to Smart Scan'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    } on StorageException catch (error) {
+      if (!context.mounted) return;
+
+      Navigator.of(context, rootNavigator: true).pop();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Upload failed: ${error.message}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+
+      Navigator.of(context, rootNavigator: true).pop();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to upload the document. Please try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _showDetectionPreview(BuildContext context, String source) {
