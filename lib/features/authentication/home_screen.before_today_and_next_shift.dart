@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../core/models/duty.dart';
-import '../../core/models/duty_type.dart';
-import '../../core/models/roster_source.dart';
-import '../../core/services/duty_resolver.dart';
 import '../upload/base_roster_activation_page.dart';
 import '../upload/storage_service.dart';
 import '../upload/upload_service.dart';
@@ -24,7 +20,6 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Color background = Color(0xFFF4F7FA);
 
   int _selectedIndex = 0;
-  int _dashboardRefreshVersion = 0;
 
   Future<void> _signOut() async {
     await Supabase.instance.client.auth.signOut();
@@ -224,11 +219,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (!uploaded || !mounted) return;
-
-    setState(() {
-      _dashboardRefreshVersion++;
-      _selectedIndex = 0;
-    });
   }
 
   void _openUploadPage() {
@@ -241,17 +231,9 @@ class _HomeScreenState extends State<HomeScreen> {
         Supabase.instance.client.auth.currentUser?.email ?? 'Roster Buddy user';
 
     final List<Widget> pages = [
-      DashboardPage(
-        email: email,
-        onUpload: _openUploadPage,
-        refreshVersion: _dashboardRefreshVersion,
-      ),
+      DashboardPage(email: email, onUpload: _openUploadPage),
       const CalendarPage(),
-      DashboardPage(
-        email: email,
-        onUpload: _openUploadPage,
-        refreshVersion: _dashboardRefreshVersion,
-      ),
+      DashboardPage(email: email, onUpload: _openUploadPage),
       const TimelinePage(),
       AppSettingsPage(email: email, onSignOut: _signOut),
     ];
@@ -329,23 +311,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class DashboardPage extends StatefulWidget {
-  const DashboardPage({
-    required this.email,
-    required this.onUpload,
-    required this.refreshVersion,
-    super.key,
-  });
+class DashboardPage extends StatelessWidget {
+  const DashboardPage({required this.email, required this.onUpload, super.key});
 
   final String email;
   final VoidCallback onUpload;
-  final int refreshVersion;
 
-  @override
-  State<DashboardPage> createState() => _DashboardPageState();
-}
-
-class _DashboardPageState extends State<DashboardPage> {
   static const Color navy = Color(0xFF102A43);
   static const Color railwayBlue = Color(0xFF1769AA);
   static const Color workingGreen = Color(0xFF2E7D32);
@@ -354,810 +325,243 @@ class _DashboardPageState extends State<DashboardPage> {
   static const Color warningOrange = Color(0xFFF59E0B);
   static const Color textGrey = Color(0xFF52667A);
 
-  final DutyResolver _dutyResolver = DutyResolver();
-
-  Duty? _todayDuty;
-  Duty? _nextWorkingDuty;
-
-  bool _isLoading = true;
-  String? _loadError;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadDashboardDuties();
-  }
-
-  @override
-  void didUpdateWidget(covariant DashboardPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    if (oldWidget.refreshVersion != widget.refreshVersion) {
-      _loadDashboardDuties();
-    }
-  }
-
-  Future<void> _loadDashboardDuties() async {
-    setState(() {
-      _isLoading = true;
-      _loadError = null;
-    });
-
-    try {
-      final DateTime now = DateTime.now();
-      final DateTime today = DateTime(now.year, now.month, now.day);
-
-      final Duty? todayDuty = await _dutyResolver.getDutyForDate(today);
-      Duty? nextWorkingDuty;
-
-      // Start tomorrow so today's duty is not repeated in both cards.
-      for (int offset = 1; offset <= 370; offset++) {
-        final DateTime date = today.add(Duration(days: offset));
-        final Duty? duty = await _dutyResolver.getDutyForDate(date);
-
-        if (duty != null && duty.dutyType.countsAsWorking) {
-          nextWorkingDuty = duty;
-          break;
-        }
-      }
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _todayDuty = todayDuty;
-        _nextWorkingDuty = nextWorkingDuty;
-        _isLoading = false;
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _todayDuty = null;
-        _nextWorkingDuty = null;
-        _isLoading = false;
-        _loadError = error is DutyResolverException
-            ? error.message
-            : 'Roster Buddy could not load your roster.';
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: _loadDashboardDuties,
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(20),
-            children: [
-              const Text(
-                'Welcome back',
-                style: TextStyle(
-                  color: navy,
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(widget.email, style: const TextStyle(color: textGrey)),
-              const SizedBox(height: 22),
-
-              const SectionTitle(icon: Icons.today_outlined, title: 'Today'),
-              const SizedBox(height: 10),
-              _buildTodayCard(),
-
-              const SizedBox(height: 22),
-              const SectionTitle(
-                icon: Icons.train_outlined,
-                title: "Next shift I'm working",
-              ),
-              const SizedBox(height: 10),
-              _buildNextShiftCard(),
-
-              const SizedBox(height: 22),
-              const SectionTitle(
-                icon: Icons.verified_outlined,
-                title: 'Latest roster source',
-              ),
-              const SizedBox(height: 10),
-              const Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  SourceBadge(label: '10D'),
-                  SourceBadge(label: '7D'),
-                  SourceBadge(label: '48HR'),
-                  SourceBadge(label: 'M'),
-                  SourceBadge(label: 'AW'),
-                ],
-              ),
-
-              const SizedBox(height: 22),
-              const SectionTitle(
-                icon: Icons.calendar_view_week_outlined,
-                title: 'This week',
-              ),
-              const SizedBox(height: 10),
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(14),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: DayTile(
-                          day: 'Sun',
-                          status: 'Rest',
-                          colour: restYellow,
-                          darkText: true,
-                        ),
-                      ),
-                      SizedBox(width: 6),
-                      Expanded(
-                        child: DayTile(
-                          day: 'Mon',
-                          status: 'Duty',
-                          colour: workingGreen,
-                        ),
-                      ),
-                      SizedBox(width: 6),
-                      Expanded(
-                        child: DayTile(
-                          day: 'Tue',
-                          status: 'Duty',
-                          colour: workingGreen,
-                        ),
-                      ),
-                      SizedBox(width: 6),
-                      Expanded(
-                        child: DayTile(
-                          day: 'Wed',
-                          status: 'Duty',
-                          colour: workingGreen,
-                        ),
-                      ),
-                      SizedBox(width: 6),
-                      Expanded(
-                        child: DayTile(
-                          day: 'Thu',
-                          status: 'Rest',
-                          colour: restYellow,
-                          darkText: true,
-                        ),
-                      ),
-                      SizedBox(width: 6),
-                      Expanded(
-                        child: DayTile(
-                          day: 'Fri',
-                          status: 'Leave',
-                          colour: leaveRed,
-                        ),
-                      ),
-                      SizedBox(width: 6),
-                      Expanded(
-                        child: DayTile(
-                          day: 'Sat',
-                          status: 'Rest',
-                          colour: restYellow,
-                          darkText: true,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 22),
-              const SectionTitle(
-                icon: Icons.bolt_outlined,
-                title: 'Quick actions',
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: QuickAction(
-                      icon: Icons.upload_file,
-                      label: 'Upload roster',
-                      onTap: widget.onUpload,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: QuickAction(
-                      icon: Icons.event_available_outlined,
-                      label: 'Request leave',
-                      onTap: () {
-                        showMessage(
-                          context,
-                          'Annual leave requests will be added later.',
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: QuickAction(
-                      icon: Icons.mail_outline,
-                      label: 'Offer availability',
-                      onTap: () {
-                        showMessage(
-                          context,
-                          'Availability email drafting will be added later.',
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: QuickAction(
-                      icon: Icons.warning_amber_rounded,
-                      label: 'Fatigue check',
-                      iconColour: warningOrange,
-                      onTap: () {
-                        showMessage(
-                          context,
-                          'No fatigue warnings currently detected.',
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTodayCard() {
-    if (_isLoading) {
-      return _buildLoadingCard('Loading today’s roster…');
-    }
-
-    if (_loadError != null) {
-      return _buildErrorCard();
-    }
-
-    final Duty? duty = _todayDuty;
-
-    if (duty == null) {
-      return _buildInformationCard(
-        icon: Icons.help_outline,
-        iconColour: railwayBlue,
-        title: _fullDate(DateTime.now()),
-        description: 'No roster information is available for today.',
-      );
-    }
-
-    final _DutyPresentation presentation = _presentationFor(duty);
-
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () {
-          showMessage(
-            context,
-            '${presentation.title} • ${presentation.description}',
-          );
-        },
-        child: Padding(
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: ListView(
           padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              Container(
-                width: 58,
-                height: 58,
-                decoration: BoxDecoration(
-                  color: presentation.colour.withValues(alpha: 0.13),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(
-                  presentation.icon,
-                  color: presentation.colour,
-                  size: 30,
-                ),
+          children: [
+            const Text(
+              'Welcome back',
+              style: TextStyle(
+                color: navy,
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+            const SizedBox(height: 4),
+            Text(email, style: const TextStyle(color: textGrey)),
+            const SizedBox(height: 22),
+            const SectionTitle(
+              icon: Icons.train_outlined,
+              title: "Next shift I'm working",
+            ),
+            const SizedBox(height: 10),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
                   children: [
-                    Text(
-                      presentation.title,
-                      style: const TextStyle(
-                        color: navy,
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
+                    Container(
+                      width: 58,
+                      height: 58,
+                      decoration: BoxDecoration(
+                        color: workingGreen.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(
+                        Icons.schedule,
+                        color: workingGreen,
+                        size: 30,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      presentation.description,
-                      style: const TextStyle(color: textGrey),
-                    ),
-                    if (presentation.detail != null) ...[
-                      const SizedBox(height: 4),
-                      Row(
+                    const SizedBox(width: 16),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Flexible(
-                            child: Text(
-                              presentation.detail!,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: presentation.colour,
-                                fontWeight: FontWeight.w700,
-                              ),
+                          Text(
+                            'Monday',
+                            style: TextStyle(
+                              color: navy,
+                              fontSize: 19,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          _RosterSourceBadge(source: duty.source),
-                        ],
-                      ),
-                    ] else ...[
-                      const SizedBox(height: 5),
-                      _RosterSourceBadge(source: duty.source),
-                    ],
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right, color: textGrey),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNextShiftCard() {
-    if (_isLoading) {
-      return _buildLoadingCard('Finding your next working shift…');
-    }
-
-    if (_loadError != null) {
-      return _buildErrorCard();
-    }
-
-    final Duty? duty = _nextWorkingDuty;
-
-    if (duty == null) {
-      return _buildInformationCard(
-        icon: Icons.event_busy_outlined,
-        iconColour: railwayBlue,
-        title: 'No upcoming shift found',
-        description:
-            'No working duty was found in the available roster information.',
-      );
-    }
-
-    final String turnText = duty.turnNumber?.trim().isNotEmpty == true
-        ? 'Turn ${duty.turnNumber!.trim()}'
-        : _dutyTypeLabel(duty.dutyType);
-
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () {
-          showMessage(
-            context,
-            '${_fullDate(duty.date)} • ${_timeDescription(duty)} • $turnText',
-          );
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              Container(
-                width: 58,
-                height: 58,
-                decoration: BoxDecoration(
-                  color: workingGreen.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Icon(
-                  Icons.schedule,
-                  color: workingGreen,
-                  size: 30,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _fullDate(duty.date),
-                      style: const TextStyle(
-                        color: navy,
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _timeDescription(duty),
-                      style: const TextStyle(color: textGrey),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            turnText,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                          SizedBox(height: 4),
+                          Text(
+                            'Book on 06:15  •  Book off 14:15',
+                            style: TextStyle(color: textGrey),
+                          ),
+                          SizedBox(height: 3),
+                          Text(
+                            'Turn 202',
+                            style: TextStyle(
                               color: railwayBlue,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        _RosterSourceBadge(source: duty.source),
-                      ],
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right, color: textGrey),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 22),
+            const SectionTitle(
+              icon: Icons.verified_outlined,
+              title: 'Latest roster source',
+            ),
+            const SizedBox(height: 10),
+            const Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                SourceBadge(label: '10D'),
+                SourceBadge(label: '7D'),
+                SourceBadge(label: '48HR'),
+                SourceBadge(label: 'M'),
+                SourceBadge(label: 'AW'),
+              ],
+            ),
+            const SizedBox(height: 22),
+            const SectionTitle(
+              icon: Icons.calendar_view_week_outlined,
+              title: 'This week',
+            ),
+            const SizedBox(height: 10),
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: DayTile(
+                        day: 'Sun',
+                        status: 'Rest',
+                        colour: restYellow,
+                        darkText: true,
+                      ),
+                    ),
+                    SizedBox(width: 6),
+                    Expanded(
+                      child: DayTile(
+                        day: 'Mon',
+                        status: 'Duty',
+                        colour: workingGreen,
+                      ),
+                    ),
+                    SizedBox(width: 6),
+                    Expanded(
+                      child: DayTile(
+                        day: 'Tue',
+                        status: 'Duty',
+                        colour: workingGreen,
+                      ),
+                    ),
+                    SizedBox(width: 6),
+                    Expanded(
+                      child: DayTile(
+                        day: 'Wed',
+                        status: 'Duty',
+                        colour: workingGreen,
+                      ),
+                    ),
+                    SizedBox(width: 6),
+                    Expanded(
+                      child: DayTile(
+                        day: 'Thu',
+                        status: 'Rest',
+                        colour: restYellow,
+                        darkText: true,
+                      ),
+                    ),
+                    SizedBox(width: 6),
+                    Expanded(
+                      child: DayTile(
+                        day: 'Fri',
+                        status: 'Leave',
+                        colour: leaveRed,
+                      ),
+                    ),
+                    SizedBox(width: 6),
+                    Expanded(
+                      child: DayTile(
+                        day: 'Sat',
+                        status: 'Rest',
+                        colour: restYellow,
+                        darkText: true,
+                      ),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right, color: textGrey),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLoadingCard(String message) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          children: [
-            const SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(strokeWidth: 3),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Text(
-                message,
-                style: const TextStyle(
-                  color: navy,
-                  fontWeight: FontWeight.w700,
+            const SizedBox(height: 22),
+            const SectionTitle(
+              icon: Icons.bolt_outlined,
+              title: 'Quick actions',
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: QuickAction(
+                    icon: Icons.upload_file,
+                    label: 'Upload roster',
+                    onTap: onUpload,
+                  ),
                 ),
-              ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: QuickAction(
+                    icon: Icons.event_available_outlined,
+                    label: 'Request leave',
+                    onTap: () {
+                      showMessage(
+                        context,
+                        'Annual leave requests will be added later.',
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: QuickAction(
+                    icon: Icons.mail_outline,
+                    label: 'Offer availability',
+                    onTap: () {
+                      showMessage(
+                        context,
+                        'Availability email drafting will be added later.',
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: QuickAction(
+                    icon: Icons.warning_amber_rounded,
+                    label: 'Fatigue check',
+                    iconColour: warningOrange,
+                    onTap: () {
+                      showMessage(
+                        context,
+                        'No fatigue warnings currently detected.',
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       ),
     );
-  }
-
-  Widget _buildErrorCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.error_outline, color: leaveRed, size: 30),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Unable to load roster information',
-                    style: TextStyle(
-                      color: navy,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    _loadError!,
-                    style: const TextStyle(color: textGrey, height: 1.35),
-                  ),
-                  const SizedBox(height: 10),
-                  TextButton.icon(
-                    onPressed: _loadDashboardDuties,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Try again'),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInformationCard({
-    required IconData icon,
-    required Color iconColour,
-    required String title,
-    required String description,
-  }) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          children: [
-            Container(
-              width: 58,
-              height: 58,
-              decoration: BoxDecoration(
-                color: iconColour.withValues(alpha: 0.11),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(icon, color: iconColour, size: 30),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: navy,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(description, style: const TextStyle(color: textGrey)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  _DutyPresentation _presentationFor(Duty duty) {
-    final String dateTitle = _fullDate(duty.date);
-
-    switch (duty.dutyType) {
-      case DutyType.working:
-        return _DutyPresentation(
-          icon: Icons.schedule,
-          colour: workingGreen,
-          title: dateTitle,
-          description: _timeDescription(duty),
-          detail: duty.turnNumber?.trim().isNotEmpty == true
-              ? 'Turn ${duty.turnNumber!.trim()}'
-              : 'Working duty',
-        );
-
-      case DutyType.training:
-        return _DutyPresentation(
-          icon: Icons.school_outlined,
-          colour: workingGreen,
-          title: dateTitle,
-          description: _timeDescriptionOrLabel(duty, 'Training'),
-          detail: 'Training',
-        );
-
-      case DutyType.medical:
-        return _DutyPresentation(
-          icon: Icons.medical_services_outlined,
-          colour: workingGreen,
-          title: dateTitle,
-          description: _timeDescriptionOrLabel(duty, 'Medical'),
-          detail: 'Medical',
-        );
-
-      case DutyType.restDay:
-        return _DutyPresentation(
-          icon: Icons.weekend_outlined,
-          colour: const Color(0xFFB88700),
-          title: dateTitle,
-          description: 'Rest day',
-        );
-
-      case DutyType.annualLeave:
-        return _DutyPresentation(
-          icon: Icons.beach_access_outlined,
-          colour: leaveRed,
-          title: dateTitle,
-          description: 'Annual leave',
-        );
-
-      case DutyType.sick:
-        return _DutyPresentation(
-          icon: Icons.sick_outlined,
-          colour: leaveRed,
-          title: dateTitle,
-          description: 'Sick',
-        );
-
-      case DutyType.publicHoliday:
-        return _DutyPresentation(
-          icon: Icons.celebration_outlined,
-          colour: leaveRed,
-          title: dateTitle,
-          description: 'Public holiday',
-        );
-
-      case DutyType.unavailable:
-        return _DutyPresentation(
-          icon: Icons.block_outlined,
-          colour: const Color(0xFFB88700),
-          title: dateTitle,
-          description: 'Unavailable',
-        );
-
-      case DutyType.unknown:
-        return _DutyPresentation(
-          icon: Icons.help_outline,
-          colour: railwayBlue,
-          title: dateTitle,
-          description: duty.remarks?.trim().isNotEmpty == true
-              ? duty.remarks!.trim()
-              : 'Roster status requires review',
-        );
-    }
-  }
-
-  String _timeDescriptionOrLabel(Duty duty, String fallback) {
-    if (duty.bookOn?.trim().isNotEmpty == true ||
-        duty.bookOff?.trim().isNotEmpty == true) {
-      return _timeDescription(duty);
-    }
-
-    return fallback;
-  }
-
-  String _timeDescription(Duty duty) {
-    final String? bookOn = duty.bookOn?.trim();
-    final String? bookOff = duty.bookOff?.trim();
-
-    if (bookOn != null &&
-        bookOn.isNotEmpty &&
-        bookOff != null &&
-        bookOff.isNotEmpty) {
-      return 'Book on $bookOn  •  Book off $bookOff';
-    }
-
-    if (bookOn != null && bookOn.isNotEmpty) {
-      return 'Book on $bookOn';
-    }
-
-    if (bookOff != null && bookOff.isNotEmpty) {
-      return 'Book off $bookOff';
-    }
-
-    return 'Duty times not available';
-  }
-
-  String _fullDate(DateTime date) {
-    const List<String> weekdays = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-
-    const List<String> months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-
-    return '${weekdays[date.weekday - 1]} '
-        '${date.day} ${months[date.month - 1]}';
-  }
-
-  String _dutyTypeLabel(DutyType type) {
-    switch (type) {
-      case DutyType.working:
-        return 'Working duty';
-      case DutyType.training:
-        return 'Training';
-      case DutyType.medical:
-        return 'Medical';
-      case DutyType.restDay:
-        return 'Rest day';
-      case DutyType.annualLeave:
-        return 'Annual leave';
-      case DutyType.sick:
-        return 'Sick';
-      case DutyType.publicHoliday:
-        return 'Public holiday';
-      case DutyType.unavailable:
-        return 'Unavailable';
-      case DutyType.unknown:
-        return 'Duty';
-    }
   }
 
   static void showMessage(BuildContext context, String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
-  }
-}
-
-class _DutyPresentation {
-  const _DutyPresentation({
-    required this.icon,
-    required this.colour,
-    required this.title,
-    required this.description,
-    this.detail,
-  });
-
-  final IconData icon;
-  final Color colour;
-  final String title;
-  final String description;
-  final String? detail;
-}
-
-class _RosterSourceBadge extends StatelessWidget {
-  const _RosterSourceBadge({required this.source});
-
-  final RosterSource source;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1769AA).withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        _label,
-        style: const TextStyle(
-          color: Color(0xFF1769AA),
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
-
-  String get _label {
-    switch (source) {
-      case RosterSource.baseRoster:
-        return 'BASE';
-      case RosterSource.tenDay:
-        return '10D';
-      case RosterSource.sevenDay:
-        return '7D';
-      case RosterSource.fortyEightHour:
-        return '48HR';
-      case RosterSource.manual:
-        return 'M';
-    }
   }
 }
 
@@ -1345,7 +749,7 @@ class SettingsPage extends StatelessWidget {
                   const ListTile(
                     leading: Icon(Icons.badge_outlined),
                     title: Text('Driver profile'),
-                    subtitle: Text('Roster Code, payroll number and depot'),
+                    subtitle: Text('Driver number, payroll number and depot'),
                     trailing: Icon(Icons.chevron_right),
                   ),
                   const Divider(height: 1),
