@@ -246,7 +246,7 @@ class _HomeScreenState extends State<HomeScreen> {
         onUpload: _openUploadPage,
         refreshVersion: _dashboardRefreshVersion,
       ),
-      const CalendarPage(),
+      CalendarPage(refreshVersion: _dashboardRefreshVersion),
       DashboardPage(
         email: email,
         onUpload: _openUploadPage,
@@ -1163,16 +1163,669 @@ class _RosterSourceBadge extends StatelessWidget {
   }
 }
 
-class CalendarPage extends StatelessWidget {
-  const CalendarPage({super.key});
+class CalendarPage extends StatefulWidget {
+  const CalendarPage({required this.refreshVersion, super.key});
+
+  final int refreshVersion;
+
+  @override
+  State<CalendarPage> createState() => _CalendarPageState();
+}
+
+class _CalendarPageState extends State<CalendarPage> {
+  static const Color navy = Color(0xFF102A43);
+  static const Color railwayBlue = Color(0xFF1769AA);
+  static const Color workingGreen = Color(0xFF2E7D32);
+  static const Color restYellow = Color(0xFFFFD54F);
+  static const Color leaveRed = Color(0xFFD64545);
+  static const Color textGrey = Color(0xFF52667A);
+
+  final DutyResolver _dutyResolver = DutyResolver();
+
+  late DateTime _displayedMonth;
+  Map<String, Duty> _dutiesByDate = <String, Duty>{};
+
+  bool _isLoading = true;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+
+    final DateTime now = DateTime.now();
+    _displayedMonth = DateTime(now.year, now.month);
+
+    _loadMonth();
+  }
+
+  @override
+  void didUpdateWidget(covariant CalendarPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.refreshVersion != widget.refreshVersion) {
+      _loadMonth();
+    }
+  }
+
+  Future<void> _loadMonth() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+
+    try {
+      final List<DateTime> calendarDates = _calendarDates();
+
+      final List<Duty?> loadedDuties = await Future.wait(
+        calendarDates.map(_dutyResolver.getDutyForDate),
+      );
+
+      final Map<String, Duty> dutiesByDate = <String, Duty>{};
+
+      for (int index = 0; index < calendarDates.length; index++) {
+        final Duty? duty = loadedDuties[index];
+
+        if (duty != null) {
+          dutiesByDate[_dateKey(calendarDates[index])] = duty;
+        }
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _dutiesByDate = dutiesByDate;
+        _isLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _dutiesByDate = <String, Duty>{};
+        _isLoading = false;
+        _loadError = error is DutyResolverException
+            ? error.message
+            : 'Roster Buddy could not load this month.';
+      });
+    }
+  }
+
+  List<DateTime> _calendarDates() {
+    final DateTime firstDay = DateTime(
+      _displayedMonth.year,
+      _displayedMonth.month,
+      1,
+    );
+
+    // DateTime weekday uses Monday = 1 and Sunday = 7.
+    // Modulo seven changes this to Sunday = 0.
+    final int leadingDays = firstDay.weekday % 7;
+
+    final DateTime calendarStart = firstDay.subtract(
+      Duration(days: leadingDays),
+    );
+
+    return List<DateTime>.generate(
+      42,
+      (int index) => calendarStart.add(Duration(days: index)),
+      growable: false,
+    );
+  }
+
+  Future<void> _changeMonth(int offset) async {
+    setState(() {
+      _displayedMonth = DateTime(
+        _displayedMonth.year,
+        _displayedMonth.month + offset,
+      );
+    });
+
+    await _loadMonth();
+  }
+
+  Future<void> _goToCurrentMonth() async {
+    final DateTime now = DateTime.now();
+
+    setState(() {
+      _displayedMonth = DateTime(now.year, now.month);
+    });
+
+    await _loadMonth();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return const PlaceholderPage(
-      icon: Icons.calendar_month_outlined,
-      title: 'Calendar',
-      description:
-          'Your Day, Week, Month and Year roster views will appear here. Every week will start on Sunday.',
+    return RefreshIndicator(
+      onRefresh: _loadMonth,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 900),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            children: [
+              _buildMonthHeader(),
+              const SizedBox(height: 14),
+              _buildWeekdayHeader(),
+              const SizedBox(height: 6),
+              if (_isLoading)
+                const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(28),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                )
+              else if (_loadError != null)
+                _buildErrorCard()
+              else
+                _buildMonthGrid(),
+              const SizedBox(height: 16),
+              _buildLegend(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMonthHeader() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: 'Previous month',
+              onPressed: () => _changeMonth(-1),
+              icon: const Icon(Icons.chevron_left),
+            ),
+            Expanded(
+              child: Column(
+                children: [
+                  Text(
+                    _monthTitle(_displayedMonth),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: navy,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _goToCurrentMonth,
+                    child: const Text('Today'),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Next month',
+              onPressed: () => _changeMonth(1),
+              icon: const Icon(Icons.chevron_right),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeekdayHeader() {
+    const List<String> weekdays = <String>[
+      'Sun',
+      'Mon',
+      'Tue',
+      'Wed',
+      'Thu',
+      'Fri',
+      'Sat',
+    ];
+
+    return Row(
+      children: weekdays
+          .map(
+            (String weekday) => Expanded(
+              child: Center(
+                child: Text(
+                  weekday,
+                  style: const TextStyle(
+                    color: navy,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+
+  Widget _buildMonthGrid() {
+    final List<DateTime> dates = _calendarDates();
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: dates.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 7,
+        crossAxisSpacing: 5,
+        mainAxisSpacing: 5,
+        childAspectRatio: 0.78,
+      ),
+      itemBuilder: (BuildContext context, int index) {
+        final DateTime date = dates[index];
+        final Duty? duty = _dutiesByDate[_dateKey(date)];
+
+        return _buildDayCell(date: date, duty: duty);
+      },
+    );
+  }
+
+  Widget _buildDayCell({required DateTime date, required Duty? duty}) {
+    final bool belongsToDisplayedMonth =
+        date.year == _displayedMonth.year &&
+        date.month == _displayedMonth.month;
+
+    final DateTime now = DateTime.now();
+    final bool isToday =
+        date.year == now.year && date.month == now.month && date.day == now.day;
+
+    final Color dutyColour = duty == null
+        ? Colors.white
+        : _colourForDuty(duty.dutyType);
+
+    final bool useDarkText =
+        duty == null ||
+        duty.dutyType == DutyType.restDay ||
+        duty.dutyType == DutyType.unavailable;
+
+    final Color foreground = useDarkText ? navy : Colors.white;
+
+    return Opacity(
+      opacity: belongsToDisplayedMonth ? 1 : 0.42,
+      child: Material(
+        color: dutyColour,
+        borderRadius: BorderRadius.circular(11),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(11),
+          onTap: () => _showDayDetails(date: date, duty: duty),
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(
+                color: isToday ? railwayBlue : const Color(0xFFD8E0E8),
+                width: isToday ? 2.5 : 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  date.day.toString(),
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const Spacer(),
+                if (duty != null) ...[
+                  Text(
+                    _shortDutyLabel(duty),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: foreground,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  if (duty.bookOn?.trim().isNotEmpty == true) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      duty.bookOn!.trim(),
+                      maxLines: 1,
+                      style: TextStyle(
+                        color: foreground,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 3),
+                  Align(
+                    alignment: Alignment.bottomRight,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: useDarkText
+                            ? railwayBlue.withValues(alpha: 0.12)
+                            : Colors.white.withValues(alpha: 0.22),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: Text(
+                        _sourceLabel(duty.source),
+                        style: TextStyle(
+                          color: foreground,
+                          fontSize: 7,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          children: [
+            const Icon(Icons.error_outline, color: leaveRed, size: 34),
+            const SizedBox(height: 10),
+            Text(
+              _loadError!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: textGrey),
+            ),
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              onPressed: _loadMonth,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Try again'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLegend() {
+    return const Card(
+      child: Padding(
+        padding: EdgeInsets.all(12),
+        child: Wrap(
+          spacing: 14,
+          runSpacing: 10,
+          children: [
+            _CalendarLegendItem(colour: workingGreen, label: 'Working'),
+            _CalendarLegendItem(colour: restYellow, label: 'Rest day'),
+            _CalendarLegendItem(colour: leaveRed, label: 'Annual leave'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDayDetails({required DateTime date, required Duty? duty}) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _fullDate(date),
+                  style: const TextStyle(
+                    color: navy,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                if (duty == null)
+                  const Text(
+                    'No roster information is available for this date.',
+                    style: TextStyle(color: textGrey),
+                  )
+                else ...[
+                  Row(
+                    children: [
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: _colourForDuty(duty.dutyType),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _longDutyLabel(duty),
+                          style: const TextStyle(
+                            color: navy,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      _RosterSourceBadge(source: duty.source),
+                    ],
+                  ),
+                  if (duty.bookOn != null || duty.bookOff != null) ...[
+                    const SizedBox(height: 14),
+                    Text(
+                      _timeDescription(duty),
+                      style: const TextStyle(color: navy),
+                    ),
+                  ],
+                  if (duty.turnNumber?.trim().isNotEmpty == true) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Turn ${duty.turnNumber!.trim()}',
+                      style: const TextStyle(color: navy),
+                    ),
+                  ],
+                  if (duty.remarks?.trim().isNotEmpty == true) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      duty.remarks!.trim(),
+                      style: const TextStyle(color: textGrey),
+                    ),
+                  ],
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Color _colourForDuty(DutyType type) {
+    switch (type) {
+      case DutyType.working:
+      case DutyType.training:
+      case DutyType.medical:
+        return workingGreen;
+      case DutyType.restDay:
+      case DutyType.unavailable:
+        return restYellow;
+      case DutyType.annualLeave:
+      case DutyType.sick:
+      case DutyType.publicHoliday:
+        return leaveRed;
+      case DutyType.unknown:
+        return railwayBlue;
+    }
+  }
+
+  String _shortDutyLabel(Duty duty) {
+    switch (duty.dutyType) {
+      case DutyType.working:
+        return duty.turnNumber?.trim().isNotEmpty == true
+            ? 'T${duty.turnNumber!.trim()}'
+            : 'Duty';
+      case DutyType.training:
+        return 'Training';
+      case DutyType.medical:
+        return 'Medical';
+      case DutyType.restDay:
+        return 'Rest';
+      case DutyType.annualLeave:
+        return 'Leave';
+      case DutyType.sick:
+        return 'Sick';
+      case DutyType.publicHoliday:
+        return 'Holiday';
+      case DutyType.unavailable:
+        return 'Unavailable';
+      case DutyType.unknown:
+        return 'Review';
+    }
+  }
+
+  String _longDutyLabel(Duty duty) {
+    switch (duty.dutyType) {
+      case DutyType.working:
+        return 'Working duty';
+      case DutyType.training:
+        return 'Training';
+      case DutyType.medical:
+        return 'Medical';
+      case DutyType.restDay:
+        return 'Rest day';
+      case DutyType.annualLeave:
+        return 'Annual leave';
+      case DutyType.sick:
+        return 'Sick';
+      case DutyType.publicHoliday:
+        return 'Public holiday';
+      case DutyType.unavailable:
+        return 'Unavailable';
+      case DutyType.unknown:
+        return 'Roster status requires review';
+    }
+  }
+
+  String _timeDescription(Duty duty) {
+    final String? bookOn = duty.bookOn?.trim();
+    final String? bookOff = duty.bookOff?.trim();
+
+    if (bookOn?.isNotEmpty == true && bookOff?.isNotEmpty == true) {
+      return 'Book on $bookOn  •  Book off $bookOff';
+    }
+
+    if (bookOn?.isNotEmpty == true) {
+      return 'Book on $bookOn';
+    }
+
+    if (bookOff?.isNotEmpty == true) {
+      return 'Book off $bookOff';
+    }
+
+    return 'Duty times not available';
+  }
+
+  String _sourceLabel(RosterSource source) {
+    switch (source) {
+      case RosterSource.baseRoster:
+        return 'BASE';
+      case RosterSource.tenDay:
+        return '10D';
+      case RosterSource.sevenDay:
+        return '7D';
+      case RosterSource.fortyEightHour:
+        return '48HR';
+      case RosterSource.annualLeave:
+        return 'AW';
+      case RosterSource.manual:
+        return 'M';
+    }
+  }
+
+  String _monthTitle(DateTime date) {
+    const List<String> months = <String>[
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+
+    return '${months[date.month - 1]} ${date.year}';
+  }
+
+  String _fullDate(DateTime date) {
+    const List<String> weekdays = <String>[
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
+
+    return '${weekdays[date.weekday - 1]} ${date.day} '
+        '${_monthTitle(DateTime(date.year, date.month)).split(' ').first} '
+        '${date.year}';
+  }
+
+  String _dateKey(DateTime date) {
+    final String month = date.month.toString().padLeft(2, '0');
+    final String day = date.day.toString().padLeft(2, '0');
+
+    return '${date.year}-$month-$day';
+  }
+}
+
+class _CalendarLegendItem extends StatelessWidget {
+  const _CalendarLegendItem({required this.colour, required this.label});
+
+  final Color colour;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 13,
+          height: 13,
+          decoration: BoxDecoration(
+            color: colour,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFF102A43),
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
     );
   }
 }
