@@ -1155,6 +1155,8 @@ class _RosterSourceBadge extends StatelessWidget {
         return '7D';
       case RosterSource.fortyEightHour:
         return '48HR';
+      case RosterSource.annualLeave:
+        return 'AW';
       case RosterSource.manual:
         return 'M';
     }

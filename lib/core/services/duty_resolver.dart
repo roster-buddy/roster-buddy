@@ -12,6 +12,7 @@ class DutyResolver {
 
   static const String _profileTableName = 'driver_profiles';
   static const String _dutyTableName = 'document_duties';
+  static const String _annualLeavePeriodTableName = 'annual_leave_periods';
 
   /// Returns the highest-priority duty applicable to the signed-in user
   /// on [date].
@@ -82,6 +83,30 @@ class DutyResolver {
         .map(_dutyFromRow)
         .toList();
 
+    if (driverNumber != null) {
+      final String databaseDate = _databaseDate(date);
+
+      final List<dynamic> annualLeaveResponse = await _supabase
+          .from(_annualLeavePeriodTableName)
+          .select(
+            'period_type, start_date, end_date, '
+            'annual_leave_allocations!inner('
+            'driver_number, surname, depot, source, is_confirmed, page_number'
+            ')',
+          )
+          .lte('start_date', databaseDate)
+          .gte('end_date', databaseDate)
+          .eq('annual_leave_allocations.driver_number', driverNumber)
+          .eq('annual_leave_allocations.is_confirmed', true);
+
+      duties.addAll(
+        annualLeaveResponse
+            .whereType<Map<String, dynamic>>()
+            .map((row) => _annualLeaveDutyFromRow(row: row, date: date))
+            .whereType<Duty>(),
+      );
+    }
+
     duties.sort(_compareDuties);
 
     return List<Duty>.unmodifiable(duties);
@@ -135,6 +160,69 @@ class DutyResolver {
     return payrollMatches || driverMatches;
   }
 
+  static Duty? _annualLeaveDutyFromRow({
+    required Map<String, dynamic> row,
+    required DateTime date,
+  }) {
+    final Object? relatedValue = row['annual_leave_allocations'];
+    Map<String, dynamic>? allocation;
+
+    if (relatedValue is Map<String, dynamic>) {
+      allocation = relatedValue;
+    } else if (relatedValue is Map) {
+      allocation = Map<String, dynamic>.from(relatedValue);
+    } else if (relatedValue is List && relatedValue.isNotEmpty) {
+      final Object? first = relatedValue.first;
+
+      if (first is Map<String, dynamic>) {
+        allocation = first;
+      } else if (first is Map) {
+        allocation = Map<String, dynamic>.from(first);
+      }
+    }
+
+    if (allocation == null) {
+      return null;
+    }
+
+    final String? driverNumber = _nullableString(allocation['driver_number']);
+
+    if (driverNumber == null) {
+      return null;
+    }
+
+    final String periodLabel = _annualLeavePeriodLabel(row['period_type']);
+
+    return Duty(
+      date: DateTime(date.year, date.month, date.day),
+      source: RosterSource.annualLeave,
+      dutyType: DutyType.annualLeave,
+      remarks: periodLabel,
+      driverNumber: driverNumber,
+      driverName: _nullableString(allocation['surname']),
+      depot: _nullableString(allocation['depot']),
+      pageNumber: _nullableInt(allocation['page_number']),
+      rawText:
+          '${_nullableString(row['start_date']) ?? ''} - '
+          '${_nullableString(row['end_date']) ?? ''}',
+    );
+  }
+
+  static String _annualLeavePeriodLabel(Object? value) {
+    switch (_nullableString(value)) {
+      case 'spring':
+        return 'Spring block annual leave';
+      case 'summer_first_week':
+        return 'Summer block annual leave – first week';
+      case 'summer_second_week':
+        return 'Summer block annual leave – second week';
+      case 'winter':
+        return 'Winter block annual leave';
+      default:
+        return 'Block annual leave';
+    }
+  }
+
   static Duty _dutyFromRow(Map<String, dynamic> row) {
     final String? dateValue = _nullableString(row['duty_date']);
 
@@ -174,6 +262,8 @@ class DutyResolver {
         return RosterSource.sevenDay;
       case '48_hour':
         return RosterSource.fortyEightHour;
+      case 'annual_leave':
+        return RosterSource.annualLeave;
       default:
         throw DutyResolverException(
           'Unsupported stored roster source: ${value ?? 'null'}.',

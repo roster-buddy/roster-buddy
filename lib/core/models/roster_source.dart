@@ -3,6 +3,7 @@ enum RosterSource {
   tenDay,
   sevenDay,
   fortyEightHour,
+  annualLeave,
   manual,
 }
 
@@ -17,8 +18,10 @@ extension RosterSourceExtension on RosterSource {
         return 3;
       case RosterSource.fortyEightHour:
         return 4;
-      case RosterSource.manual:
+      case RosterSource.annualLeave:
         return 5;
+      case RosterSource.manual:
+        return 6;
     }
   }
 }

@@ -503,6 +503,10 @@ class DocumentProcessingService {
         return '7_day';
       case RosterSource.fortyEightHour:
         return '48_hour';
+      case RosterSource.annualLeave:
+        throw const DocumentProcessingException(
+          'Annual Leave allocations are stored separately from document duties.',
+        );
       case RosterSource.manual:
         throw const DocumentProcessingException(
           'Manual duties cannot be stored as parsed document duties.',
