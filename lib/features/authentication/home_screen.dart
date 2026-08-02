@@ -1910,8 +1910,12 @@ class _CalendarPageState extends State<CalendarPage> {
                       ? manualTurnController.text.trim()
                       : selectedTurn;
 
-                  final String bookOn = bookOnController.text.trim();
-                  final String bookOff = bookOffController.text.trim();
+                  final String bookOn = _normaliseTimeInput(
+                    bookOnController.text,
+                  );
+                  final String bookOff = _normaliseTimeInput(
+                    bookOffController.text,
+                  );
 
                   if (turnNumber.isEmpty) {
                     setSheetState(() {
@@ -1923,7 +1927,7 @@ class _CalendarPageState extends State<CalendarPage> {
                   if (!_isValidTime(bookOn) || !_isValidTime(bookOff)) {
                     setSheetState(() {
                       formError =
-                          'Enter book-on and book-off times in 24-hour HH:mm format.';
+                          'Enter valid 24-hour times, for example 0800 or 08:00.';
                     });
                     return;
                   }
@@ -2043,7 +2047,7 @@ class _CalendarPageState extends State<CalendarPage> {
                                   keyboardType: TextInputType.datetime,
                                   decoration: const InputDecoration(
                                     labelText: 'Book on',
-                                    hintText: 'HH:mm',
+                                    hintText: '0800',
                                     border: OutlineInputBorder(),
                                   ),
                                 ),
@@ -2056,7 +2060,7 @@ class _CalendarPageState extends State<CalendarPage> {
                                   keyboardType: TextInputType.datetime,
                                   decoration: const InputDecoration(
                                     labelText: 'Book off',
-                                    hintText: 'HH:mm',
+                                    hintText: '0800',
                                     border: OutlineInputBorder(),
                                   ),
                                 ),
@@ -2150,6 +2154,28 @@ class _CalendarPageState extends State<CalendarPage> {
       (int index) => 'WO${201 + index}SX',
       growable: false,
     );
+  }
+
+  static String _normaliseTimeInput(String value) {
+    String cleaned = value.trim().replaceAll(RegExp(r'\s+'), '');
+
+    if (cleaned.isEmpty) {
+      return '';
+    }
+
+    // Already written as HH:mm.
+    if (RegExp(r'^\d{1,2}:\d{2}$').hasMatch(cleaned)) {
+      final List<String> parts = cleaned.split(':');
+      return '${parts[0].padLeft(2, '0')}:${parts[1]}';
+    }
+
+    // Accept railway-style times such as 815 or 0800.
+    if (RegExp(r'^\d{3,4}$').hasMatch(cleaned)) {
+      cleaned = cleaned.padLeft(4, '0');
+      return '${cleaned.substring(0, 2)}:${cleaned.substring(2)}';
+    }
+
+    return cleaned;
   }
 
   bool _isValidTime(String value) {
