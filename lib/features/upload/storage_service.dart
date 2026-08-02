@@ -140,6 +140,14 @@ class StorageService {
             bytes: bytes,
             originalFilename: originalFilename,
             documentType: documentType,
+            baseRosterCommencementDate: baseRosterActivation?.commencementDate,
+            baseRosterSwapPartnerDriverNumber:
+                baseRosterActivation?.hasMutualSwap == true
+                ? baseRosterActivation?.swapPartnerDriverNumber
+                : null,
+            baseRosterStartsWithPartner:
+                baseRosterActivation?.startingLine ==
+                BaseRosterStartingLine.partner,
           );
 
       switch (processingResult.status) {

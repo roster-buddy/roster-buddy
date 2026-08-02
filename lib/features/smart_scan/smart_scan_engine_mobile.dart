@@ -99,6 +99,14 @@ class SmartScanEngine {
       return '.jpeg';
     }
 
+    if (lowerName.endsWith('.heic')) {
+      return '.heic';
+    }
+
+    if (lowerName.endsWith('.heif')) {
+      return '.heif';
+    }
+
     return '.jpg';
   }
 }

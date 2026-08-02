@@ -232,7 +232,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openUploadPage() {
-    _pickDocument(UploadSource.photoLibrary);
+    _pickDocument(UploadSource.file);
   }
 
   @override
@@ -289,7 +289,7 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) async {
           if (index == 2) {
-            await _pickDocument(UploadSource.photoLibrary);
+            await _pickDocument(UploadSource.file);
             return;
           }
 

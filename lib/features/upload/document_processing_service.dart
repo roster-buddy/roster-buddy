@@ -8,6 +8,7 @@ import '../../core/models/duty.dart';
 import '../../core/models/duty_type.dart';
 import '../../core/models/parse_result.dart';
 import '../../core/models/roster_source.dart';
+import '../../core/parser/base_roster_parser.dart';
 import '../../core/parser/daily_amendment_parser.dart';
 import '../smart_scan/smart_scan_engine.dart';
 import '../smart_scan/smart_scan_result.dart';
@@ -25,8 +26,13 @@ class DocumentProcessingService {
     required Uint8List bytes,
     required String originalFilename,
     required DocumentType documentType,
+    DateTime? baseRosterCommencementDate,
+    String? baseRosterSwapPartnerDriverNumber,
+    bool baseRosterStartsWithPartner = false,
   }) async {
-    if (!_isDailyAmendment(documentType)) {
+    final bool isBaseRoster = documentType == DocumentType.baseRoster;
+
+    if (!isBaseRoster && !_isDailyAmendment(documentType)) {
       return const DocumentProcessingResult(
         status: DocumentProcessingStatus.pending,
         recordsInserted: 0,
@@ -75,13 +81,40 @@ class DocumentProcessingService {
 
       final String reconstructedPageText = _reconstructPageText(scanResult);
 
-      final DailyAmendmentParser parser = DailyAmendmentParser(
-        documentType: documentType,
-      );
+      final ParseResult parseResult;
 
-      final ParseResult parseResult = await parser.parse(
-        pageText: [reconstructedPageText],
-      );
+      if (isBaseRoster) {
+        final String? driverNumber = await _currentDriverNumber();
+
+        if (driverNumber == null || driverNumber.trim().isEmpty) {
+          throw const DocumentProcessingException(
+            'Add your Base Roster driver number in Settings before processing this document.',
+          );
+        }
+
+        if (baseRosterCommencementDate == null) {
+          throw const DocumentProcessingException(
+            'The Base Roster commencement Sunday is missing.',
+          );
+        }
+
+        final BaseRosterParser parser = BaseRosterParser(
+          commencementDate: baseRosterCommencementDate,
+          driverNumber: driverNumber,
+          swapPartnerDriverNumber: baseRosterSwapPartnerDriverNumber,
+          initialLine: baseRosterStartsWithPartner
+              ? BaseRosterInitialLine.swapPartner
+              : BaseRosterInitialLine.driver,
+        );
+
+        parseResult = await parser.parse(pageText: [reconstructedPageText]);
+      } else {
+        final DailyAmendmentParser parser = DailyAmendmentParser(
+          documentType: documentType,
+        );
+
+        parseResult = await parser.parse(pageText: [reconstructedPageText]);
+      }
 
       if (!parseResult.canImport) {
         throw DocumentProcessingException(_blockingWarningMessage(parseResult));
@@ -92,8 +125,10 @@ class DocumentProcessingService {
           .toList(growable: false);
 
       if (importableDuties.isEmpty) {
-        throw const DocumentProcessingException(
-          'No duties with a payroll number or roster code were detected.',
+        throw DocumentProcessingException(
+          isBaseRoster
+              ? 'No Base Roster duties matching your driver number were detected.'
+              : 'No duties with a payroll number or roster code were detected.',
         );
       }
 
@@ -133,6 +168,35 @@ class DocumentProcessingService {
         'Roster Buddy could not process this document.',
       );
     }
+  }
+
+  static Future<String?> _currentDriverNumber() async {
+    final User? user = _supabase.auth.currentUser;
+
+    if (user == null) {
+      throw const DocumentProcessingException(
+        'You must be signed in before processing a Base Roster.',
+      );
+    }
+
+    final Map<String, dynamic>? profile = await _supabase
+        .from('driver_profiles')
+        .select('driver_number')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+    final String tableDriverNumber = (profile?['driver_number'] ?? '')
+        .toString()
+        .trim();
+
+    if (tableDriverNumber.isNotEmpty) {
+      return tableDriverNumber;
+    }
+
+    final String metadataDriverNumber =
+        (user.userMetadata?['driver_number'] ?? '').toString().trim();
+
+    return metadataDriverNumber.isEmpty ? null : metadataDriverNumber;
   }
 
   static Future<void> _replaceDocumentDuties({
@@ -285,7 +349,9 @@ class DocumentProcessingService {
 
     return lower.endsWith('.jpg') ||
         lower.endsWith('.jpeg') ||
-        lower.endsWith('.png');
+        lower.endsWith('.png') ||
+        lower.endsWith('.heic') ||
+        lower.endsWith('.heif');
   }
 
   static String _databaseDate(DateTime value) {

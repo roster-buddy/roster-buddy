@@ -208,14 +208,37 @@ class UploadService {
 
   static Future<PickedUpload?> _pickFiles() async {
     final FilePickerResult? result = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
+      type: FileType.any,
       allowMultiple: true,
       withData: true,
     );
 
     if (result == null || result.files.isEmpty) {
       return null;
+    }
+
+    const Set<String> supportedExtensions = {
+      'pdf',
+      'jpg',
+      'jpeg',
+      'png',
+      'heic',
+      'heif',
+    };
+
+    final List<String> unsupportedFiles = result.files
+        .where(
+          (file) =>
+              !supportedExtensions.contains(file.extension?.toLowerCase()),
+        )
+        .map((file) => file.name)
+        .toList();
+
+    if (unsupportedFiles.isNotEmpty) {
+      throw StateError(
+        'Unsupported file type: ${unsupportedFiles.join(', ')}. '
+        'Choose a PDF, JPG, PNG or HEIC image.',
+      );
     }
 
     if (result.files.length == 1) {
