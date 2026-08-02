@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -1453,6 +1454,7 @@ class _CalendarPageState extends State<CalendarPage> {
         child: InkWell(
           borderRadius: BorderRadius.circular(11),
           onTap: () => _showDayDetails(date: date, duty: duty),
+          onLongPress: () => _showDayActions(date: date, duty: duty),
           child: Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
@@ -1576,9 +1578,10 @@ class _CalendarPageState extends State<CalendarPage> {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (BuildContext context) {
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) {
         return SafeArea(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -1644,6 +1647,60 @@ class _CalendarPageState extends State<CalendarPage> {
                       style: const TextStyle(color: textGrey),
                     ),
                   ],
+                  const SizedBox(height: 22),
+                  if (duty.dutyType == DutyType.working) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          Navigator.of(sheetContext).pop();
+                          _handleDayAction(
+                            date: date,
+                            duty: duty,
+                            action: _CalendarDayAction.requestAnnualLeave,
+                          );
+                        },
+                        icon: const Icon(Icons.beach_access_outlined),
+                        label: const Text('Request annual leave'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: leaveRed,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  if (duty.dutyType == DutyType.restDay) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          Navigator.of(sheetContext).pop();
+                          _handleDayAction(
+                            date: date,
+                            duty: duty,
+                            action: _CalendarDayAction.allocateShift,
+                          );
+                        },
+                        icon: const Icon(Icons.add_circle_outline),
+                        label: const Text('Allocate shift – RDW'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: workingGreen,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+                        _showDayActions(date: date, duty: duty);
+                      },
+                      icon: const Icon(Icons.more_horiz),
+                      label: const Text('More day actions'),
+                    ),
+                  ),
                 ],
               ],
             ),
@@ -1651,6 +1708,166 @@ class _CalendarPageState extends State<CalendarPage> {
         );
       },
     );
+  }
+
+  Future<void> _showDayActions({
+    required DateTime date,
+    required Duty? duty,
+  }) async {
+    final List<_CalendarDayAction> actions = _actionsForDuty(duty);
+
+    if (actions.isEmpty) {
+      _showCalendarMessage(
+        'No actions are currently available for ${_fullDate(date)}.',
+      );
+      return;
+    }
+
+    final _CalendarDayAction? selected =
+        await showCupertinoModalPopup<_CalendarDayAction>(
+          context: context,
+          builder: (BuildContext popupContext) {
+            return CupertinoActionSheet(
+              title: Text(_fullDate(date)),
+              message: Text(
+                duty == null ? 'No roster information' : _longDutyLabel(duty),
+              ),
+              actions: actions
+                  .map(
+                    (_CalendarDayAction action) => CupertinoActionSheetAction(
+                      onPressed: () {
+                        Navigator.of(popupContext).pop(action);
+                      },
+                      isDestructiveAction:
+                          action == _CalendarDayAction.moveRestDayHere,
+                      child: Text(_dayActionLabel(action)),
+                    ),
+                  )
+                  .toList(growable: false),
+              cancelButton: CupertinoActionSheetAction(
+                onPressed: () {
+                  Navigator.of(popupContext).pop();
+                },
+                child: const Text('Cancel'),
+              ),
+            );
+          },
+        );
+
+    if (selected == null || !mounted) {
+      return;
+    }
+
+    _handleDayAction(date: date, duty: duty, action: selected);
+  }
+
+  List<_CalendarDayAction> _actionsForDuty(Duty? duty) {
+    if (duty == null) {
+      return const <_CalendarDayAction>[];
+    }
+
+    if (duty.dutyType == DutyType.restDay) {
+      return const <_CalendarDayAction>[_CalendarDayAction.allocateShift];
+    }
+
+    if (duty.dutyType == DutyType.working) {
+      return const <_CalendarDayAction>[
+        _CalendarDayAction.editTimes,
+        _CalendarDayAction.selectTurnNumber,
+        _CalendarDayAction.manualChange,
+        _CalendarDayAction.shiftSwap,
+        _CalendarDayAction.moveRestDayHere,
+        _CalendarDayAction.requestAnnualLeave,
+      ];
+    }
+
+    if (duty.dutyType == DutyType.training ||
+        duty.dutyType == DutyType.medical) {
+      return const <_CalendarDayAction>[
+        _CalendarDayAction.editTimes,
+        _CalendarDayAction.manualChange,
+        _CalendarDayAction.shiftSwap,
+        _CalendarDayAction.moveRestDayHere,
+        _CalendarDayAction.requestAnnualLeave,
+      ];
+    }
+
+    return const <_CalendarDayAction>[];
+  }
+
+  void _handleDayAction({
+    required DateTime date,
+    required Duty? duty,
+    required _CalendarDayAction action,
+  }) {
+    switch (action) {
+      case _CalendarDayAction.editTimes:
+        _showCalendarMessage(
+          'Edit book-on and book-off times will be connected next.',
+        );
+        return;
+
+      case _CalendarDayAction.selectTurnNumber:
+        _showCalendarMessage(
+          'The valid job-card turn selector will be connected next.',
+        );
+        return;
+
+      case _CalendarDayAction.manualChange:
+        _showCalendarMessage('Manual duty changes will be connected next.');
+        return;
+
+      case _CalendarDayAction.shiftSwap:
+        _showCalendarMessage(
+          'The shift-swap request form will be connected next.',
+        );
+        return;
+
+      case _CalendarDayAction.moveRestDayHere:
+        _showCalendarMessage('Move rest day here will be connected next.');
+        return;
+
+      case _CalendarDayAction.requestAnnualLeave:
+        _showCalendarMessage(
+          'The annual-leave request form will be connected next.',
+        );
+        return;
+
+      case _CalendarDayAction.allocateShift:
+        _showCalendarMessage(
+          'Rest Day Worked allocation will be connected next.',
+        );
+        return;
+    }
+  }
+
+  String _dayActionLabel(_CalendarDayAction action) {
+    switch (action) {
+      case _CalendarDayAction.editTimes:
+        return 'Edit book-on/off time';
+      case _CalendarDayAction.selectTurnNumber:
+        return 'Select turn number';
+      case _CalendarDayAction.manualChange:
+        return 'Manual change';
+      case _CalendarDayAction.shiftSwap:
+        return 'Shift swap';
+      case _CalendarDayAction.moveRestDayHere:
+        return 'Move rest day here';
+      case _CalendarDayAction.requestAnnualLeave:
+        return 'Request annual leave';
+      case _CalendarDayAction.allocateShift:
+        return 'Allocate shift – RDW';
+    }
+  }
+
+  void _showCalendarMessage(String message) {
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   Color _colourForDuty(DutyType type) {
@@ -1796,6 +2013,16 @@ class _CalendarPageState extends State<CalendarPage> {
 
     return '${date.year}-$month-$day';
   }
+}
+
+enum _CalendarDayAction {
+  editTimes,
+  selectTurnNumber,
+  manualChange,
+  shiftSwap,
+  moveRestDayHere,
+  requestAnnualLeave,
+  allocateShift,
 }
 
 class _CalendarLegendItem extends StatelessWidget {
