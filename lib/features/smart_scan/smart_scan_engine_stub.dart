@@ -21,8 +21,16 @@ class SmartScanEngine {
     required String fileName,
   }) {
     throw const SmartScanException(
-      'OCR is not available in the web preview. '
-      'It will run on the iPhone version of Roster Buddy.',
+      'OCR is currently supported only on iPhone and Android.',
+    );
+  }
+
+  static Future<List<SmartScanResult>> recognisePdf({
+    required Uint8List bytes,
+    required String fileName,
+  }) {
+    throw const SmartScanException(
+      'PDF OCR is currently supported only on iPhone and Android.',
     );
   }
 }

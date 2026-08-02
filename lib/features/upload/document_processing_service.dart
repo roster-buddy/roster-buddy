@@ -41,16 +41,7 @@ class DocumentProcessingService {
       );
     }
 
-    if (_isPdf(originalFilename)) {
-      return const DocumentProcessingResult(
-        status: DocumentProcessingStatus.pending,
-        recordsInserted: 0,
-        message:
-            'The PDF was uploaded successfully and is awaiting PDF page recognition.',
-      );
-    }
-
-    if (!_isSupportedImage(originalFilename)) {
+    if (!_isPdf(originalFilename) && !_isSupportedImage(originalFilename)) {
       throw const DocumentProcessingException(
         'Smart Scan cannot recognise this file format.',
       );
@@ -68,18 +59,32 @@ class DocumentProcessingService {
     await _updateProcessingStatus(documentId, 'processing');
 
     try {
-      final SmartScanResult scanResult = await SmartScanEngine.recogniseImage(
-        bytes: bytes,
-        fileName: originalFilename,
-      );
+      final List<SmartScanResult> scanResults;
 
-      if (!scanResult.hasText) {
-        throw const DocumentProcessingException(
-          'No readable text was detected in the selected image.',
+      if (_isPdf(originalFilename)) {
+        scanResults = await SmartScanEngine.recognisePdf(
+          bytes: bytes,
+          fileName: originalFilename,
         );
+      } else {
+        scanResults = <SmartScanResult>[
+          await SmartScanEngine.recogniseImage(
+            bytes: bytes,
+            fileName: originalFilename,
+          ),
+        ];
       }
 
-      final String reconstructedPageText = _reconstructPageText(scanResult);
+      final List<String> reconstructedPageText = scanResults
+          .map(_reconstructPageText)
+          .where((String text) => text.trim().isNotEmpty)
+          .toList(growable: false);
+
+      if (reconstructedPageText.isEmpty) {
+        throw const DocumentProcessingException(
+          'No readable text was detected in the selected document.',
+        );
+      }
 
       final ParseResult parseResult;
 
@@ -107,13 +112,13 @@ class DocumentProcessingService {
               : BaseRosterInitialLine.driver,
         );
 
-        parseResult = await parser.parse(pageText: [reconstructedPageText]);
+        parseResult = await parser.parse(pageText: reconstructedPageText);
       } else {
         final DailyAmendmentParser parser = DailyAmendmentParser(
           documentType: documentType,
         );
 
-        parseResult = await parser.parse(pageText: [reconstructedPageText]);
+        parseResult = await parser.parse(pageText: reconstructedPageText);
       }
 
       if (!parseResult.canImport) {
