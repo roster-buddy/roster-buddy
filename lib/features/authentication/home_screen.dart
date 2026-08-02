@@ -361,6 +361,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Duty? _todayDuty;
   Duty? _nextWorkingDuty;
+  Map<String, Duty> _thisWeekDuties = <String, Duty>{};
 
   bool _isLoading = true;
   String? _loadError;
@@ -391,6 +392,32 @@ class _DashboardPageState extends State<DashboardPage> {
       final DateTime today = DateTime(now.year, now.month, now.day);
 
       final Duty? todayDuty = await _dutyResolver.getDutyForDate(today);
+
+      // Every Roster Buddy week starts on Sunday.
+      final DateTime weekStart = today.subtract(
+        Duration(days: today.weekday % 7),
+      );
+
+      final List<DateTime> weekDates = List<DateTime>.generate(
+        7,
+        (int index) => weekStart.add(Duration(days: index)),
+        growable: false,
+      );
+
+      final List<Duty?> loadedWeekDuties = await Future.wait(
+        weekDates.map(_dutyResolver.getDutyForDate),
+      );
+
+      final Map<String, Duty> thisWeekDuties = <String, Duty>{};
+
+      for (int index = 0; index < weekDates.length; index++) {
+        final Duty? duty = loadedWeekDuties[index];
+
+        if (duty != null) {
+          thisWeekDuties[_dashboardDateKey(weekDates[index])] = duty;
+        }
+      }
+
       Duty? nextWorkingDuty;
 
       // Start tomorrow so today's duty is not repeated in both cards.
@@ -411,6 +438,7 @@ class _DashboardPageState extends State<DashboardPage> {
       setState(() {
         _todayDuty = todayDuty;
         _nextWorkingDuty = nextWorkingDuty;
+        _thisWeekDuties = thisWeekDuties;
         _isLoading = false;
       });
     } catch (error) {
@@ -421,6 +449,7 @@ class _DashboardPageState extends State<DashboardPage> {
       setState(() {
         _todayDuty = null;
         _nextWorkingDuty = null;
+        _thisWeekDuties = <String, Duty>{};
         _isLoading = false;
         _loadError = error is DutyResolverException
             ? error.message
@@ -488,73 +517,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 title: 'This week',
               ),
               const SizedBox(height: 10),
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(14),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: DayTile(
-                          day: 'Sun',
-                          status: 'Rest',
-                          colour: restYellow,
-                          darkText: true,
-                        ),
-                      ),
-                      SizedBox(width: 6),
-                      Expanded(
-                        child: DayTile(
-                          day: 'Mon',
-                          status: 'Duty',
-                          colour: workingGreen,
-                        ),
-                      ),
-                      SizedBox(width: 6),
-                      Expanded(
-                        child: DayTile(
-                          day: 'Tue',
-                          status: 'Duty',
-                          colour: workingGreen,
-                        ),
-                      ),
-                      SizedBox(width: 6),
-                      Expanded(
-                        child: DayTile(
-                          day: 'Wed',
-                          status: 'Duty',
-                          colour: workingGreen,
-                        ),
-                      ),
-                      SizedBox(width: 6),
-                      Expanded(
-                        child: DayTile(
-                          day: 'Thu',
-                          status: 'Rest',
-                          colour: restYellow,
-                          darkText: true,
-                        ),
-                      ),
-                      SizedBox(width: 6),
-                      Expanded(
-                        child: DayTile(
-                          day: 'Fri',
-                          status: 'Leave',
-                          colour: leaveRed,
-                        ),
-                      ),
-                      SizedBox(width: 6),
-                      Expanded(
-                        child: DayTile(
-                          day: 'Sat',
-                          status: 'Rest',
-                          colour: restYellow,
-                          darkText: true,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              _buildThisWeekCard(),
 
               const SizedBox(height: 22),
               const SectionTitle(
@@ -622,6 +585,266 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
       ),
     );
+  }
+
+  Widget _buildThisWeekCard() {
+    if (_isLoading) {
+      return _buildLoadingCard('Loading this week…');
+    }
+
+    if (_loadError != null) {
+      return _buildErrorCard();
+    }
+
+    final DateTime now = DateTime.now();
+    final DateTime today = DateTime(now.year, now.month, now.day);
+    final DateTime weekStart = today.subtract(
+      Duration(days: today.weekday % 7),
+    );
+
+    final List<DateTime> dates = List<DateTime>.generate(
+      7,
+      (int index) => weekStart.add(Duration(days: index)),
+      growable: false,
+    );
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (int index = 0; index < dates.length; index++) ...[
+              Expanded(
+                child: _buildDashboardWeekTile(
+                  date: dates[index],
+                  duty: _thisWeekDuties[_dashboardDateKey(dates[index])],
+                ),
+              ),
+              if (index < dates.length - 1) const SizedBox(width: 5),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDashboardWeekTile({
+    required DateTime date,
+    required Duty? duty,
+  }) {
+    final bool isToday = _sameDashboardDate(date, DateTime.now());
+    final Color colour = _dashboardWeekColour(duty);
+    final bool darkText =
+        duty == null ||
+        duty.dutyType == DutyType.restDay ||
+        duty.dutyType == DutyType.unavailable;
+
+    final Color foreground = darkText ? navy : Colors.white;
+
+    return Material(
+      color: colour,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () {
+          if (duty == null) {
+            showMessage(
+              context,
+              'No roster information is available for ${_fullDate(date)}.',
+            );
+            return;
+          }
+
+          if (duty.dutyType == DutyType.restDay) {
+            _showDashboardAllocateShiftDialog(date: date, originalDuty: duty);
+            return;
+          }
+
+          showMessage(
+            context,
+            '${_fullDate(date)} • ${_dashboardWeekStatus(duty)}'
+            '${duty.bookOn?.trim().isNotEmpty == true ? ' • ${_timeDescription(duty)}' : ''}',
+          );
+        },
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 92),
+          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isToday ? railwayBlue : Colors.transparent,
+              width: isToday ? 2.5 : 1,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                _dashboardWeekdayLabel(date),
+                maxLines: 1,
+                style: TextStyle(
+                  color: foreground,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                date.day.toString(),
+                style: TextStyle(
+                  color: foreground,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                duty == null ? '—' : _dashboardWeekStatus(duty),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: foreground,
+                  fontSize: 8,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              if (duty?.bookOn?.trim().isNotEmpty == true) ...[
+                const SizedBox(height: 3),
+                Text(
+                  duty!.bookOn!.trim(),
+                  maxLines: 1,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 8,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+              if (duty != null) ...[
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: darkText
+                        ? railwayBlue.withValues(alpha: 0.12)
+                        : Colors.white.withValues(alpha: 0.22),
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: Text(
+                    _dashboardSourceLabel(duty.source),
+                    style: TextStyle(
+                      color: foreground,
+                      fontSize: 7,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _dashboardWeekColour(Duty? duty) {
+    if (duty == null) {
+      return Colors.white;
+    }
+
+    switch (duty.dutyType) {
+      case DutyType.working:
+      case DutyType.training:
+      case DutyType.medical:
+        return workingGreen;
+      case DutyType.restDay:
+      case DutyType.unavailable:
+        return restYellow;
+      case DutyType.annualLeave:
+      case DutyType.sick:
+      case DutyType.publicHoliday:
+        return leaveRed;
+      case DutyType.unknown:
+        return railwayBlue;
+    }
+  }
+
+  String _dashboardWeekStatus(Duty duty) {
+    switch (duty.dutyType) {
+      case DutyType.working:
+        final String? turn = duty.turnNumber?.trim();
+
+        if (turn != null && turn.isNotEmpty) {
+          return turn;
+        }
+
+        return duty.remarks?.contains('RDW') == true ? 'RDW' : 'Duty';
+      case DutyType.training:
+        return 'Train';
+      case DutyType.medical:
+        return 'Med';
+      case DutyType.restDay:
+        return 'Rest';
+      case DutyType.annualLeave:
+        return 'Leave';
+      case DutyType.sick:
+        return 'Sick';
+      case DutyType.publicHoliday:
+        return 'Holiday';
+      case DutyType.unavailable:
+        return 'Unavail';
+      case DutyType.unknown:
+        return 'Review';
+    }
+  }
+
+  String _dashboardWeekdayLabel(DateTime date) {
+    const List<String> labels = <String>[
+      'Sun',
+      'Mon',
+      'Tue',
+      'Wed',
+      'Thu',
+      'Fri',
+      'Sat',
+    ];
+
+    return labels[date.weekday % 7];
+  }
+
+  String _dashboardSourceLabel(RosterSource source) {
+    switch (source) {
+      case RosterSource.baseRoster:
+        return 'BASE';
+      case RosterSource.tenDay:
+        return '10D';
+      case RosterSource.sevenDay:
+        return '7D';
+      case RosterSource.fortyEightHour:
+        return '48HR';
+      case RosterSource.annualLeave:
+        return 'AW';
+      case RosterSource.manual:
+        return 'M';
+    }
+  }
+
+  static bool _sameDashboardDate(DateTime first, DateTime second) {
+    return first.year == second.year &&
+        first.month == second.month &&
+        first.day == second.day;
+  }
+
+  static String _dashboardDateKey(DateTime date) {
+    final String month = date.month.toString().padLeft(2, '0');
+    final String day = date.day.toString().padLeft(2, '0');
+
+    return '${date.year}-$month-$day';
   }
 
   Widget _buildTodayCard() {
