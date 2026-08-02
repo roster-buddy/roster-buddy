@@ -3,11 +3,13 @@ import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/models/annual_leave_allocation.dart';
 import '../../core/models/document_type.dart';
 import '../../core/models/duty.dart';
 import '../../core/models/duty_type.dart';
 import '../../core/models/parse_result.dart';
 import '../../core/models/roster_source.dart';
+import '../../core/parser/annual_leave_roster_parser.dart';
 import '../../core/parser/base_roster_parser.dart';
 import '../../core/parser/daily_amendment_parser.dart';
 import '../smart_scan/smart_scan_engine.dart';
@@ -20,6 +22,9 @@ class DocumentProcessingService {
 
   static const String _documentTableName = 'roster_documents';
   static const String _dutyTableName = 'document_duties';
+  static const String _annualLeaveAllocationTableName =
+      'annual_leave_allocations';
+  static const String _annualLeavePeriodTableName = 'annual_leave_periods';
 
   static Future<DocumentProcessingResult> processUploadedDocument({
     required String documentId,
@@ -31,8 +36,12 @@ class DocumentProcessingService {
     bool baseRosterStartsWithPartner = false,
   }) async {
     final bool isBaseRoster = documentType == DocumentType.baseRoster;
+    final bool isAnnualLeaveRoster =
+        documentType == DocumentType.annualLeaveRoster;
 
-    if (!isBaseRoster && !_isDailyAmendment(documentType)) {
+    if (!isBaseRoster &&
+        !isAnnualLeaveRoster &&
+        !_isDailyAmendment(documentType)) {
       return const DocumentProcessingResult(
         status: DocumentProcessingStatus.pending,
         recordsInserted: 0,
@@ -113,6 +122,10 @@ class DocumentProcessingService {
         );
 
         parseResult = await parser.parse(pageText: reconstructedPageText);
+      } else if (isAnnualLeaveRoster) {
+        const AnnualLeaveRosterParser parser = AnnualLeaveRosterParser();
+
+        parseResult = await parser.parse(pageText: reconstructedPageText);
       } else {
         final DailyAmendmentParser parser = DailyAmendmentParser(
           documentType: documentType,
@@ -123,6 +136,31 @@ class DocumentProcessingService {
 
       if (!parseResult.canImport) {
         throw DocumentProcessingException(_blockingWarningMessage(parseResult));
+      }
+
+      if (isAnnualLeaveRoster) {
+        final List<AnnualLeaveAllocation> allocations =
+            parseResult.annualLeaveAllocations;
+
+        if (allocations.isEmpty) {
+          throw const DocumentProcessingException(
+            'No Annual Leave driver allocations were detected.',
+          );
+        }
+
+        await _replaceAnnualLeaveAllocations(
+          documentId: documentId,
+          allocations: allocations,
+        );
+
+        await _updateProcessingStatus(documentId, 'processed');
+
+        return DocumentProcessingResult(
+          status: DocumentProcessingStatus.processed,
+          recordsInserted: allocations.length,
+          message:
+              '${allocations.length} Annual Leave allocations were processed successfully.',
+        );
       }
 
       final List<Duty> importableDuties = parseResult.duties
@@ -202,6 +240,84 @@ class DocumentProcessingService {
         (user.userMetadata?['driver_number'] ?? '').toString().trim();
 
     return metadataDriverNumber.isEmpty ? null : metadataDriverNumber;
+  }
+
+  static Future<void> _replaceAnnualLeaveAllocations({
+    required String documentId,
+    required List<AnnualLeaveAllocation> allocations,
+  }) async {
+    await _supabase
+        .from(_annualLeaveAllocationTableName)
+        .delete()
+        .eq('document_id', documentId);
+
+    for (final AnnualLeaveAllocation allocation in allocations) {
+      final Map<String, dynamic> insertedAllocation = await _supabase
+          .from(_annualLeaveAllocationTableName)
+          .insert({
+            'document_id': documentId,
+            'leave_year': allocation.leaveYear,
+            'depot': allocation.depot.trim(),
+            'driver_number': allocation.driverNumber.trim(),
+            'surname': allocation.surname.trim(),
+            'block_number': allocation.blockNumber,
+            'source': _databaseAnnualLeaveSource(allocation.source),
+            'original_block_number': allocation.originalBlockNumber,
+            'other_driver_number': _cleanValue(allocation.otherDriverNumber),
+            'other_driver_surname': _cleanValue(allocation.otherDriverSurname),
+            'swap_reference': _cleanValue(allocation.swapReference),
+            'is_confirmed': allocation.isConfirmed,
+            'page_number': allocation.pageNumber,
+            'unique_key': allocation.uniqueKey,
+          })
+          .select('id')
+          .single();
+
+      final String allocationId = insertedAllocation['id'].toString();
+
+      if (allocation.periods.isEmpty) {
+        continue;
+      }
+
+      final List<Map<String, dynamic>> periodRows = allocation.periods
+          .map(
+            (AnnualLeavePeriod period) => {
+              'allocation_id': allocationId,
+              'period_type': _databaseAnnualLeavePeriodType(period.type),
+              'start_date': _databaseDate(period.startDate),
+              'end_date': _databaseDate(period.endDate),
+            },
+          )
+          .toList(growable: false);
+
+      await _supabase.from(_annualLeavePeriodTableName).insert(periodRows);
+    }
+  }
+
+  static String _databaseAnnualLeaveSource(AnnualLeaveAllocationSource source) {
+    switch (source) {
+      case AnnualLeaveAllocationSource.officialRoster:
+        return 'official_roster';
+      case AnnualLeaveAllocationSource.agreedMove:
+        return 'agreed_move';
+      case AnnualLeaveAllocationSource.mutualSwap:
+        return 'mutual_swap';
+      case AnnualLeaveAllocationSource.manualCorrection:
+        return 'manual_correction';
+    }
+  }
+
+  static String _databaseAnnualLeavePeriodType(AnnualLeavePeriodType type) {
+    switch (type) {
+      case AnnualLeavePeriodType.spring:
+        return 'spring';
+      case AnnualLeavePeriodType.summerFirstWeek:
+        return 'summer_first_week';
+      case AnnualLeavePeriodType.summerSecondWeek:
+        return 'summer_second_week';
+      case AnnualLeavePeriodType.winter:
+        return 'winter';
+    }
   }
 
   static Future<void> _replaceDocumentDuties({
