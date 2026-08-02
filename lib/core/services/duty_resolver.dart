@@ -13,6 +13,7 @@ class DutyResolver {
   static const String _profileTableName = 'driver_profiles';
   static const String _dutyTableName = 'document_duties';
   static const String _annualLeavePeriodTableName = 'annual_leave_periods';
+  static const String _manualDutyTableName = 'manual_duties';
 
   /// Returns the highest-priority duty applicable to the signed-in user
   /// on [date].
@@ -107,6 +108,21 @@ class DutyResolver {
       );
     }
 
+    final List<dynamic> manualDutyResponse = await _supabase
+        .from(_manualDutyTableName)
+        .select(
+          'duty_date, duty_type, turn_number, book_on, book_off, '
+          'rostered_minutes, remarks, manual_change_type',
+        )
+        .eq('user_id', user.id)
+        .eq('duty_date', _databaseDate(date));
+
+    duties.addAll(
+      manualDutyResponse.whereType<Map<String, dynamic>>().map(
+        _manualDutyFromRow,
+      ),
+    );
+
     duties.sort(_compareDuties);
 
     return List<Duty>.unmodifiable(duties);
@@ -158,6 +174,28 @@ class DutyResolver {
         driverNumber != null && rowDriver != null && driverNumber == rowDriver;
 
     return payrollMatches || driverMatches;
+  }
+
+  static Duty _manualDutyFromRow(Map<String, dynamic> row) {
+    final String? dateValue = _nullableString(row['duty_date']);
+
+    if (dateValue == null) {
+      throw const DutyResolverException(
+        'A manual duty is missing its duty date.',
+      );
+    }
+
+    return Duty(
+      date: DateTime.parse(dateValue),
+      source: RosterSource.manual,
+      dutyType: _dutyType(row['duty_type']),
+      turnNumber: _nullableString(row['turn_number']),
+      bookOn: _databaseTimeToAppTime(row['book_on']),
+      bookOff: _databaseTimeToAppTime(row['book_off']),
+      rosteredMinutes: _nullableInt(row['rostered_minutes']),
+      remarks: _nullableString(row['remarks']),
+      rawText: _nullableString(row['manual_change_type']),
+    );
   }
 
   static Duty? _annualLeaveDutyFromRow({

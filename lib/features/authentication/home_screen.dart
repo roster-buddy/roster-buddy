@@ -6,6 +6,7 @@ import '../../core/models/duty.dart';
 import '../../core/models/duty_type.dart';
 import '../../core/models/roster_source.dart';
 import '../../core/services/duty_resolver.dart';
+import '../../core/services/manual_duty_service.dart';
 import '../upload/base_roster_activation_page.dart';
 import '../upload/storage_service.dart';
 import '../upload/upload_service.dart';
@@ -1182,6 +1183,7 @@ class _CalendarPageState extends State<CalendarPage> {
   static const Color textGrey = Color(0xFF52667A);
 
   final DutyResolver _dutyResolver = DutyResolver();
+  final ManualDutyService _manualDutyService = ManualDutyService();
 
   late DateTime _displayedMonth;
   Map<String, Duty> _dutiesByDate = <String, Duty>{};
@@ -1834,9 +1836,14 @@ class _CalendarPageState extends State<CalendarPage> {
         return;
 
       case _CalendarDayAction.allocateShift:
-        _showCalendarMessage(
-          'Rest Day Worked allocation will be connected next.',
-        );
+        if (duty == null || duty.dutyType != DutyType.restDay) {
+          _showCalendarMessage(
+            'A Rest Day Worked shift can only be allocated on a Rest Day.',
+          );
+          return;
+        }
+
+        _showAllocateShiftDialog(date: date, originalDuty: duty);
         return;
     }
   }
@@ -1868,6 +1875,289 @@ class _CalendarPageState extends State<CalendarPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _showAllocateShiftDialog({
+    required DateTime date,
+    required Duty originalDuty,
+  }) async {
+    final List<String> validTurns = _validTurnsForDate(date);
+
+    String selectedTurn = validTurns.first;
+    final TextEditingController manualTurnController = TextEditingController();
+    final TextEditingController bookOnController = TextEditingController();
+    final TextEditingController bookOffController = TextEditingController();
+
+    bool isSaving = false;
+    String? formError;
+
+    final bool? saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (BuildContext sheetContext) {
+        return StatefulBuilder(
+          builder:
+              (
+                BuildContext context,
+                void Function(void Function()) setSheetState,
+              ) {
+                Future<void> save() async {
+                  final bool usesManualTurn =
+                      selectedTurn == 'MANUAL_OR_CROSS_DEPOT';
+
+                  final String turnNumber = usesManualTurn
+                      ? manualTurnController.text.trim()
+                      : selectedTurn;
+
+                  final String bookOn = bookOnController.text.trim();
+                  final String bookOff = bookOffController.text.trim();
+
+                  if (turnNumber.isEmpty) {
+                    setSheetState(() {
+                      formError = 'Enter the turn or job-card number.';
+                    });
+                    return;
+                  }
+
+                  if (!_isValidTime(bookOn) || !_isValidTime(bookOff)) {
+                    setSheetState(() {
+                      formError =
+                          'Enter book-on and book-off times in 24-hour HH:mm format.';
+                    });
+                    return;
+                  }
+
+                  setSheetState(() {
+                    isSaving = true;
+                    formError = null;
+                  });
+
+                  try {
+                    await _manualDutyService.saveRestDayWorked(
+                      date: date,
+                      turnNumber: turnNumber,
+                      bookOn: bookOn,
+                      bookOff: bookOff,
+                      originalDuty: originalDuty,
+                    );
+
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    Navigator.of(sheetContext).pop(true);
+                  } catch (error) {
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    setSheetState(() {
+                      isSaving = false;
+                      formError = error is ManualDutyException
+                          ? error.message
+                          : 'Roster Buddy could not save this RDW shift.';
+                    });
+                  }
+                }
+
+                return SafeArea(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      4,
+                      20,
+                      MediaQuery.viewInsetsOf(context).bottom + 24,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Allocate shift – RDW',
+                            style: const TextStyle(
+                              color: navy,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _fullDate(date),
+                            style: const TextStyle(color: textGrey),
+                          ),
+                          const SizedBox(height: 18),
+                          DropdownButtonFormField<String>(
+                            initialValue: selectedTurn,
+                            decoration: const InputDecoration(
+                              labelText: 'Turn / job-card number',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: <DropdownMenuItem<String>>[
+                              ...validTurns.map(
+                                (String turn) => DropdownMenuItem<String>(
+                                  value: turn,
+                                  child: Text(turn),
+                                ),
+                              ),
+                              const DropdownMenuItem<String>(
+                                value: 'MANUAL_OR_CROSS_DEPOT',
+                                child: Text('Manual / cross-depot duty'),
+                              ),
+                            ],
+                            onChanged: isSaving
+                                ? null
+                                : (String? value) {
+                                    if (value == null) {
+                                      return;
+                                    }
+
+                                    setSheetState(() {
+                                      selectedTurn = value;
+                                      formError = null;
+                                    });
+                                  },
+                          ),
+                          if (selectedTurn == 'MANUAL_OR_CROSS_DEPOT') ...[
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: manualTurnController,
+                              enabled: !isSaving,
+                              textCapitalization: TextCapitalization.characters,
+                              decoration: const InputDecoration(
+                                labelText: 'Manual turn or duty reference',
+                                hintText:
+                                    'For example WO216 or cross-depot cover',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: bookOnController,
+                                  enabled: !isSaving,
+                                  keyboardType: TextInputType.datetime,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Book on',
+                                    hintText: 'HH:mm',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextField(
+                                  controller: bookOffController,
+                                  enabled: !isSaving,
+                                  keyboardType: TextInputType.datetime,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Book off',
+                                    hintText: 'HH:mm',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          const Text(
+                            'This creates a manual Rest Day Worked duty. '
+                            'The original Rest Day remains in the roster history.',
+                            style: TextStyle(color: textGrey, height: 1.35),
+                          ),
+                          if (formError != null) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              formError!,
+                              style: const TextStyle(
+                                color: leaveRed,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 18),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: isSaving ? null : save,
+                              icon: isSaving
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.add_circle_outline),
+                              label: Text(
+                                isSaving ? 'Saving RDW…' : 'Save RDW shift',
+                              ),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: workingGreen,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+        );
+      },
+    );
+
+    manualTurnController.dispose();
+    bookOnController.dispose();
+    bookOffController.dispose();
+
+    if (saved != true || !mounted) {
+      return;
+    }
+
+    await _loadMonth();
+
+    if (!mounted) {
+      return;
+    }
+
+    _showCalendarMessage('Rest Day Worked saved for ${_fullDate(date)}.');
+  }
+
+  List<String> _validTurnsForDate(DateTime date) {
+    if (date.weekday == DateTime.sunday) {
+      return List<String>.generate(
+        15,
+        (int index) => 'SUN${index + 1}',
+        growable: false,
+      );
+    }
+
+    if (date.weekday == DateTime.saturday) {
+      return List<String>.generate(
+        15,
+        (int index) => 'SO${index + 1}',
+        growable: false,
+      );
+    }
+
+    return List<String>.generate(
+      15,
+      (int index) => 'WO${201 + index}SX',
+      growable: false,
+    );
+  }
+
+  bool _isValidTime(String value) {
+    final Match? match = RegExp(
+      r'^([01]\d|2[0-3]):([0-5]\d)$',
+    ).firstMatch(value);
+
+    return match != null;
   }
 
   Color _colourForDuty(DutyType type) {
