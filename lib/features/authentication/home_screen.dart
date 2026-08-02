@@ -357,6 +357,7 @@ class _DashboardPageState extends State<DashboardPage> {
   static const Color textGrey = Color(0xFF52667A);
 
   final DutyResolver _dutyResolver = DutyResolver();
+  final ManualDutyService _manualDutyService = ManualDutyService();
 
   Duty? _todayDuty;
   Duty? _nextWorkingDuty;
@@ -649,6 +650,14 @@ class _DashboardPageState extends State<DashboardPage> {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
+          if (duty.dutyType == DutyType.restDay) {
+            _showDashboardAllocateShiftDialog(
+              date: duty.date,
+              originalDuty: duty,
+            );
+            return;
+          }
+
           showMessage(
             context,
             '${presentation.title} • ${presentation.description}',
@@ -711,6 +720,22 @@ class _DashboardPageState extends State<DashboardPage> {
                       const SizedBox(height: 5),
                       _RosterSourceBadge(source: duty.source),
                     ],
+                    if (duty.dutyType == DutyType.restDay) ...[
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: () {
+                          _showDashboardAllocateShiftDialog(
+                            date: duty.date,
+                            originalDuty: duty,
+                          );
+                        },
+                        icon: const Icon(Icons.add_circle_outline),
+                        label: const Text('Allocate shift – RDW'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: workingGreen,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -720,6 +745,236 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _showDashboardAllocateShiftDialog({
+    required DateTime date,
+    required Duty originalDuty,
+  }) async {
+    final TextEditingController turnController = TextEditingController();
+    final TextEditingController bookOnController = TextEditingController();
+    final TextEditingController bookOffController = TextEditingController();
+
+    bool isSaving = false;
+    String? errorMessage;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (BuildContext sheetContext) {
+        return StatefulBuilder(
+          builder:
+              (
+                BuildContext context,
+                void Function(void Function()) setSheetState,
+              ) {
+                Future<void> save() async {
+                  final String turnNumber = turnController.text.trim();
+                  final String bookOn = _normaliseDashboardTime(
+                    bookOnController.text,
+                  );
+                  final String bookOff = _normaliseDashboardTime(
+                    bookOffController.text,
+                  );
+
+                  if (turnNumber.isEmpty) {
+                    setSheetState(() {
+                      errorMessage = 'Enter the turn number.';
+                    });
+                    return;
+                  }
+
+                  if (!_isValidDashboardTime(bookOn) ||
+                      !_isValidDashboardTime(bookOff)) {
+                    setSheetState(() {
+                      errorMessage =
+                          'Enter valid times, for example 0800 or 08:00.';
+                    });
+                    return;
+                  }
+
+                  setSheetState(() {
+                    isSaving = true;
+                    errorMessage = null;
+                  });
+
+                  try {
+                    await _manualDutyService.saveRestDayWorked(
+                      date: date,
+                      turnNumber: turnNumber,
+                      bookOn: bookOn,
+                      bookOff: bookOff,
+                      originalDuty: originalDuty,
+                    );
+
+                    if (!mounted || !sheetContext.mounted) {
+                      return;
+                    }
+
+                    Navigator.of(sheetContext).pop();
+                    await _loadDashboardDuties();
+
+                    if (!mounted) {
+                      return;
+                    }
+
+                    showMessage(
+                      this.context,
+                      'Rest Day Worked saved for ${_fullDate(date)}.',
+                    );
+                  } catch (error) {
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    setSheetState(() {
+                      isSaving = false;
+                      errorMessage = error is ManualDutyException
+                          ? error.message
+                          : 'Roster Buddy could not save this RDW.';
+                    });
+                  }
+                }
+
+                return SafeArea(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      4,
+                      20,
+                      MediaQuery.viewInsetsOf(context).bottom + 24,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Allocate shift – RDW',
+                            style: const TextStyle(
+                              color: navy,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _fullDate(date),
+                            style: const TextStyle(color: textGrey),
+                          ),
+                          const SizedBox(height: 18),
+                          TextField(
+                            controller: turnController,
+                            textCapitalization: TextCapitalization.characters,
+                            decoration: const InputDecoration(
+                              labelText: 'Turn number',
+                              hintText: 'For example WO201SX',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: bookOnController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Book on',
+                                    hintText: '0800',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextField(
+                                  controller: bookOffController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Book off',
+                                    hintText: '1630',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (errorMessage != null) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              errorMessage!,
+                              style: const TextStyle(
+                                color: leaveRed,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: isSaving ? null : save,
+                              icon: isSaving
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.save_outlined),
+                              label: Text(
+                                isSaving ? 'Saving…' : 'Save Rest Day Worked',
+                              ),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: workingGreen,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+        );
+      },
+    );
+
+    turnController.dispose();
+    bookOnController.dispose();
+    bookOffController.dispose();
+  }
+
+  static String _normaliseDashboardTime(String value) {
+    String cleaned = value.trim().replaceAll(RegExp(r'\s+'), '');
+
+    if (RegExp(r'^\d{1,2}:\d{2}$').hasMatch(cleaned)) {
+      final List<String> parts = cleaned.split(':');
+      return '${parts[0].padLeft(2, '0')}:${parts[1]}';
+    }
+
+    if (RegExp(r'^\d{3,4}$').hasMatch(cleaned)) {
+      cleaned = cleaned.padLeft(4, '0');
+      return '${cleaned.substring(0, 2)}:${cleaned.substring(2)}';
+    }
+
+    return cleaned;
+  }
+
+  static bool _isValidDashboardTime(String value) {
+    final RegExpMatch? match = RegExp(r'^(\d{2}):(\d{2})$').firstMatch(value);
+
+    if (match == null) {
+      return false;
+    }
+
+    final int hour = int.parse(match.group(1)!);
+    final int minute = int.parse(match.group(2)!);
+
+    return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
   }
 
   Widget _buildNextShiftCard() {
