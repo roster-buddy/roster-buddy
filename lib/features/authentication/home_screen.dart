@@ -364,6 +364,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Map<String, Duty> _thisWeekDuties = <String, Duty>{};
 
   bool _isLoading = true;
+  bool _isFindingNextShift = true;
   String? _loadError;
 
   @override
@@ -384,14 +385,13 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _loadDashboardDuties() async {
     setState(() {
       _isLoading = true;
+      _isFindingNextShift = true;
       _loadError = null;
     });
 
     try {
       final DateTime now = DateTime.now();
       final DateTime today = DateTime(now.year, now.month, now.day);
-
-      final Duty? todayDuty = await _dutyResolver.getDutyForDate(today);
 
       // Every Roster Buddy week starts on Sunday.
       final DateTime weekStart = today.subtract(
@@ -404,42 +404,43 @@ class _DashboardPageState extends State<DashboardPage> {
         growable: false,
       );
 
-      final List<Duty?> loadedWeekDuties = await Future.wait(
+      // Load all seven days together instead of one after another.
+      final List<Duty?> weekDuties = await Future.wait(
         weekDates.map(_dutyResolver.getDutyForDate),
       );
 
       final Map<String, Duty> thisWeekDuties = <String, Duty>{};
 
       for (int index = 0; index < weekDates.length; index++) {
-        final Duty? duty = loadedWeekDuties[index];
+        final Duty? duty = weekDuties[index];
 
         if (duty != null) {
           thisWeekDuties[_dashboardDateKey(weekDates[index])] = duty;
         }
       }
 
-      Duty? nextWorkingDuty;
+      final Duty? todayDuty = thisWeekDuties[_dashboardDateKey(today)];
 
-      // Start tomorrow so today's duty is not repeated in both cards.
-      for (int offset = 1; offset <= 370; offset++) {
-        final DateTime date = today.add(Duration(days: offset));
-        final Duty? duty = await _dutyResolver.getDutyForDate(date);
-
-        if (duty != null && duty.dutyType.countsAsWorking) {
-          nextWorkingDuty = duty;
-          break;
-        }
+      if (!mounted) {
+        return;
       }
+
+      // Show Today and This Week immediately.
+      setState(() {
+        _todayDuty = todayDuty;
+        _thisWeekDuties = thisWeekDuties;
+        _isLoading = false;
+      });
+
+      final Duty? nextWorkingDuty = await _findNextWorkingDuty(today);
 
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _todayDuty = todayDuty;
         _nextWorkingDuty = nextWorkingDuty;
-        _thisWeekDuties = thisWeekDuties;
-        _isLoading = false;
+        _isFindingNextShift = false;
       });
     } catch (error) {
       if (!mounted) {
@@ -451,11 +452,43 @@ class _DashboardPageState extends State<DashboardPage> {
         _nextWorkingDuty = null;
         _thisWeekDuties = <String, Duty>{};
         _isLoading = false;
+        _isFindingNextShift = false;
         _loadError = error is DutyResolverException
             ? error.message
             : 'Roster Buddy could not load your roster.';
       });
     }
+  }
+
+  Future<Duty?> _findNextWorkingDuty(DateTime today) async {
+    const int maximumDays = 370;
+    const int batchSize = 31;
+
+    for (
+      int batchStart = 1;
+      batchStart <= maximumDays;
+      batchStart += batchSize
+    ) {
+      final int batchEnd = (batchStart + batchSize - 1).clamp(1, maximumDays);
+
+      final List<DateTime> dates = List<DateTime>.generate(
+        batchEnd - batchStart + 1,
+        (int index) => today.add(Duration(days: batchStart + index)),
+        growable: false,
+      );
+
+      final List<Duty?> duties = await Future.wait(
+        dates.map(_dutyResolver.getDutyForDate),
+      );
+
+      for (final Duty? duty in duties) {
+        if (duty != null && duty.dutyType.countsAsWorking) {
+          return duty;
+        }
+      }
+    }
+
+    return null;
   }
 
   @override
@@ -1201,7 +1234,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildNextShiftCard() {
-    if (_isLoading) {
+    if (_isLoading || _isFindingNextShift) {
       return _buildLoadingCard('Finding your next working shift…');
     }
 
