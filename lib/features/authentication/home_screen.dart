@@ -2672,6 +2672,15 @@ class _CalendarPageState extends State<CalendarPage> {
                   if (duty.dutyType == DutyType.working) ...[
                     SizedBox(
                       width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: null,
+                        icon: const Icon(Icons.description_outlined),
+                        label: const Text('Job Card not available'),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
                       child: FilledButton.icon(
                         onPressed: () {
                           Navigator.of(sheetContext).pop();
