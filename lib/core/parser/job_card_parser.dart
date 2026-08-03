@@ -3,10 +3,13 @@ import '../models/job_card.dart';
 import '../models/parse_result.dart';
 import '../models/parse_warning.dart';
 import 'base_parser.dart';
+import 'job_card_page_splitter.dart';
 import 'parser_utils.dart';
 
 class JobCardParser implements BaseParser {
-  const JobCardParser();
+  const JobCardParser({this.pageSplitter = const JobCardPageSplitter()});
+
+  final JobCardPageSplitter pageSplitter;
 
   static final RegExp _turnCodePattern = RegExp(
     r'\bW[O0Q]\s*[-:]?\s*(\d{2,4})\b',
@@ -64,7 +67,7 @@ class JobCardParser implements BaseParser {
         continue;
       }
 
-      final List<String> sections = _splitPageIntoCards(page);
+      final List<String> sections = pageSplitter.split(page);
 
       for (final String section in sections) {
         final JobCard? card = _parseCard(section, pageNumber: pageNumber);
@@ -109,33 +112,6 @@ class JobCardParser implements BaseParser {
       recordsDetected: cards.length,
       warnings: warnings,
     );
-  }
-
-  List<String> _splitPageIntoCards(String page) {
-    final List<RegExpMatch> matches = _turnCodePattern
-        .allMatches(page)
-        .toList(growable: false);
-
-    if (matches.length <= 1) {
-      return <String>[page];
-    }
-
-    final List<String> sections = <String>[];
-
-    for (int index = 0; index < matches.length; index++) {
-      final int start = matches[index].start;
-      final int end = index + 1 < matches.length
-          ? matches[index + 1].start
-          : page.length;
-
-      final String section = page.substring(start, end).trim();
-
-      if (section.isNotEmpty) {
-        sections.add(section);
-      }
-    }
-
-    return sections;
   }
 
   JobCard? _parseCard(String text, {required int pageNumber}) {
