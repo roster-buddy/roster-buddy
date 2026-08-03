@@ -694,6 +694,11 @@ class _DashboardPageState extends State<DashboardPage> {
             return;
           }
 
+          if (duty.dutyType.countsAsWorking) {
+            _showDashboardEditDutyDialog(date: date, originalDuty: duty);
+            return;
+          }
+
           showMessage(
             context,
             '${_fullDate(date)} • ${_dashboardWeekStatus(duty)}'
@@ -914,6 +919,11 @@ class _DashboardPageState extends State<DashboardPage> {
             return;
           }
 
+          if (duty.dutyType.countsAsWorking) {
+            _showDashboardEditDutyDialog(date: duty.date, originalDuty: duty);
+            return;
+          }
+
           showMessage(
             context,
             '${presentation.title} • ${presentation.description}',
@@ -1001,6 +1011,221 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _showDashboardEditDutyDialog({
+    required DateTime date,
+    required Duty originalDuty,
+  }) async {
+    final TextEditingController turnController = TextEditingController(
+      text: originalDuty.turnNumber?.trim() ?? '',
+    );
+    final TextEditingController bookOnController = TextEditingController(
+      text: originalDuty.bookOn?.trim() ?? '',
+    );
+    final TextEditingController bookOffController = TextEditingController(
+      text: originalDuty.bookOff?.trim() ?? '',
+    );
+    final TextEditingController remarksController = TextEditingController(
+      text: originalDuty.remarks?.trim() ?? '',
+    );
+
+    bool isSaving = false;
+    String? errorMessage;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) {
+        return StatefulBuilder(
+          builder:
+              (
+                BuildContext sheetContext,
+                void Function(void Function()) setSheetState,
+              ) {
+                Future<void> saveDuty() async {
+                  final String bookOn = _normaliseDashboardTime(
+                    bookOnController.text,
+                  );
+                  final String bookOff = _normaliseDashboardTime(
+                    bookOffController.text,
+                  );
+
+                  if (!_isValidDashboardTime(bookOn) ||
+                      !_isValidDashboardTime(bookOff)) {
+                    setSheetState(() {
+                      errorMessage =
+                          'Enter valid 24-hour times, for example 0800 or 08:00.';
+                    });
+                    return;
+                  }
+
+                  setSheetState(() {
+                    isSaving = true;
+                    errorMessage = null;
+                  });
+
+                  try {
+                    await _manualDutyService.saveEditedDuty(
+                      date: date,
+                      turnNumber: turnController.text,
+                      bookOn: bookOn,
+                      bookOff: bookOff,
+                      remarks: remarksController.text,
+                      originalDuty: originalDuty,
+                    );
+
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    Navigator.of(sheetContext).pop();
+                    await _loadDashboardDuties();
+
+                    if (!mounted) {
+                      return;
+                    }
+
+                    showMessage(
+                      context,
+                      'Manual duty changes saved for ${_fullDate(date)}.',
+                    );
+                  } catch (error) {
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    setSheetState(() {
+                      isSaving = false;
+                      errorMessage = error is ManualDutyException
+                          ? error.message
+                          : 'Roster Buddy could not save the duty changes.';
+                    });
+                  }
+                }
+
+                return SafeArea(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      4,
+                      20,
+                      MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Edit duty',
+                            style: TextStyle(
+                              color: navy,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _fullDate(date),
+                            style: const TextStyle(color: textGrey),
+                          ),
+                          const SizedBox(height: 18),
+                          TextField(
+                            controller: turnController,
+                            enabled: !isSaving,
+                            decoration: const InputDecoration(
+                              labelText: 'Turn number',
+                              hintText: 'For example 205',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: bookOnController,
+                                  enabled: !isSaving,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Book on',
+                                    hintText: '0800',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextField(
+                                  controller: bookOffController,
+                                  enabled: !isSaving,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Book off',
+                                    hintText: '1630',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          TextField(
+                            controller: remarksController,
+                            enabled: !isSaving,
+                            minLines: 2,
+                            maxLines: 4,
+                            decoration: const InputDecoration(
+                              labelText: 'Remarks',
+                              hintText: 'Optional note about this change',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                          if (errorMessage != null) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              errorMessage!,
+                              style: const TextStyle(
+                                color: leaveRed,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: isSaving ? null : saveDuty,
+                              icon: isSaving
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.save_outlined),
+                              label: Text(
+                                isSaving ? 'Saving…' : 'Save manual change',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+        );
+      },
+    );
+
+    turnController.dispose();
+    bookOnController.dispose();
+    bookOffController.dispose();
+    remarksController.dispose();
   }
 
   Future<void> _showDashboardAllocateShiftDialog({
@@ -2315,9 +2540,14 @@ class _CalendarPageState extends State<CalendarPage> {
   }) {
     switch (action) {
       case _CalendarDayAction.editTimes:
-        _showCalendarMessage(
-          'Edit book-on and book-off times will be connected next.',
-        );
+        if (duty == null) {
+          _showCalendarMessage(
+            'No roster duty is available to edit for this date.',
+          );
+          return;
+        }
+
+        _showEditDutyDialog(date: date, originalDuty: duty);
         return;
 
       case _CalendarDayAction.selectTurnNumber:
@@ -2386,6 +2616,220 @@ class _CalendarPageState extends State<CalendarPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _showEditDutyDialog({
+    required DateTime date,
+    required Duty originalDuty,
+  }) async {
+    final TextEditingController turnController = TextEditingController(
+      text: originalDuty.turnNumber?.trim() ?? '',
+    );
+    final TextEditingController bookOnController = TextEditingController(
+      text: originalDuty.bookOn?.trim() ?? '',
+    );
+    final TextEditingController bookOffController = TextEditingController(
+      text: originalDuty.bookOff?.trim() ?? '',
+    );
+    final TextEditingController remarksController = TextEditingController(
+      text: originalDuty.remarks?.trim() ?? '',
+    );
+
+    bool isSaving = false;
+    String? errorMessage;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) {
+        return StatefulBuilder(
+          builder:
+              (
+                BuildContext sheetContext,
+                void Function(void Function()) setSheetState,
+              ) {
+                Future<void> saveDuty() async {
+                  final String bookOn = _normaliseTimeInput(
+                    bookOnController.text,
+                  );
+                  final String bookOff = _normaliseTimeInput(
+                    bookOffController.text,
+                  );
+
+                  if (!_isValidTime(bookOn) || !_isValidTime(bookOff)) {
+                    setSheetState(() {
+                      errorMessage =
+                          'Enter valid 24-hour times, for example 0800 or 08:00.';
+                    });
+                    return;
+                  }
+
+                  setSheetState(() {
+                    isSaving = true;
+                    errorMessage = null;
+                  });
+
+                  try {
+                    await _manualDutyService.saveEditedDuty(
+                      date: date,
+                      turnNumber: turnController.text,
+                      bookOn: bookOn,
+                      bookOff: bookOff,
+                      remarks: remarksController.text,
+                      originalDuty: originalDuty,
+                    );
+
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    Navigator.of(sheetContext).pop();
+
+                    await _loadMonth();
+
+                    if (!mounted) {
+                      return;
+                    }
+
+                    _showCalendarMessage(
+                      'Manual duty changes saved for ${_fullDate(date)}.',
+                    );
+                  } catch (error) {
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    setSheetState(() {
+                      isSaving = false;
+                      errorMessage = error is ManualDutyException
+                          ? error.message
+                          : 'Roster Buddy could not save the duty changes.';
+                    });
+                  }
+                }
+
+                return SafeArea(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      4,
+                      20,
+                      MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Edit duty',
+                            style: const TextStyle(
+                              color: navy,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _fullDate(date),
+                            style: const TextStyle(color: textGrey),
+                          ),
+                          const SizedBox(height: 18),
+                          TextField(
+                            controller: turnController,
+                            enabled: !isSaving,
+                            decoration: const InputDecoration(
+                              labelText: 'Turn number',
+                              hintText: 'For example 205',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: bookOnController,
+                                  enabled: !isSaving,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Book on',
+                                    hintText: '0800',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextField(
+                                  controller: bookOffController,
+                                  enabled: !isSaving,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Book off',
+                                    hintText: '1630',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          TextField(
+                            controller: remarksController,
+                            enabled: !isSaving,
+                            minLines: 2,
+                            maxLines: 4,
+                            decoration: const InputDecoration(
+                              labelText: 'Remarks',
+                              hintText: 'Optional note about this change',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                          if (errorMessage != null) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              errorMessage!,
+                              style: const TextStyle(
+                                color: leaveRed,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: isSaving ? null : saveDuty,
+                              icon: isSaving
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.save_outlined),
+                              label: Text(
+                                isSaving ? 'Saving…' : 'Save manual change',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+        );
+      },
+    );
+
+    turnController.dispose();
+    bookOnController.dispose();
+    bookOffController.dispose();
+    remarksController.dispose();
   }
 
   Future<void> _showAllocateShiftDialog({

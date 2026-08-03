@@ -49,6 +49,48 @@ class ManualDutyService {
     }, onConflict: 'user_id,duty_date,manual_change_type');
   }
 
+  Future<void> saveEditedDuty({
+    required DateTime date,
+    required String turnNumber,
+    required String bookOn,
+    required String bookOff,
+    required String remarks,
+    required Duty originalDuty,
+  }) async {
+    final User? user = _supabase.auth.currentUser;
+
+    if (user == null) {
+      throw const ManualDutyException(
+        'You must be signed in before editing a duty.',
+      );
+    }
+
+    final int rosteredMinutes = _minutesBetween(
+      bookOn: bookOn,
+      bookOff: bookOff,
+    );
+
+    await _supabase.from(_tableName).upsert(<String, dynamic>{
+      'user_id': user.id,
+      'duty_date': _databaseDate(date),
+      'duty_type': _dutyTypeName(originalDuty),
+      'manual_change_type': 'edited_times',
+      'turn_number': turnNumber.trim().isEmpty ? null : turnNumber.trim(),
+      'book_on': bookOn,
+      'book_off': bookOff,
+      'rostered_minutes': rosteredMinutes,
+      'remarks': remarks.trim().isEmpty
+          ? 'Manual duty time edit'
+          : remarks.trim(),
+      'original_source': _sourceName(originalDuty),
+      'original_duty_type': _dutyTypeName(originalDuty),
+      'original_turn_number': _clean(originalDuty.turnNumber),
+      'original_book_on': _clean(originalDuty.bookOn),
+      'original_book_off': _clean(originalDuty.bookOff),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'user_id,duty_date,manual_change_type');
+  }
+
   static int _minutesBetween({
     required String bookOn,
     required String bookOff,
