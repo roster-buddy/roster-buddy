@@ -681,29 +681,10 @@ class _DashboardPageState extends State<DashboardPage> {
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
         onTap: () {
-          if (duty == null) {
-            showMessage(
-              context,
-              'No roster information is available for ${_fullDate(date)}.',
-            );
-            return;
-          }
-
-          if (duty.dutyType == DutyType.restDay) {
-            _showDashboardAllocateShiftDialog(date: date, originalDuty: duty);
-            return;
-          }
-
-          if (duty.dutyType.countsAsWorking) {
-            _showDashboardEditDutyDialog(date: date, originalDuty: duty);
-            return;
-          }
-
-          showMessage(
-            context,
-            '${_fullDate(date)} • ${_dashboardWeekStatus(duty)}'
-            '${duty.bookOn?.trim().isNotEmpty == true ? ' • ${_timeDescription(duty)}' : ''}',
-          );
+          _showDashboardDayDetails(date: date, duty: duty);
+        },
+        onLongPress: () {
+          _showDashboardDayActions(date: date, duty: duty);
         },
         child: Container(
           constraints: const BoxConstraints(minHeight: 92),
@@ -911,23 +892,10 @@ class _DashboardPageState extends State<DashboardPage> {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
-          if (duty.dutyType == DutyType.restDay) {
-            _showDashboardAllocateShiftDialog(
-              date: duty.date,
-              originalDuty: duty,
-            );
-            return;
-          }
-
-          if (duty.dutyType.countsAsWorking) {
-            _showDashboardEditDutyDialog(date: duty.date, originalDuty: duty);
-            return;
-          }
-
-          showMessage(
-            context,
-            '${presentation.title} • ${presentation.description}',
-          );
+          _showDashboardDayDetails(date: duty.date, duty: duty);
+        },
+        onLongPress: () {
+          _showDashboardDayActions(date: duty.date, duty: duty);
         },
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -1010,6 +978,321 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
         ),
       ),
+    );
+  }
+
+  bool _dashboardJobCardAvailable(Duty duty) {
+    final String turnNumber = duty.turnNumber?.trim() ?? '';
+
+    if (turnNumber.isEmpty || !duty.dutyType.countsAsWorking) {
+      return false;
+    }
+
+    // Job Card documents can already be recognised during upload, but the
+    // searchable Job Card database and PDF-page viewer are not connected yet.
+    // This will return the real match when that service is implemented.
+    return false;
+  }
+
+  void _openDashboardJobCard(Duty duty) {
+    final String turnNumber = duty.turnNumber?.trim() ?? '';
+
+    if (turnNumber.isEmpty) {
+      showMessage(context, 'No turn number is available for this duty.');
+      return;
+    }
+
+    showMessage(context, 'Job Card for Turn $turnNumber could not be opened.');
+  }
+
+  Future<void> _showDashboardDayDetails({
+    required DateTime date,
+    required Duty? duty,
+  }) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) {
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _fullDate(date),
+                  style: const TextStyle(
+                    color: navy,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                if (duty == null)
+                  const Text(
+                    'No roster information is available for this date.',
+                    style: TextStyle(color: textGrey),
+                  )
+                else ...[
+                  Row(
+                    children: [
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: _dashboardWeekColour(duty),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _dashboardWeekStatus(duty),
+                          style: const TextStyle(
+                            color: navy,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      _RosterSourceBadge(source: duty.source),
+                    ],
+                  ),
+                  if (duty.bookOn?.trim().isNotEmpty == true ||
+                      duty.bookOff?.trim().isNotEmpty == true) ...[
+                    const SizedBox(height: 14),
+                    Text(
+                      _timeDescription(duty),
+                      style: const TextStyle(
+                        color: navy,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                  if (duty.turnNumber?.trim().isNotEmpty == true) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      'Turn ${duty.turnNumber!.trim()}',
+                      style: const TextStyle(
+                        color: navy,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                  if (duty.remarks?.trim().isNotEmpty == true) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      duty.remarks!.trim(),
+                      style: const TextStyle(color: textGrey, height: 1.35),
+                    ),
+                  ],
+                ],
+                const SizedBox(height: 22),
+                if (duty?.dutyType.countsAsWorking == true) ...[
+                  Builder(
+                    builder: (BuildContext context) {
+                      final bool jobCardAvailable = _dashboardJobCardAvailable(
+                        duty!,
+                      );
+
+                      return SizedBox(
+                        width: double.infinity,
+                        child: jobCardAvailable
+                            ? FilledButton.icon(
+                                onPressed: () {
+                                  Navigator.of(sheetContext).pop();
+
+                                  Future<void>.delayed(
+                                    const Duration(milliseconds: 150),
+                                    () {
+                                      if (!mounted) {
+                                        return;
+                                      }
+
+                                      _openDashboardJobCard(duty);
+                                    },
+                                  );
+                                },
+                                icon: const Icon(Icons.description_outlined),
+                                label: const Text('Open Job Card'),
+                              )
+                            : OutlinedButton.icon(
+                                onPressed: null,
+                                icon: const Icon(Icons.description_outlined),
+                                label: const Text('Job Card not available'),
+                              ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.of(sheetContext).pop();
+
+                      Future<void>.delayed(
+                        const Duration(milliseconds: 150),
+                        () {
+                          if (!mounted) {
+                            return;
+                          }
+
+                          _showDashboardDayActions(date: date, duty: duty);
+                        },
+                      );
+                    },
+                    icon: const Icon(Icons.more_horiz),
+                    label: const Text('More day actions'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showDashboardDayActions({
+    required DateTime date,
+    required Duty? duty,
+  }) async {
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (BuildContext popupContext) {
+        final List<Widget> actions = <Widget>[];
+
+        void closeAndRun(VoidCallback callback) {
+          Navigator.of(popupContext).pop();
+
+          Future<void>.delayed(const Duration(milliseconds: 150), () {
+            if (mounted) {
+              callback();
+            }
+          });
+        }
+
+        if (duty == null) {
+          actions.add(
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(popupContext).pop();
+              },
+              child: const Text('No roster information'),
+            ),
+          );
+        } else if (duty.dutyType == DutyType.restDay) {
+          actions.addAll(<Widget>[
+            CupertinoActionSheetAction(
+              onPressed: () {
+                closeAndRun(() {
+                  _showDashboardAllocateShiftDialog(
+                    date: date,
+                    originalDuty: duty,
+                  );
+                });
+              },
+              child: const Text('Allocate shift'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                closeAndRun(() {
+                  showMessage(context, 'Shift swap will be connected next.');
+                });
+              },
+              child: const Text('Shift swap'),
+            ),
+          ]);
+        } else if (duty.dutyType.countsAsWorking) {
+          actions.addAll(<Widget>[
+            CupertinoActionSheetAction(
+              onPressed: () {
+                closeAndRun(() {
+                  _showDashboardEditDutyDialog(date: date, originalDuty: duty);
+                });
+              },
+              child: const Text('Edit book-on/off time'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                closeAndRun(() {
+                  showMessage(
+                    context,
+                    'Turn-number selection will be connected next.',
+                  );
+                });
+              },
+              child: const Text('Select turn number'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                closeAndRun(() {
+                  showMessage(
+                    context,
+                    'Additional manual changes will be connected next.',
+                  );
+                });
+              },
+              child: const Text('Manual change'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                closeAndRun(() {
+                  showMessage(context, 'Shift swap will be connected next.');
+                });
+              },
+              child: const Text('Shift swap'),
+            ),
+            CupertinoActionSheetAction(
+              isDestructiveAction: true,
+              onPressed: () {
+                closeAndRun(() {
+                  showMessage(context, 'Move rest day will be connected next.');
+                });
+              },
+              child: const Text('Move rest day here'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                closeAndRun(() {
+                  showMessage(
+                    context,
+                    'Annual leave requesting will be connected next.',
+                  );
+                });
+              },
+              child: const Text('Request annual leave'),
+            ),
+          ]);
+        } else {
+          actions.add(
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(popupContext).pop();
+              },
+              child: const Text('View duty details'),
+            ),
+          );
+        }
+
+        return CupertinoActionSheet(
+          title: Text(_fullDate(date)),
+          message: Text(
+            duty == null ? 'No roster information' : _dashboardWeekStatus(duty),
+          ),
+          actions: actions,
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.of(popupContext).pop();
+            },
+            child: const Text('Cancel'),
+          ),
+        );
+      },
     );
   }
 
@@ -1487,10 +1770,10 @@ class _DashboardPageState extends State<DashboardPage> {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
-          showMessage(
-            context,
-            '${_fullDate(duty.date)} • ${_timeDescription(duty)} • $turnText',
-          );
+          _showDashboardDayDetails(date: duty.date, duty: duty);
+        },
+        onLongPress: () {
+          _showDashboardDayActions(date: duty.date, duty: duty);
         },
         child: Padding(
           padding: const EdgeInsets.all(20),
