@@ -1,11 +1,13 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/models/duty.dart';
 import '../../core/models/duty_type.dart';
 import '../../core/models/roster_source.dart';
 import '../../core/services/duty_resolver.dart';
+import '../../core/services/job_card_service.dart';
 import '../../core/services/manual_duty_service.dart';
 import '../upload/base_roster_activation_page.dart';
 import '../upload/storage_service.dart';
@@ -358,6 +360,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   final DutyResolver _dutyResolver = DutyResolver();
   final ManualDutyService _manualDutyService = ManualDutyService();
+  final JobCardService _jobCardService = JobCardService();
 
   Duty? _todayDuty;
   Duty? _nextWorkingDuty;
@@ -981,28 +984,50 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  bool _dashboardJobCardAvailable(Duty duty) {
+  Future<JobCardMatch?> _findDashboardJobCard(Duty duty) async {
     final String turnNumber = duty.turnNumber?.trim() ?? '';
 
     if (turnNumber.isEmpty || !duty.dutyType.countsAsWorking) {
-      return false;
+      return null;
     }
 
-    // Job Card documents can already be recognised during upload, but the
-    // searchable Job Card database and PDF-page viewer are not connected yet.
-    // This will return the real match when that service is implemented.
-    return false;
+    try {
+      return await _jobCardService.findMatchingJobCard(
+        turnNumber: turnNumber,
+        dutyDate: duty.date,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
-  void _openDashboardJobCard(Duty duty) {
-    final String turnNumber = duty.turnNumber?.trim() ?? '';
+  Future<void> _openDashboardJobCard(JobCardMatch match) async {
+    try {
+      final String signedUrl = await _jobCardService.createSignedPdfUrl(match);
+      Uri pdfUri = Uri.parse(signedUrl);
 
-    if (turnNumber.isEmpty) {
-      showMessage(context, 'No turn number is available for this duty.');
-      return;
+      final int? pageNumber = match.jobCard.pageNumber;
+
+      if (pageNumber != null && pageNumber > 0) {
+        pdfUri = pdfUri.replace(fragment: 'page=$pageNumber');
+      }
+
+      final bool opened = await launchUrl(
+        pdfUri,
+        mode: LaunchMode.platformDefault,
+        webOnlyWindowName: '_blank',
+      );
+
+      if (!opened && mounted) {
+        showMessage(context, 'Roster Buddy could not open this Job Card.');
+      }
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      showMessage(context, 'Roster Buddy could not open this Job Card.');
     }
-
-    showMessage(context, 'Job Card for Turn $turnNumber could not be opened.');
   }
 
   Future<void> _showDashboardDayDetails({
@@ -1091,40 +1116,64 @@ class _DashboardPageState extends State<DashboardPage> {
                 ],
                 const SizedBox(height: 22),
                 if (duty?.dutyType.countsAsWorking == true) ...[
-                  Builder(
-                    builder: (BuildContext context) {
-                      final bool jobCardAvailable = _dashboardJobCardAvailable(
-                        duty!,
-                      );
-
-                      return SizedBox(
-                        width: double.infinity,
-                        child: jobCardAvailable
-                            ? FilledButton.icon(
-                                onPressed: () {
-                                  Navigator.of(sheetContext).pop();
-
-                                  Future<void>.delayed(
-                                    const Duration(milliseconds: 150),
-                                    () {
-                                      if (!mounted) {
-                                        return;
-                                      }
-
-                                      _openDashboardJobCard(duty);
-                                    },
-                                  );
-                                },
-                                icon: const Icon(Icons.description_outlined),
-                                label: const Text('Open Job Card'),
-                              )
-                            : OutlinedButton.icon(
+                  FutureBuilder<JobCardMatch?>(
+                    future: _findDashboardJobCard(duty!),
+                    builder:
+                        (
+                          BuildContext context,
+                          AsyncSnapshot<JobCardMatch?> snapshot,
+                        ) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
                                 onPressed: null,
-                                icon: const Icon(Icons.description_outlined),
-                                label: const Text('Job Card not available'),
+                                icon: SizedBox(
+                                  width: 17,
+                                  height: 17,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                                label: Text('Checking Job Card…'),
                               ),
-                      );
-                    },
+                            );
+                          }
+
+                          final JobCardMatch? match = snapshot.data;
+
+                          if (match == null) {
+                            return SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: null,
+                                icon: Icon(Icons.description_outlined),
+                                label: Text('Job Card not available'),
+                              ),
+                            );
+                          }
+
+                          return SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: () {
+                                Navigator.of(sheetContext).pop();
+
+                                Future<void>.delayed(
+                                  const Duration(milliseconds: 150),
+                                  () {
+                                    if (mounted) {
+                                      _openDashboardJobCard(match);
+                                    }
+                                  },
+                                );
+                              },
+                              icon: const Icon(Icons.description_outlined),
+                              label: const Text('Open Job Card'),
+                            ),
+                          );
+                        },
                   ),
                   const SizedBox(height: 12),
                 ],
