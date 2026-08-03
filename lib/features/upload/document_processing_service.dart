@@ -156,14 +156,17 @@ class DocumentProcessingService {
           );
         }
 
-        await _replaceJobCards(documentId: documentId, cards: cards);
+        final int insertedCards = await _replaceJobCards(
+          documentId: documentId,
+          cards: cards,
+        );
 
         await _updateProcessingStatus(documentId, 'processed');
 
         return DocumentProcessingResult(
           status: DocumentProcessingStatus.processed,
-          recordsInserted: cards.length,
-          message: '${cards.length} Job Cards were processed successfully.',
+          recordsInserted: insertedCards,
+          message: '$insertedCards Job Cards were processed successfully.',
         );
       }
 
@@ -349,21 +352,35 @@ class DocumentProcessingService {
     }
   }
 
-  static Future<void> _replaceJobCards({
+  static Future<int> _replaceJobCards({
     required String documentId,
     required List<JobCard> cards,
   }) async {
+    final Map<String, JobCard> uniqueCards = <String, JobCard>{};
+
+    for (final JobCard card in cards) {
+      uniqueCards.putIfAbsent(card.uniqueKey, () => card);
+    }
+
+    final List<JobCard> cardsToInsert = uniqueCards.values.toList(
+      growable: false,
+    );
+
     await _supabase
         .from(_jobCardTableName)
         .delete()
         .eq('document_id', documentId);
 
+    if (cardsToInsert.isEmpty) {
+      return 0;
+    }
+
     const int batchSize = 250;
 
-    for (int start = 0; start < cards.length; start += batchSize) {
-      final int end = math.min(start + batchSize, cards.length);
+    for (int start = 0; start < cardsToInsert.length; start += batchSize) {
+      final int end = math.min(start + batchSize, cardsToInsert.length);
 
-      final List<Map<String, dynamic>> rows = cards
+      final List<Map<String, dynamic>> rows = cardsToInsert
           .sublist(start, end)
           .map(
             (JobCard card) => <String, dynamic>{
@@ -387,6 +404,8 @@ class DocumentProcessingService {
 
       await _supabase.from(_jobCardTableName).insert(rows);
     }
+
+    return cardsToInsert.length;
   }
 
   static Future<void> _replaceDocumentDuties({
