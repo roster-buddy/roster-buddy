@@ -6,12 +6,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/models/annual_leave_allocation.dart';
 import '../../core/models/document_type.dart';
 import '../../core/models/duty.dart';
+import '../../core/models/job_card.dart';
 import '../../core/models/duty_type.dart';
 import '../../core/models/parse_result.dart';
 import '../../core/models/roster_source.dart';
 import '../../core/parser/annual_leave_roster_parser.dart';
 import '../../core/parser/base_roster_parser.dart';
 import '../../core/parser/daily_amendment_parser.dart';
+import '../../core/parser/job_card_parser.dart';
 import '../smart_scan/smart_scan_engine.dart';
 import '../smart_scan/smart_scan_result.dart';
 
@@ -25,6 +27,7 @@ class DocumentProcessingService {
   static const String _annualLeaveAllocationTableName =
       'annual_leave_allocations';
   static const String _annualLeavePeriodTableName = 'annual_leave_periods';
+  static const String _jobCardTableName = 'job_cards';
 
   static Future<DocumentProcessingResult> processUploadedDocument({
     required String documentId,
@@ -38,9 +41,11 @@ class DocumentProcessingService {
     final bool isBaseRoster = documentType == DocumentType.baseRoster;
     final bool isAnnualLeaveRoster =
         documentType == DocumentType.annualLeaveRoster;
+    final bool isJobCard = documentType == DocumentType.jobCard;
 
     if (!isBaseRoster &&
         !isAnnualLeaveRoster &&
+        !isJobCard &&
         !_isDailyAmendment(documentType)) {
       return const DocumentProcessingResult(
         status: DocumentProcessingStatus.pending,
@@ -126,6 +131,10 @@ class DocumentProcessingService {
         const AnnualLeaveRosterParser parser = AnnualLeaveRosterParser();
 
         parseResult = await parser.parse(pageText: reconstructedPageText);
+      } else if (isJobCard) {
+        const JobCardParser parser = JobCardParser();
+
+        parseResult = await parser.parse(pageText: reconstructedPageText);
       } else {
         final DailyAmendmentParser parser = DailyAmendmentParser(
           documentType: documentType,
@@ -136,6 +145,26 @@ class DocumentProcessingService {
 
       if (!parseResult.canImport) {
         throw DocumentProcessingException(_blockingWarningMessage(parseResult));
+      }
+
+      if (isJobCard) {
+        final List<JobCard> cards = parseResult.jobCards;
+
+        if (cards.isEmpty) {
+          throw const DocumentProcessingException(
+            'No complete Job Cards were detected.',
+          );
+        }
+
+        await _replaceJobCards(documentId: documentId, cards: cards);
+
+        await _updateProcessingStatus(documentId, 'processed');
+
+        return DocumentProcessingResult(
+          status: DocumentProcessingStatus.processed,
+          recordsInserted: cards.length,
+          message: '${cards.length} Job Cards were processed successfully.',
+        );
       }
 
       if (isAnnualLeaveRoster) {
@@ -317,6 +346,46 @@ class DocumentProcessingService {
         return 'summer_second_week';
       case AnnualLeavePeriodType.winter:
         return 'winter';
+    }
+  }
+
+  static Future<void> _replaceJobCards({
+    required String documentId,
+    required List<JobCard> cards,
+  }) async {
+    await _supabase
+        .from(_jobCardTableName)
+        .delete()
+        .eq('document_id', documentId);
+
+    const int batchSize = 250;
+
+    for (int start = 0; start < cards.length; start += batchSize) {
+      final int end = math.min(start + batchSize, cards.length);
+
+      final List<Map<String, dynamic>> rows = cards
+          .sublist(start, end)
+          .map(
+            (JobCard card) => <String, dynamic>{
+              'document_id': documentId,
+              'turn_number': card.turnNumber.trim(),
+              'original_turn_code': card.originalTurnCode.trim(),
+              'day_code': card.dayCode.trim(),
+              'plan_type': card.planType.name,
+              'valid_from': _databaseDate(card.validFrom),
+              'valid_to': _databaseDate(card.validTo),
+              'book_on': _databaseTime(card.bookOn),
+              'book_off': _databaseTime(card.bookOff),
+              'rostered_minutes': card.rosteredMinutes,
+              'page_number': card.pageNumber,
+              'raw_text': _cleanValue(card.rawText),
+              'instructions': card.instructions,
+              'unique_key': card.uniqueKey,
+            },
+          )
+          .toList(growable: false);
+
+      await _supabase.from(_jobCardTableName).insert(rows);
     }
   }
 
