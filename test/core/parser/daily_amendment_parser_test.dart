@@ -177,5 +177,52 @@ JONES | 654321 | BHM | SP | 202 | 06:00 | 14:00
         expect(secondDuty.pageNumber, 2);
       },
     );
+
+    test('imports valid pages when another PDF page has no date', () async {
+      final parser = DailyAmendmentParser(
+        documentType: DocumentType.fortyEightHourAmendment,
+      );
+
+      const String pageOne = '''
+48-HOUR AMENDMENT
+
+NAME | PAY NO | DEPOT | TURN | BOOK ON | BOOK OFF
+MOORE | 123456 | BHM | 201 | 05:30 | 13:30
+''';
+
+      const String pageTwo = '''
+48-HOUR AMENDMENT
+07/08/2026
+
+NAME | PAY NO | DEPOT | TURN | BOOK ON | BOOK OFF
+JONES | 654321 | BHM | 202 | 06:00 | 14:00
+''';
+
+      final result = await parser.parse(
+        pageText: const <String>[pageOne, pageTwo],
+      );
+
+      expect(result.pagesProcessed, 2);
+      expect(result.duties, hasLength(1));
+      expect(result.hasBlockingWarnings, isFalse);
+
+      final duty = result.duties.single;
+
+      expect(duty.date, DateTime(2026, 8, 7));
+      expect(duty.payrollNumber, '654321');
+      expect(duty.turnNumber, '202');
+      expect(duty.pageNumber, 2);
+
+      expect(
+        result.warnings.any(
+          (warning) =>
+              warning.pageNumber == 1 &&
+              warning.message.contains(
+                'No valid duty date was detected on page 1',
+              ),
+        ),
+        isTrue,
+      );
+    });
   });
 }
