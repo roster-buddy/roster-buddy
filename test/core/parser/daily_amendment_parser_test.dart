@@ -131,5 +131,51 @@ JONES | 654321 | BHM   | DI    | 202  | 06:00   | 14:00
         '654321',
       });
     });
+
+    test(
+      'parses multiple PDF pages in order with correct page numbers',
+      () async {
+        final parser = DailyAmendmentParser(
+          documentType: DocumentType.sevenDayAmendment,
+        );
+
+        const String pageOne = '''
+7-DAY AMENDMENT
+05/08/2026
+
+NAME | PAY NO | DEPOT | AMEND | TURN | BOOK ON | BOOK OFF
+MOORE | 123456 | BHM | DI | 201 | 05:30 | 13:30
+''';
+
+        const String pageTwo = '''
+7-DAY AMENDMENT
+06/08/2026
+
+NAME | PAY NO | DEPOT | AMEND | TURN | BOOK ON | BOOK OFF
+JONES | 654321 | BHM | SP | 202 | 06:00 | 14:00
+''';
+
+        final result = await parser.parse(
+          pageText: const <String>[pageOne, pageTwo],
+        );
+
+        expect(result.hasBlockingWarnings, isFalse);
+        expect(result.pagesProcessed, 2);
+        expect(result.duties, hasLength(2));
+
+        final firstDuty = result.duties[0];
+        final secondDuty = result.duties[1];
+
+        expect(firstDuty.date, DateTime(2026, 8, 5));
+        expect(firstDuty.payrollNumber, '123456');
+        expect(firstDuty.turnNumber, '201');
+        expect(firstDuty.pageNumber, 1);
+
+        expect(secondDuty.date, DateTime(2026, 8, 6));
+        expect(secondDuty.payrollNumber, '654321');
+        expect(secondDuty.turnNumber, '202');
+        expect(secondDuty.pageNumber, 2);
+      },
+    );
   });
 }
