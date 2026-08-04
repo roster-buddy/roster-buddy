@@ -15,6 +15,7 @@ import '../../core/parser/base_roster_parser.dart';
 import '../../core/parser/daily_amendment_parser.dart';
 import '../../core/parser/job_card_parser.dart';
 import '../smart_scan/smart_scan_engine.dart';
+import '../smart_scan/smart_scan_page_text_reconstructor.dart';
 import '../smart_scan/smart_scan_result.dart';
 
 class DocumentProcessingService {
@@ -89,10 +90,8 @@ class DocumentProcessingService {
         ];
       }
 
-      final List<String> reconstructedPageText = scanResults
-          .map(_reconstructPageText)
-          .where((String text) => text.trim().isNotEmpty)
-          .toList(growable: false);
+      final List<String> reconstructedPageText =
+          SmartScanPageTextReconstructor.reconstructPages(scanResults);
 
       if (reconstructedPageText.isEmpty) {
         throw const DocumentProcessingException(
@@ -462,71 +461,6 @@ class DocumentProcessingService {
         .from(_documentTableName)
         .update({'processing_status': status})
         .eq('id', documentId);
-  }
-
-  static String _reconstructPageText(SmartScanResult result) {
-    if (result.lines.isEmpty) {
-      return result.fullText;
-    }
-
-    final List<SmartScanTextLine> sortedLines =
-        List<SmartScanTextLine>.from(result.lines)..sort((first, second) {
-          final int topComparison = first.top.compareTo(second.top);
-
-          if (topComparison != 0) {
-            return topComparison;
-          }
-
-          return first.left.compareTo(second.left);
-        });
-
-    final List<List<SmartScanTextLine>> rows = [];
-
-    for (final SmartScanTextLine line in sortedLines) {
-      if (line.text.trim().isEmpty) {
-        continue;
-      }
-
-      if (rows.isEmpty) {
-        rows.add([line]);
-        continue;
-      }
-
-      final List<SmartScanTextLine> currentRow = rows.last;
-      final double currentTop =
-          currentRow.map((item) => item.top).reduce((a, b) => a + b) /
-          currentRow.length;
-
-      final double lineHeight = math.max(1, line.bottom - line.top);
-      final double tolerance = math.max(10, lineHeight * 0.65);
-
-      if ((line.top - currentTop).abs() <= tolerance) {
-        currentRow.add(line);
-      } else {
-        rows.add([line]);
-      }
-    }
-
-    final List<String> reconstructedRows = [];
-
-    for (final List<SmartScanTextLine> row in rows) {
-      row.sort((first, second) => first.left.compareTo(second.left));
-
-      final String rowText = row
-          .map((line) => line.text.trim())
-          .where((text) => text.isNotEmpty)
-          .join('  ');
-
-      if (rowText.isNotEmpty) {
-        reconstructedRows.add(rowText);
-      }
-    }
-
-    if (reconstructedRows.isEmpty) {
-      return result.fullText;
-    }
-
-    return reconstructedRows.join('\n');
   }
 
   static String _blockingWarningMessage(ParseResult result) {
