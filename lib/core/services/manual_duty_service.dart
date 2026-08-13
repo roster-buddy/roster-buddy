@@ -49,6 +49,55 @@ class ManualDutyService {
     }, onConflict: 'user_id,duty_date,manual_change_type');
   }
 
+  Future<void> saveSelectedTurn({
+    required DateTime date,
+    required String turnNumber,
+    required String bookOn,
+    required String bookOff,
+    required Duty originalDuty,
+  }) async {
+    final User? user = _supabase.auth.currentUser;
+
+    if (user == null) {
+      throw const ManualDutyException(
+        'You must be signed in before selecting a turn.',
+      );
+    }
+
+    if (turnNumber.trim().isEmpty) {
+      throw const ManualDutyException('Select a valid turn number.');
+    }
+
+    if (bookOn.trim().isEmpty || bookOff.trim().isEmpty) {
+      throw const ManualDutyException(
+        'The selected Job Card does not contain valid book-on/off times.',
+      );
+    }
+
+    final int rosteredMinutes = _minutesBetween(
+      bookOn: bookOn,
+      bookOff: bookOff,
+    );
+
+    await _supabase.from(_tableName).upsert(<String, dynamic>{
+      'user_id': user.id,
+      'duty_date': _databaseDate(date),
+      'duty_type': 'working',
+      'manual_change_type': 'selected_turn',
+      'turn_number': turnNumber.trim(),
+      'book_on': bookOn,
+      'book_off': bookOff,
+      'rostered_minutes': rosteredMinutes,
+      'remarks': 'Turn selected from Job Card',
+      'original_source': _sourceName(originalDuty),
+      'original_duty_type': _dutyTypeName(originalDuty),
+      'original_turn_number': _clean(originalDuty.turnNumber),
+      'original_book_on': _clean(originalDuty.bookOn),
+      'original_book_off': _clean(originalDuty.bookOff),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'user_id,duty_date,manual_change_type');
+  }
+
   Future<void> saveEditedDuty({
     required DateTime date,
     required String turnNumber,

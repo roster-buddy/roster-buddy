@@ -2936,6 +2936,117 @@ class _CalendarPageState extends State<CalendarPage> {
     );
   }
 
+  Future<void> _showSelectTurnNumberDialog({
+    required DateTime date,
+    required Duty originalDuty,
+  }) async {
+    List<JobCardChoice> choices;
+
+    try {
+      choices = await _jobCardService.findValidJobCardsForDate(dutyDate: date);
+    } on JobCardServiceException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage(error.message);
+      return;
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage(
+        'Roster Buddy could not load the valid Job Card turns.',
+      );
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (choices.isEmpty) {
+      _showCalendarMessage(
+        'There are no Job Card turns available for ${_fullDate(date)}.',
+      );
+      return;
+    }
+
+    final JobCardChoice?
+    selected = await showCupertinoModalPopup<JobCardChoice>(
+      context: context,
+      builder: (BuildContext popupContext) {
+        return CupertinoActionSheet(
+          title: Text('Select turn – ${_fullDate(date)}'),
+          message: Text(
+            'Only Job Cards valid for this date are shown. '
+            'Selecting a turn will update the duty while keeping the '
+            'original roster information in its history.',
+          ),
+          actions: choices
+              .map(
+                (JobCardChoice choice) => CupertinoActionSheetAction(
+                  onPressed: () {
+                    Navigator.of(popupContext).pop(choice);
+                  },
+                  child: Text(
+                    'Turn ${choice.jobCard.turnNumber}  •  '
+                    '${choice.jobCard.bookOn}–${choice.jobCard.bookOff}'
+                    '${choice.jobCard.dayCode.trim().isEmpty ? '' : '  •  ${choice.jobCard.dayCode}'}',
+                  ),
+                ),
+              )
+              .toList(growable: false),
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.of(popupContext).pop();
+            },
+            child: const Text('Cancel'),
+          ),
+        );
+      },
+    );
+
+    if (selected == null || !mounted) {
+      return;
+    }
+
+    final card = selected.jobCard;
+
+    try {
+      await _manualDutyService.saveSelectedTurn(
+        date: date,
+        turnNumber: card.turnNumber,
+        bookOn: card.bookOn,
+        bookOff: card.bookOff,
+        originalDuty: originalDuty,
+      );
+
+      await _loadMonth();
+
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage(
+        'Turn ${card.turnNumber} selected for ${_fullDate(date)}.',
+      );
+    } on ManualDutyException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage(error.message);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage('Roster Buddy could not save the selected turn.');
+    }
+  }
+
   Future<JobCardMatch?> _findCalendarJobCard(Duty duty) async {
     final String turnNumber = duty.turnNumber?.trim() ?? '';
 
@@ -3349,9 +3460,14 @@ class _CalendarPageState extends State<CalendarPage> {
         return;
 
       case _CalendarDayAction.selectTurnNumber:
-        _showCalendarMessage(
-          'The valid job-card turn selector will be connected next.',
-        );
+        if (duty == null || !duty.dutyType.countsAsWorking) {
+          _showCalendarMessage(
+            'A turn can only be selected for a working duty.',
+          );
+          return;
+        }
+
+        _showSelectTurnNumberDialog(date: date, originalDuty: duty);
         return;
 
       case _CalendarDayAction.manualChange:

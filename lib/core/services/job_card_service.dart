@@ -16,6 +16,12 @@ class JobCardMatch {
   final String originalFilename;
 }
 
+class JobCardChoice {
+  const JobCardChoice({required this.jobCard});
+
+  final JobCard jobCard;
+}
+
 class JobCardService {
   JobCardService({SupabaseClient? supabase})
     : _supabase = supabase ?? Supabase.instance.client;
@@ -107,6 +113,86 @@ class JobCardService {
       storagePath: storagePath,
       originalFilename: _stringValue(document['original_filename']),
     );
+  }
+
+  Future<List<JobCardChoice>> findValidJobCardsForDate({
+    required DateTime dutyDate,
+  }) async {
+    final String databaseDate = _databaseDate(dutyDate);
+
+    final List<dynamic> rows = await _supabase
+        .from(_jobCardTable)
+        .select(
+          'id, document_id, turn_number, original_turn_code, day_code, '
+          'plan_type, valid_from, valid_to, book_on, book_off, '
+          'rostered_minutes, page_number, raw_text, instructions',
+        )
+        .lte('valid_from', databaseDate)
+        .gte('valid_to', databaseDate);
+
+    final List<_JobCardCandidate> candidates = rows
+        .whereType<Map<String, dynamic>>()
+        .map(_candidateFromRow)
+        .where(
+          (candidate) =>
+              candidate.card.turnNumber.isNotEmpty &&
+              candidate.card.isValidOn(dutyDate),
+        )
+        .toList();
+
+    final Map<String, _JobCardCandidate> bestByTurn =
+        <String, _JobCardCandidate>{};
+
+    for (final _JobCardCandidate candidate in candidates) {
+      final String turn = candidate.card.turnNumber;
+      final _JobCardCandidate? current = bestByTurn[turn];
+
+      if (current == null || _isBetterCandidate(candidate, current)) {
+        bestByTurn[turn] = candidate;
+      }
+    }
+
+    final List<JobCardChoice> choices = bestByTurn.values
+        .map((candidate) => JobCardChoice(jobCard: candidate.card))
+        .toList();
+
+    choices.sort((first, second) {
+      final int firstTurn = int.tryParse(first.jobCard.turnNumber) ?? 999999;
+      final int secondTurn = int.tryParse(second.jobCard.turnNumber) ?? 999999;
+
+      final int numberComparison = firstTurn.compareTo(secondTurn);
+
+      if (numberComparison != 0) {
+        return numberComparison;
+      }
+
+      return first.jobCard.turnNumber.compareTo(second.jobCard.turnNumber);
+    });
+
+    return choices;
+  }
+
+  static bool _isBetterCandidate(
+    _JobCardCandidate candidate,
+    _JobCardCandidate current,
+  ) {
+    final int planComparison = candidate.card.planPriority.compareTo(
+      current.card.planPriority,
+    );
+
+    if (planComparison != 0) {
+      return planComparison > 0;
+    }
+
+    final int dayComparison = candidate.card.daySpecificity.compareTo(
+      current.card.daySpecificity,
+    );
+
+    if (dayComparison != 0) {
+      return dayComparison > 0;
+    }
+
+    return candidate.card.validFrom.isAfter(current.card.validFrom);
   }
 
   Future<String> createSignedPdfUrl(JobCardMatch match) async {
