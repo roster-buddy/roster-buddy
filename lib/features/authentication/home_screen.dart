@@ -2465,6 +2465,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
   final DutyResolver _dutyResolver = DutyResolver();
   final ManualDutyService _manualDutyService = ManualDutyService();
+  final JobCardService _jobCardService = JobCardService();
 
   late DateTime _displayedMonth;
   Map<String, Duty> _dutiesByDate = <String, Duty>{};
@@ -2846,6 +2847,52 @@ class _CalendarPageState extends State<CalendarPage> {
     );
   }
 
+  Future<JobCardMatch?> _findCalendarJobCard(Duty duty) async {
+    final String turnNumber = duty.turnNumber?.trim() ?? '';
+
+    if (turnNumber.isEmpty || !duty.dutyType.countsAsWorking) {
+      return null;
+    }
+
+    try {
+      return await _jobCardService.findMatchingJobCard(
+        turnNumber: turnNumber,
+        dutyDate: duty.date,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _openCalendarJobCard(JobCardMatch match) async {
+    try {
+      final String signedUrl = await _jobCardService.createSignedPdfUrl(match);
+      Uri pdfUri = Uri.parse(signedUrl);
+
+      final int? pageNumber = match.jobCard.pageNumber;
+
+      if (pageNumber != null && pageNumber > 0) {
+        pdfUri = pdfUri.replace(fragment: 'page=$pageNumber');
+      }
+
+      final bool opened = await launchUrl(
+        pdfUri,
+        mode: LaunchMode.platformDefault,
+        webOnlyWindowName: '_blank',
+      );
+
+      if (!opened && mounted) {
+        _showCalendarMessage('Roster Buddy could not open this Job Card.');
+      }
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage('Roster Buddy could not open this Job Card.');
+    }
+  }
+
   void _showDayDetails({required DateTime date, required Duty? duty}) {
     showModalBottomSheet<void>(
       context: context,
@@ -2925,13 +2972,64 @@ class _CalendarPageState extends State<CalendarPage> {
                   ),
                   const SizedBox(height: 22),
                   if (duty.dutyType == DutyType.working) ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: null,
-                        icon: const Icon(Icons.description_outlined),
-                        label: const Text('Job Card not available'),
-                      ),
+                    FutureBuilder<JobCardMatch?>(
+                      future: _findCalendarJobCard(duty),
+                      builder:
+                          (
+                            BuildContext context,
+                            AsyncSnapshot<JobCardMatch?> snapshot,
+                          ) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: null,
+                                  icon: const SizedBox(
+                                    width: 17,
+                                    height: 17,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                  label: const Text('Checking Job Card…'),
+                                ),
+                              );
+                            }
+
+                            final JobCardMatch? match = snapshot.data;
+
+                            if (match == null) {
+                              return SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: null,
+                                  icon: const Icon(Icons.description_outlined),
+                                  label: const Text('Job Card not available'),
+                                ),
+                              );
+                            }
+
+                            return SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                onPressed: () {
+                                  Navigator.of(sheetContext).pop();
+
+                                  Future<void>.delayed(
+                                    const Duration(milliseconds: 150),
+                                    () {
+                                      if (mounted) {
+                                        _openCalendarJobCard(match);
+                                      }
+                                    },
+                                  );
+                                },
+                                icon: const Icon(Icons.description_outlined),
+                                label: const Text('Open Job Card'),
+                              ),
+                            );
+                          },
                     ),
                     const SizedBox(height: 12),
                     SizedBox(
