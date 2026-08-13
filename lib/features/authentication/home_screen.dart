@@ -3473,7 +3473,14 @@ class _CalendarPageState extends State<CalendarPage> {
         return;
 
       case _CalendarDayAction.manualChange:
-        _showCalendarMessage('Manual duty changes will be connected next.');
+        if (duty == null) {
+          _showCalendarMessage(
+            'No roster duty is available for this manual change.',
+          );
+          return;
+        }
+
+        _showManualChangeDialog(date: date, originalDuty: duty);
         return;
 
       case _CalendarDayAction.shiftSwap:
@@ -3551,6 +3558,273 @@ class _CalendarPageState extends State<CalendarPage> {
 
         _makeSundayAvailable(date: date);
         return;
+    }
+  }
+
+  Future<void> _showManualChangeDialog({
+    required DateTime date,
+    required Duty originalDuty,
+  }) async {
+    final TextEditingController turnController = TextEditingController(
+      text: originalDuty.turnNumber?.trim() ?? '',
+    );
+    final TextEditingController bookOnController = TextEditingController(
+      text: originalDuty.bookOn?.trim() ?? '',
+    );
+    final TextEditingController bookOffController = TextEditingController(
+      text: originalDuty.bookOff?.trim() ?? '',
+    );
+    final TextEditingController remarksController = TextEditingController();
+
+    DutyType selectedDutyType = originalDuty.dutyType;
+    bool isSaving = false;
+    String? errorMessage;
+
+    String dutyTypeLabel(DutyType type) {
+      switch (type) {
+        case DutyType.working:
+          return 'Working';
+        case DutyType.training:
+          return 'Training';
+        case DutyType.medical:
+          return 'Medical';
+        case DutyType.restDay:
+          return 'Rest Day';
+        case DutyType.sick:
+          return 'Sick';
+        case DutyType.publicHoliday:
+          return 'Public Holiday';
+        case DutyType.unavailable:
+          return 'Unavailable';
+        case DutyType.annualLeave:
+          return 'Annual Leave';
+        case DutyType.unknown:
+          return 'Unknown';
+      }
+    }
+
+    const List<DutyType> selectableTypes = <DutyType>[
+      DutyType.working,
+      DutyType.training,
+      DutyType.medical,
+      DutyType.restDay,
+      DutyType.sick,
+      DutyType.publicHoliday,
+      DutyType.unavailable,
+    ];
+
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (BuildContext sheetContext) {
+          return StatefulBuilder(
+            builder:
+                (
+                  BuildContext sheetContext,
+                  void Function(void Function()) setSheetState,
+                ) {
+                  final bool workingType = selectedDutyType.countsAsWorking;
+
+                  Future<void> saveManualChange() async {
+                    String bookOn = '';
+                    String bookOff = '';
+
+                    if (workingType) {
+                      bookOn = _normaliseTimeInput(bookOnController.text);
+                      bookOff = _normaliseTimeInput(bookOffController.text);
+
+                      if (!_isValidTime(bookOn) || !_isValidTime(bookOff)) {
+                        setSheetState(() {
+                          errorMessage =
+                              'Enter valid 24-hour times, for example 0800 or 08:00.';
+                        });
+                        return;
+                      }
+                    }
+
+                    setSheetState(() {
+                      isSaving = true;
+                      errorMessage = null;
+                    });
+
+                    try {
+                      await _manualDutyService.saveManualChange(
+                        date: date,
+                        dutyType: selectedDutyType,
+                        turnNumber: turnController.text,
+                        bookOn: bookOn,
+                        bookOff: bookOff,
+                        remarks: remarksController.text,
+                        originalDuty: originalDuty,
+                      );
+
+                      if (!sheetContext.mounted) {
+                        return;
+                      }
+
+                      Navigator.of(sheetContext).pop();
+
+                      await _loadMonth();
+
+                      if (!mounted) {
+                        return;
+                      }
+
+                      _showCalendarMessage(
+                        'Manual change saved for ${_fullDate(date)}.',
+                      );
+                    } catch (error) {
+                      if (!sheetContext.mounted) {
+                        return;
+                      }
+
+                      setSheetState(() {
+                        isSaving = false;
+                        errorMessage = error is ManualDutyException
+                            ? error.message
+                            : 'Roster Buddy could not save the manual change.';
+                      });
+                    }
+                  }
+
+                  return SafeArea(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        20,
+                        4,
+                        20,
+                        MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
+                      ),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Manual change',
+                              style: TextStyle(
+                                color: navy,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _fullDate(date),
+                              style: const TextStyle(color: textGrey),
+                            ),
+                            const SizedBox(height: 18),
+                            const Text(
+                              'Duty type',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: textGrey,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: selectableTypes
+                                  .map((DutyType type) {
+                                    final bool selected =
+                                        selectedDutyType == type;
+
+                                    return ChoiceChip(
+                                      label: Text(dutyTypeLabel(type)),
+                                      selected: selected,
+                                      onSelected: isSaving
+                                          ? null
+                                          : (_) {
+                                              setSheetState(() {
+                                                selectedDutyType = type;
+                                                errorMessage = null;
+                                              });
+                                            },
+                                    );
+                                  })
+                                  .toList(growable: false),
+                            ),
+                            if (workingType) ...<Widget>[
+                              const SizedBox(height: 18),
+                              TextField(
+                                controller: turnController,
+                                enabled: !isSaving,
+                                decoration: const InputDecoration(
+                                  labelText: 'Turn number',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: bookOnController,
+                                enabled: !isSaving,
+                                keyboardType: TextInputType.datetime,
+                                decoration: const InputDecoration(
+                                  labelText: 'Book on',
+                                  hintText: '08:00',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: bookOffController,
+                                enabled: !isSaving,
+                                keyboardType: TextInputType.datetime,
+                                decoration: const InputDecoration(
+                                  labelText: 'Book off',
+                                  hintText: '16:00',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: remarksController,
+                              enabled: !isSaving,
+                              maxLines: 3,
+                              decoration: const InputDecoration(
+                                labelText: 'Notes',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                            if (errorMessage != null) ...<Widget>[
+                              const SizedBox(height: 12),
+                              Text(
+                                errorMessage!,
+                                style: const TextStyle(
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 18),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton(
+                                onPressed: isSaving ? null : saveManualChange,
+                                child: Text(
+                                  isSaving ? 'Saving...' : 'Save manual change',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+          );
+        },
+      );
+    } finally {
+      turnController.dispose();
+      bookOnController.dispose();
+      bookOffController.dispose();
+      remarksController.dispose();
     }
   }
 

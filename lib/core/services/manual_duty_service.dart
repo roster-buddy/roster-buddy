@@ -141,6 +141,83 @@ class ManualDutyService {
     }, onConflict: 'user_id,duty_date,manual_change_type');
   }
 
+  Future<void> saveManualChange({
+    required DateTime date,
+    required DutyType dutyType,
+    required String turnNumber,
+    required String bookOn,
+    required String bookOff,
+    required String remarks,
+    required Duty originalDuty,
+  }) async {
+    final User? user = _supabase.auth.currentUser;
+
+    if (user == null) {
+      throw const ManualDutyException(
+        'You must be signed in before making a manual change.',
+      );
+    }
+
+    final bool workingType = dutyType.countsAsWorking;
+
+    String? storedBookOn;
+    String? storedBookOff;
+    int? rosteredMinutes;
+
+    if (workingType) {
+      if (bookOn.trim().isEmpty || bookOff.trim().isEmpty) {
+        throw const ManualDutyException(
+          'Enter book-on and book-off times for a working duty.',
+        );
+      }
+
+      storedBookOn = bookOn;
+      storedBookOff = bookOff;
+      rosteredMinutes = _minutesBetween(bookOn: bookOn, bookOff: bookOff);
+    }
+
+    String dutyTypeValue;
+
+    switch (dutyType) {
+      case DutyType.working:
+        dutyTypeValue = 'working';
+      case DutyType.training:
+        dutyTypeValue = 'training';
+      case DutyType.medical:
+        dutyTypeValue = 'medical';
+      case DutyType.restDay:
+        dutyTypeValue = 'rest_day';
+      case DutyType.sick:
+        dutyTypeValue = 'sick';
+      case DutyType.publicHoliday:
+        dutyTypeValue = 'public_holiday';
+      case DutyType.unavailable:
+        dutyTypeValue = 'unavailable';
+      case DutyType.annualLeave:
+        dutyTypeValue = 'annual_leave';
+      case DutyType.unknown:
+        throw const ManualDutyException('Select a valid duty type.');
+    }
+
+    await _supabase.from(_tableName).upsert(<String, dynamic>{
+      'user_id': user.id,
+      'duty_date': _databaseDate(date),
+      'duty_type': dutyTypeValue,
+      'manual_change_type': 'manual_change',
+      'turn_number': workingType ? _clean(turnNumber) : null,
+      'book_on': storedBookOn,
+      'book_off': storedBookOff,
+      'rostered_minutes': rosteredMinutes,
+      'remarks': remarks.trim().isEmpty ? 'Manual duty change' : remarks.trim(),
+      'original_source': _sourceName(originalDuty),
+      'original_duty_type': _dutyTypeName(originalDuty),
+      'original_turn_number': _clean(originalDuty.turnNumber),
+      'original_book_on': _clean(originalDuty.bookOn),
+      'original_book_off': _clean(originalDuty.bookOff),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'user_id,duty_date,manual_change_type');
+  }
+
   Future<void> saveEditedDuty({
     required DateTime date,
     required String turnNumber,
