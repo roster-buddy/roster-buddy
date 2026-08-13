@@ -407,20 +407,8 @@ class _DashboardPageState extends State<DashboardPage> {
         growable: false,
       );
 
-      // Load all seven days together instead of one after another.
-      final List<Duty?> weekDuties = await Future.wait(
-        weekDates.map(_dutyResolver.getDutyForDate),
-      );
-
-      final Map<String, Duty> thisWeekDuties = <String, Duty>{};
-
-      for (int index = 0; index < weekDates.length; index++) {
-        final Duty? duty = weekDuties[index];
-
-        if (duty != null) {
-          thisWeekDuties[_dashboardDateKey(weekDates[index])] = duty;
-        }
-      }
+      final Map<String, Duty> thisWeekDuties = await _dutyResolver
+          .getResolvedDutiesForRange(weekDates.first, weekDates.last);
 
       final Duty? todayDuty = thisWeekDuties[_dashboardDateKey(today)];
 
@@ -474,17 +462,19 @@ class _DashboardPageState extends State<DashboardPage> {
     ) {
       final int batchEnd = (batchStart + batchSize - 1).clamp(1, maximumDays);
 
-      final List<DateTime> dates = List<DateTime>.generate(
-        batchEnd - batchStart + 1,
-        (int index) => today.add(Duration(days: batchStart + index)),
-        growable: false,
-      );
+      final DateTime rangeStart = today.add(Duration(days: batchStart));
+      final DateTime rangeEnd = today.add(Duration(days: batchEnd));
 
-      final List<Duty?> duties = await Future.wait(
-        dates.map(_dutyResolver.getDutyForDate),
-      );
+      final Map<String, Duty> duties = await _dutyResolver
+          .getResolvedDutiesForRange(rangeStart, rangeEnd);
 
-      for (final Duty? duty in duties) {
+      for (
+        DateTime date = rangeStart;
+        !date.isAfter(rangeEnd);
+        date = date.add(const Duration(days: 1))
+      ) {
+        final Duty? duty = duties[_dashboardDateKey(date)];
+
         if (duty != null && duty.dutyType.countsAsWorking) {
           return duty;
         }
@@ -2287,19 +2277,8 @@ class _CalendarPageState extends State<CalendarPage> {
     try {
       final List<DateTime> calendarDates = _calendarDates();
 
-      final List<Duty?> loadedDuties = await Future.wait(
-        calendarDates.map(_dutyResolver.getDutyForDate),
-      );
-
-      final Map<String, Duty> dutiesByDate = <String, Duty>{};
-
-      for (int index = 0; index < calendarDates.length; index++) {
-        final Duty? duty = loadedDuties[index];
-
-        if (duty != null) {
-          dutiesByDate[_dateKey(calendarDates[index])] = duty;
-        }
-      }
+      final Map<String, Duty> dutiesByDate = await _dutyResolver
+          .getResolvedDutiesForRange(calendarDates.first, calendarDates.last);
 
       if (!mounted) {
         return;

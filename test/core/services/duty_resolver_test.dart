@@ -6,6 +6,7 @@ import 'package:roster_buddy/core/services/duty_resolver.dart';
 
 void main() {
   profileMatchingTests();
+  rangeResolutionTests();
   group('DutyResolver.resolve', () {
     final date = DateTime(2026, 8, 13);
 
@@ -157,6 +158,97 @@ void profileMatchingTests() {
       );
 
       expect(matches, isTrue);
+    });
+  });
+}
+
+void rangeResolutionTests() {
+  group('DutyResolver.resolveByDate', () {
+    test('resolves the highest-priority duty independently for each date', () {
+      final resolver = DutyResolver();
+
+      final result = resolver.resolveByDate([
+        Duty(
+          date: DateTime(2026, 8, 13),
+          source: RosterSource.baseRoster,
+          dutyType: DutyType.working,
+          turnNumber: '201',
+          driverNumber: '999',
+        ),
+        Duty(
+          date: DateTime(2026, 8, 13),
+          source: RosterSource.fortyEightHour,
+          dutyType: DutyType.working,
+          turnNumber: '204',
+          payrollNumber: '123456',
+        ),
+        Duty(
+          date: DateTime(2026, 8, 14),
+          source: RosterSource.baseRoster,
+          dutyType: DutyType.working,
+          turnNumber: '205',
+          driverNumber: '999',
+        ),
+        Duty(
+          date: DateTime(2026, 8, 14),
+          source: RosterSource.sevenDay,
+          dutyType: DutyType.training,
+          turnNumber: '206',
+          payrollNumber: '123456',
+        ),
+      ]);
+
+      expect(result, hasLength(2));
+
+      expect(result['2026-08-13']?.source, RosterSource.fortyEightHour);
+      expect(result['2026-08-13']?.turnNumber, '204');
+
+      expect(result['2026-08-14']?.source, RosterSource.sevenDay);
+      expect(result['2026-08-14']?.turnNumber, '206');
+    });
+
+    test('manual and Annual Leave still override parsed roster duties', () {
+      final resolver = DutyResolver();
+
+      final result = resolver.resolveByDate([
+        Duty(
+          date: DateTime(2026, 8, 15),
+          source: RosterSource.fortyEightHour,
+          dutyType: DutyType.working,
+          turnNumber: '207',
+          payrollNumber: '123456',
+        ),
+        Duty(
+          date: DateTime(2026, 8, 15),
+          source: RosterSource.annualLeave,
+          dutyType: DutyType.annualLeave,
+          driverNumber: '999',
+        ),
+        Duty(
+          date: DateTime(2026, 8, 16),
+          source: RosterSource.fortyEightHour,
+          dutyType: DutyType.working,
+          turnNumber: '208',
+          payrollNumber: '123456',
+        ),
+        Duty(
+          date: DateTime(2026, 8, 16),
+          source: RosterSource.manual,
+          dutyType: DutyType.restDay,
+        ),
+      ]);
+
+      expect(result['2026-08-15']?.source, RosterSource.annualLeave);
+      expect(result['2026-08-15']?.dutyType, DutyType.annualLeave);
+
+      expect(result['2026-08-16']?.source, RosterSource.manual);
+      expect(result['2026-08-16']?.dutyType, DutyType.restDay);
+    });
+
+    test('returns an empty map for no duties', () {
+      final resolver = DutyResolver();
+
+      expect(resolver.resolveByDate(const <Duty>[]), isEmpty);
     });
   });
 }

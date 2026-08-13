@@ -129,6 +129,167 @@ class DutyResolver {
     return List<Duty>.unmodifiable(duties);
   }
 
+  /// Loads and resolves every duty between [startDate] and [endDate],
+  /// inclusive.
+  ///
+  /// The signed-in driver's profile is loaded once, followed by one query
+  /// each for parsed roster duties, Annual Leave and manual duties.
+  Future<Map<String, Duty>> getResolvedDutiesForRange(
+    DateTime startDate,
+    DateTime endDate,
+  ) async {
+    final DateTime start = DateTime(
+      startDate.year,
+      startDate.month,
+      startDate.day,
+    );
+    final DateTime end = DateTime(endDate.year, endDate.month, endDate.day);
+
+    if (end.isBefore(start)) {
+      throw const DutyResolverException(
+        'The roster range end date cannot be before the start date.',
+      );
+    }
+
+    final User? user = _supabase.auth.currentUser;
+
+    if (user == null) {
+      throw const DutyResolverException(
+        'You must be signed in before loading roster duties.',
+      );
+    }
+
+    final Map<String, dynamic>? profile = await _supabase
+        .from(_profileTableName)
+        .select('payroll_number, driver_number')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+    if (profile == null) {
+      return const <String, Duty>{};
+    }
+
+    final String? payrollNumber = _normaliseIdentifier(
+      profile['payroll_number'],
+    );
+    final String? driverNumber = _normaliseIdentifier(profile['driver_number']);
+
+    if (payrollNumber == null && driverNumber == null) {
+      return const <String, Duty>{};
+    }
+
+    final String databaseStart = _databaseDate(start);
+    final String databaseEnd = _databaseDate(end);
+
+    final List<Duty> duties = <Duty>[];
+
+    final List<dynamic> parsedDutyResponse = await _supabase
+        .from(_dutyTableName)
+        .select(
+          'duty_date, source, duty_type, turn_number, book_on, book_off, '
+          'rostered_minutes, remarks, driver_number, payroll_number, '
+          'driver_name, depot, amendment_code, mileage, page_number, raw_text',
+        )
+        .gte('duty_date', databaseStart)
+        .lte('duty_date', databaseEnd);
+
+    duties.addAll(
+      parsedDutyResponse
+          .whereType<Map<String, dynamic>>()
+          .where(
+            (row) => matchesProfile(
+              row: row,
+              payrollNumber: payrollNumber,
+              driverNumber: driverNumber,
+            ),
+          )
+          .map(_dutyFromRow),
+    );
+
+    if (driverNumber != null) {
+      final List<dynamic> annualLeaveResponse = await _supabase
+          .from(_annualLeavePeriodTableName)
+          .select(
+            'period_type, start_date, end_date, '
+            'annual_leave_allocations!inner('
+            'driver_number, surname, depot, source, is_confirmed, page_number'
+            ')',
+          )
+          .lte('start_date', databaseEnd)
+          .gte('end_date', databaseStart)
+          .eq('annual_leave_allocations.driver_number', driverNumber)
+          .eq('annual_leave_allocations.is_confirmed', true);
+
+      for (final Map<String, dynamic> row
+          in annualLeaveResponse.whereType<Map<String, dynamic>>()) {
+        final String? periodStartValue = _nullableString(row['start_date']);
+        final String? periodEndValue = _nullableString(row['end_date']);
+
+        if (periodStartValue == null || periodEndValue == null) {
+          continue;
+        }
+
+        final DateTime periodStart = DateTime.parse(periodStartValue);
+        final DateTime periodEnd = DateTime.parse(periodEndValue);
+
+        DateTime current = periodStart.isAfter(start) ? periodStart : start;
+        final DateTime finalDate = periodEnd.isBefore(end) ? periodEnd : end;
+
+        while (!current.isAfter(finalDate)) {
+          final Duty? duty = _annualLeaveDutyFromRow(row: row, date: current);
+
+          if (duty != null) {
+            duties.add(duty);
+          }
+
+          current = current.add(const Duration(days: 1));
+        }
+      }
+    }
+
+    final List<dynamic> manualDutyResponse = await _supabase
+        .from(_manualDutyTableName)
+        .select(
+          'duty_date, duty_type, turn_number, book_on, book_off, '
+          'rostered_minutes, remarks, manual_change_type',
+        )
+        .eq('user_id', user.id)
+        .gte('duty_date', databaseStart)
+        .lte('duty_date', databaseEnd);
+
+    duties.addAll(
+      manualDutyResponse.whereType<Map<String, dynamic>>().map(
+        _manualDutyFromRow,
+      ),
+    );
+
+    return resolveByDate(duties);
+  }
+
+  /// Resolves a collection containing multiple dates into one winning duty
+  /// per date using the normal Roster Buddy source hierarchy.
+  Map<String, Duty> resolveByDate(Iterable<Duty> duties) {
+    final Map<String, List<Duty>> dutiesByDate = <String, List<Duty>>{};
+
+    for (final Duty duty in duties) {
+      final String key = _databaseDate(duty.date);
+
+      dutiesByDate.putIfAbsent(key, () => <Duty>[]).add(duty);
+    }
+
+    final Map<String, Duty> resolved = <String, Duty>{};
+
+    for (final MapEntry<String, List<Duty>> entry in dutiesByDate.entries) {
+      final Duty? duty = resolve(entry.value);
+
+      if (duty != null) {
+        resolved[entry.key] = duty;
+      }
+    }
+
+    return Map<String, Duty>.unmodifiable(resolved);
+  }
+
   /// Resolves an already-loaded collection without making a database request.
   ///
   /// This will also be useful for unit tests and when Calendar loads a range
