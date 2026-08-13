@@ -195,16 +195,18 @@ class DutyResolver {
         .from(_manualDutyTableName)
         .select(
           'duty_date, duty_type, turn_number, book_on, book_off, '
-          'rostered_minutes, remarks, manual_change_type',
+          'rostered_minutes, remarks, manual_change_type, updated_at',
         )
         .eq('user_id', user.id)
         .eq('duty_date', _databaseDate(date));
 
-    duties.addAll(
-      manualDutyResponse.whereType<Map<String, dynamic>>().map(
-        _manualDutyFromRow,
-      ),
+    final Map<String, dynamic>? latestManualDuty = _latestManualDutyForDate(
+      manualDutyResponse,
     );
+
+    if (latestManualDuty != null) {
+      duties.add(_manualDutyFromRow(latestManualDuty));
+    }
 
     duties.sort(_compareDuties);
 
@@ -415,16 +417,14 @@ class DutyResolver {
         .from(_manualDutyTableName)
         .select(
           'duty_date, duty_type, turn_number, book_on, book_off, '
-          'rostered_minutes, remarks, manual_change_type',
+          'rostered_minutes, remarks, manual_change_type, updated_at',
         )
         .eq('user_id', user.id)
         .gte('duty_date', databaseStart)
         .lte('duty_date', databaseEnd);
 
     duties.addAll(
-      manualDutyResponse.whereType<Map<String, dynamic>>().map(
-        _manualDutyFromRow,
-      ),
+      _latestManualDutiesByDate(manualDutyResponse).map(_manualDutyFromRow),
     );
 
     return resolveByDate(duties);
@@ -925,6 +925,102 @@ class DutyResolver {
           : 'Floating annual leave – $notes',
       rawText: _nullableString(row['id']),
     );
+  }
+
+  static Map<String, dynamic>? _latestManualDutyForDate(
+    Iterable<dynamic> rows,
+  ) {
+    Map<String, dynamic>? latest;
+
+    for (final dynamic value in rows) {
+      if (value is! Map<String, dynamic>) {
+        continue;
+      }
+
+      if (latest == null || _isLaterManualDuty(value, latest)) {
+        latest = value;
+      }
+    }
+
+    return latest;
+  }
+
+  static List<Map<String, dynamic>> _latestManualDutiesByDate(
+    Iterable<dynamic> rows,
+  ) {
+    final Map<String, Map<String, dynamic>> latestByDate =
+        <String, Map<String, dynamic>>{};
+
+    for (final dynamic value in rows) {
+      if (value is! Map<String, dynamic>) {
+        continue;
+      }
+
+      final String? dutyDate = _nullableString(value['duty_date']);
+
+      if (dutyDate == null) {
+        continue;
+      }
+
+      final Map<String, dynamic>? existing = latestByDate[dutyDate];
+
+      if (existing == null || _isLaterManualDuty(value, existing)) {
+        latestByDate[dutyDate] = value;
+      }
+    }
+
+    final List<Map<String, dynamic>> result = latestByDate.values.toList();
+
+    result.sort((first, second) {
+      final String firstDate = _nullableString(first['duty_date']) ?? '';
+      final String secondDate = _nullableString(second['duty_date']) ?? '';
+      return firstDate.compareTo(secondDate);
+    });
+
+    return result;
+  }
+
+  static bool _isLaterManualDuty(
+    Map<String, dynamic> candidate,
+    Map<String, dynamic> existing,
+  ) {
+    final DateTime? candidateUpdatedAt = DateTime.tryParse(
+      _nullableString(candidate['updated_at']) ?? '',
+    );
+    final DateTime? existingUpdatedAt = DateTime.tryParse(
+      _nullableString(existing['updated_at']) ?? '',
+    );
+
+    if (candidateUpdatedAt != null && existingUpdatedAt != null) {
+      final int comparison = candidateUpdatedAt.compareTo(existingUpdatedAt);
+
+      if (comparison != 0) {
+        return comparison > 0;
+      }
+    } else if (candidateUpdatedAt != null) {
+      return true;
+    } else if (existingUpdatedAt != null) {
+      return false;
+    }
+
+    // Deterministic fallback for older rows without updated_at.
+    return _manualChangePriority(candidate['manual_change_type']) >
+        _manualChangePriority(existing['manual_change_type']);
+  }
+
+  static int _manualChangePriority(Object? value) {
+    switch (_nullableString(value)) {
+      case 'manual_change':
+        return 4;
+      case 'edited_times':
+        return 3;
+      case 'selected_turn':
+        return 2;
+      case 'rest_day_worked':
+        return 1;
+      default:
+        return 0;
+    }
   }
 
   static Duty _manualDutyFromRow(Map<String, dynamic> row) {
