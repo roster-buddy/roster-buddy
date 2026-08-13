@@ -1,10 +1,4 @@
-enum AnnualLeaveRequestStatus {
-  requested,
-  abeyance,
-  granted,
-  refused,
-  cancelled,
-}
+enum AnnualLeaveRequestStatus { requested, abeyance, granted, cancelled }
 
 enum AnnualLeaveRequestType { floating, block }
 
@@ -18,6 +12,7 @@ class AnnualLeaveRequest {
     required this.requestedAt,
     this.decisionAt,
     this.notes,
+    this.queuePosition,
   });
 
   final String id;
@@ -28,6 +23,11 @@ class AnnualLeaveRequest {
   final DateTime requestedAt;
   final DateTime? decisionAt;
   final String? notes;
+
+  /// Position in the annual-leave abeyance queue.
+  ///
+  /// For example, 3 means the driver is third in the queue for that date.
+  final int? queuePosition;
 
   factory AnnualLeaveRequest.fromMap(Map<String, dynamic> row) {
     return AnnualLeaveRequest(
@@ -41,6 +41,7 @@ class AnnualLeaveRequest {
           ? null
           : DateTime.parse(row['decision_at'].toString()),
       notes: _nullableString(row['notes']),
+      queuePosition: _nullableInt(row['queue_position']),
     );
   }
 
@@ -52,8 +53,6 @@ class AnnualLeaveRequest {
         return AnnualLeaveRequestStatus.abeyance;
       case 'granted':
         return AnnualLeaveRequestStatus.granted;
-      case 'refused':
-        return AnnualLeaveRequestStatus.refused;
       case 'cancelled':
         return AnnualLeaveRequestStatus.cancelled;
       default:
@@ -74,6 +73,22 @@ class AnnualLeaveRequest {
           'Unknown annual leave request type: ${value ?? 'null'}',
         );
     }
+  }
+
+  static int? _nullableInt(Object? value) {
+    if (value == null) {
+      return null;
+    }
+
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(value.toString().trim());
   }
 
   static String? _nullableString(Object? value) {

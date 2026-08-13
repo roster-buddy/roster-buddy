@@ -1,8 +1,10 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/annual_leave_block_override.dart';
 import '../models/duty.dart';
 import '../models/duty_type.dart';
 import '../models/roster_source.dart';
+import 'sunday_availability_service.dart';
 
 class DutyResolver {
   DutyResolver({SupabaseClient? supabase}) : _supabaseOverride = supabase;
@@ -14,6 +16,9 @@ class DutyResolver {
   static const String _profileTableName = 'driver_profiles';
   static const String _dutyTableName = 'document_duties';
   static const String _annualLeavePeriodTableName = 'annual_leave_periods';
+  static const String _annualLeaveRequestTableName = 'annual_leave_requests';
+  static const String _annualLeaveBlockOverrideTableName =
+      'annual_leave_block_overrides';
   static const String _manualDutyTableName = 'manual_duties';
 
   /// Returns the highest-priority duty applicable to the signed-in user
@@ -47,7 +52,9 @@ class DutyResolver {
 
     final Map<String, dynamic>? profile = await _supabase
         .from(_profileTableName)
-        .select('payroll_number, driver_number')
+        .select(
+          'payroll_number, driver_number, permanently_unavailable_sundays',
+        )
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -59,6 +66,8 @@ class DutyResolver {
       profile['payroll_number'],
     );
     final String? driverNumber = _normaliseIdentifier(profile['driver_number']);
+    final bool permanentlyUnavailableSundays =
+        profile['permanently_unavailable_sundays'] == true;
 
     if (payrollNumber == null && driverNumber == null) {
       return const [];
@@ -107,6 +116,79 @@ class DutyResolver {
             .map((row) => _annualLeaveDutyFromRow(row: row, date: date))
             .whereType<Duty>(),
       );
+    }
+
+    final Map<String, dynamic>? grantedFloatingLeave = await _supabase
+        .from(_annualLeaveRequestTableName)
+        .select(
+          'id, leave_date, status, request_type, notes, requested_at, '
+          'decision_at',
+        )
+        .eq('user_id', user.id)
+        .eq('leave_date', _databaseDate(date))
+        .eq('request_type', 'floating')
+        .eq('status', 'granted')
+        .maybeSingle();
+
+    if (grantedFloatingLeave != null) {
+      duties.add(_floatingAnnualLeaveDutyFromRow(grantedFloatingLeave));
+    }
+
+    final List<dynamic> blockOverrideResponse = await _supabase
+        .from(_annualLeaveBlockOverrideTableName)
+        .select(
+          'id, leave_year, period_type, '
+          'original_start_date, original_end_date, '
+          'override_start_date, override_end_date, '
+          'change_type, swap_driver_number, swap_reference, notes',
+        )
+        .eq('user_id', user.id)
+        .eq('leave_year', date.year);
+
+    final List<AnnualLeaveBlockOverride> blockOverrides = blockOverrideResponse
+        .whereType<Map<String, dynamic>>()
+        .map(AnnualLeaveBlockOverride.fromMap)
+        .toList(growable: false);
+
+    _applyBlockOverridesForDate(
+      duties: duties,
+      date: date,
+      overrides: blockOverrides,
+    );
+
+    if (date.weekday == DateTime.sunday) {
+      final SundayAvailabilityService sundayAvailabilityService =
+          SundayAvailabilityService(supabase: _supabase);
+
+      final bool explicitlyAvailable = await sundayAvailabilityService
+          .isSundayExplicitlyAvailable(date);
+
+      if (permanentlyUnavailableSundays) {
+        _applyPermanentSundayUnavailability(
+          duties: duties,
+          sundayDates: <String>{_databaseDate(date)},
+          explicitlyAvailableSundayDates: explicitlyAvailable
+              ? <String>{_databaseDate(date)}
+              : const <String>{},
+        );
+      } else {
+        final Set<String> postBlockSundayDates = await _getPostBlockSundayDates(
+          startDate: date,
+          endDate: date,
+          driverNumber: driverNumber,
+          overrides: blockOverrides,
+        );
+
+        if (postBlockSundayDates.contains(_databaseDate(date))) {
+          _applyPostBlockSundayUnavailability(
+            duties: duties,
+            postBlockSundayDates: postBlockSundayDates,
+            explicitlyAvailableSundayDates: explicitlyAvailable
+                ? <String>{_databaseDate(date)}
+                : const <String>{},
+          );
+        }
+      }
     }
 
     final List<dynamic> manualDutyResponse = await _supabase
@@ -161,7 +243,9 @@ class DutyResolver {
 
     final Map<String, dynamic>? profile = await _supabase
         .from(_profileTableName)
-        .select('payroll_number, driver_number')
+        .select(
+          'payroll_number, driver_number, permanently_unavailable_sundays',
+        )
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -173,6 +257,8 @@ class DutyResolver {
       profile['payroll_number'],
     );
     final String? driverNumber = _normaliseIdentifier(profile['driver_number']);
+    final bool permanentlyUnavailableSundays =
+        profile['permanently_unavailable_sundays'] == true;
 
     if (payrollNumber == null && driverNumber == null) {
       return const <String, Duty>{};
@@ -247,6 +333,84 @@ class DutyResolver {
       }
     }
 
+    final List<dynamic> grantedFloatingLeaveResponse = await _supabase
+        .from(_annualLeaveRequestTableName)
+        .select(
+          'id, leave_date, status, request_type, notes, requested_at, '
+          'decision_at',
+        )
+        .eq('user_id', user.id)
+        .eq('request_type', 'floating')
+        .eq('status', 'granted')
+        .gte('leave_date', databaseStart)
+        .lte('leave_date', databaseEnd);
+
+    duties.addAll(
+      grantedFloatingLeaveResponse.whereType<Map<String, dynamic>>().map(
+        _floatingAnnualLeaveDutyFromRow,
+      ),
+    );
+
+    final List<dynamic> blockOverrideResponse = await _supabase
+        .from(_annualLeaveBlockOverrideTableName)
+        .select(
+          'id, leave_year, period_type, '
+          'original_start_date, original_end_date, '
+          'override_start_date, override_end_date, '
+          'change_type, swap_driver_number, swap_reference, notes',
+        )
+        .eq('user_id', user.id)
+        .gte('leave_year', start.year)
+        .lte('leave_year', end.year);
+
+    final List<AnnualLeaveBlockOverride> blockOverrides = blockOverrideResponse
+        .whereType<Map<String, dynamic>>()
+        .map(AnnualLeaveBlockOverride.fromMap)
+        .toList(growable: false);
+
+    if (blockOverrides.isNotEmpty) {
+      _applyBlockOverridesForRange(
+        duties: duties,
+        start: start,
+        end: end,
+        overrides: blockOverrides,
+      );
+    }
+
+    final SundayAvailabilityService sundayAvailabilityService =
+        SundayAvailabilityService(supabase: _supabase);
+
+    final Set<String> explicitlyAvailableSundayDates =
+        await sundayAvailabilityService.getAvailableSundayDatesForRange(
+          start,
+          end,
+        );
+
+    if (permanentlyUnavailableSundays) {
+      final Set<String> sundayDates = _sundayDatesForRange(start, end);
+
+      _applyPermanentSundayUnavailability(
+        duties: duties,
+        sundayDates: sundayDates,
+        explicitlyAvailableSundayDates: explicitlyAvailableSundayDates,
+      );
+    } else {
+      final Set<String> postBlockSundayDates = await _getPostBlockSundayDates(
+        startDate: start,
+        endDate: end,
+        driverNumber: driverNumber,
+        overrides: blockOverrides,
+      );
+
+      if (postBlockSundayDates.isNotEmpty) {
+        _applyPostBlockSundayUnavailability(
+          duties: duties,
+          postBlockSundayDates: postBlockSundayDates,
+          explicitlyAvailableSundayDates: explicitlyAvailableSundayDates,
+        );
+      }
+    }
+
     final List<dynamic> manualDutyResponse = await _supabase
         .from(_manualDutyTableName)
         .select(
@@ -264,6 +428,271 @@ class DutyResolver {
     );
 
     return resolveByDate(duties);
+  }
+
+  /// Returns Sundays that immediately follow an effective block-leave week
+  /// ending on Saturday.
+  ///
+  /// The official Annual Leave Roster remains the baseline. If that block has
+  /// a user-specific move or mutual swap, the override dates replace the
+  /// original dates for this rule as well.
+  Future<Set<String>> _getPostBlockSundayDates({
+    required DateTime startDate,
+    required DateTime endDate,
+    required String? driverNumber,
+    required List<AnnualLeaveBlockOverride> overrides,
+  }) async {
+    if (driverNumber == null || driverNumber.trim().isEmpty) {
+      return const <String>{};
+    }
+
+    final DateTime rangeStart = _dateOnly(startDate);
+    final DateTime rangeEnd = _dateOnly(endDate);
+
+    if (rangeEnd.isBefore(rangeStart)) {
+      return const <String>{};
+    }
+
+    final DateTime possibleBlockEndStart = rangeStart.subtract(
+      const Duration(days: 1),
+    );
+    final DateTime possibleBlockEndEnd = rangeEnd.subtract(
+      const Duration(days: 1),
+    );
+
+    final List<dynamic> response = await _supabase
+        .from(_annualLeavePeriodTableName)
+        .select(
+          'period_type, start_date, end_date, '
+          'annual_leave_allocations!inner('
+          'driver_number, is_confirmed'
+          ')',
+        )
+        .gte('end_date', _databaseDate(possibleBlockEndStart))
+        .lte('end_date', _databaseDate(possibleBlockEndEnd))
+        .eq('annual_leave_allocations.driver_number', driverNumber)
+        .eq('annual_leave_allocations.is_confirmed', true);
+
+    final Set<String> result = <String>{};
+
+    for (final Map<String, dynamic> row
+        in response.whereType<Map<String, dynamic>>()) {
+      final DateTime? officialEnd = DateTime.tryParse(
+        (row['end_date'] ?? '').toString(),
+      );
+
+      final AnnualLeaveBlockPeriodType? periodType =
+          _blockPeriodTypeFromDatabase(row['period_type']);
+
+      if (officialEnd == null || periodType == null) {
+        continue;
+      }
+
+      final AnnualLeaveBlockOverride? matchingOverride = _matchingBlockOverride(
+        overrides: overrides,
+        leaveYear: officialEnd.year,
+        periodType: periodType,
+      );
+
+      // Once a block has been moved or swapped, its original dates no longer
+      // create the post-block Sunday rule for this driver.
+      if (matchingOverride != null) {
+        continue;
+      }
+
+      _addPostBlockSundayIfApplicable(
+        result: result,
+        blockEndDate: officialEnd,
+        rangeStart: rangeStart,
+        rangeEnd: rangeEnd,
+      );
+    }
+
+    // Overrides must also be checked independently because a moved block may
+    // now end on a Saturday even when the original block end was elsewhere.
+    for (final AnnualLeaveBlockOverride override in overrides) {
+      _addPostBlockSundayIfApplicable(
+        result: result,
+        blockEndDate: override.overrideEndDate,
+        rangeStart: rangeStart,
+        rangeEnd: rangeEnd,
+      );
+    }
+
+    return Set<String>.unmodifiable(result);
+  }
+
+  static AnnualLeaveBlockOverride? _matchingBlockOverride({
+    required List<AnnualLeaveBlockOverride> overrides,
+    required int leaveYear,
+    required AnnualLeaveBlockPeriodType periodType,
+  }) {
+    for (final AnnualLeaveBlockOverride override in overrides) {
+      if (override.leaveYear == leaveYear &&
+          override.periodType == periodType) {
+        return override;
+      }
+    }
+
+    return null;
+  }
+
+  static AnnualLeaveBlockPeriodType? _blockPeriodTypeFromDatabase(
+    Object? value,
+  ) {
+    switch (_nullableString(value)) {
+      case 'spring':
+        return AnnualLeaveBlockPeriodType.spring;
+      case 'summer_first_week':
+        return AnnualLeaveBlockPeriodType.summerFirstWeek;
+      case 'summer_second_week':
+        return AnnualLeaveBlockPeriodType.summerSecondWeek;
+      case 'winter':
+        return AnnualLeaveBlockPeriodType.winter;
+      default:
+        return null;
+    }
+  }
+
+  static void _addPostBlockSundayIfApplicable({
+    required Set<String> result,
+    required DateTime blockEndDate,
+    required DateTime rangeStart,
+    required DateTime rangeEnd,
+  }) {
+    final DateTime blockEnd = _dateOnly(blockEndDate);
+
+    if (blockEnd.weekday != DateTime.saturday) {
+      return;
+    }
+
+    final DateTime sunday = blockEnd.add(const Duration(days: 1));
+
+    if (sunday.isBefore(rangeStart) || sunday.isAfter(rangeEnd)) {
+      return;
+    }
+
+    result.add(_databaseDate(sunday));
+  }
+
+  static Set<String> _sundayDatesForRange(
+    DateTime startDate,
+    DateTime endDate,
+  ) {
+    final DateTime start = _dateOnly(startDate);
+    final DateTime end = _dateOnly(endDate);
+
+    final Set<String> result = <String>{};
+
+    DateTime current = start;
+
+    while (!current.isAfter(end)) {
+      if (current.weekday == DateTime.sunday) {
+        result.add(_databaseDate(current));
+      }
+
+      current = current.add(const Duration(days: 1));
+    }
+
+    return Set<String>.unmodifiable(result);
+  }
+
+  static void _applyPermanentSundayUnavailability({
+    required List<Duty> duties,
+    required Set<String> sundayDates,
+    required Set<String> explicitlyAvailableSundayDates,
+  }) {
+    for (final String sundayDateValue in sundayDates) {
+      if (explicitlyAvailableSundayDates.contains(sundayDateValue)) {
+        continue;
+      }
+
+      final DateTime? sunday = DateTime.tryParse(sundayDateValue);
+
+      if (sunday == null || sunday.weekday != DateTime.sunday) {
+        continue;
+      }
+
+      final bool hasBookedSundayDuty = duties.any(
+        (Duty duty) =>
+            _databaseDate(duty.date) == sundayDateValue &&
+            duty.dutyType.countsAsWorking,
+      );
+
+      if (!hasBookedSundayDuty) {
+        continue;
+      }
+
+      final bool alreadyUnavailable = duties.any(
+        (Duty duty) =>
+            _databaseDate(duty.date) == sundayDateValue &&
+            duty.dutyType == DutyType.unavailable &&
+            duty.rawText == 'permanent_sunday_unavailable',
+      );
+
+      if (alreadyUnavailable) {
+        continue;
+      }
+
+      duties.add(
+        Duty(
+          date: _dateOnly(sunday),
+          source: RosterSource.annualLeave,
+          dutyType: DutyType.unavailable,
+          remarks: 'Unavailable – permanently unavailable Sunday',
+          rawText: 'permanent_sunday_unavailable',
+        ),
+      );
+    }
+  }
+
+  static void _applyPostBlockSundayUnavailability({
+    required List<Duty> duties,
+    required Set<String> postBlockSundayDates,
+    required Set<String> explicitlyAvailableSundayDates,
+  }) {
+    for (final String sundayDateValue in postBlockSundayDates) {
+      if (explicitlyAvailableSundayDates.contains(sundayDateValue)) {
+        continue;
+      }
+
+      final DateTime? sunday = DateTime.tryParse(sundayDateValue);
+
+      if (sunday == null || sunday.weekday != DateTime.sunday) {
+        continue;
+      }
+
+      final bool hasBookedSundayDuty = duties.any(
+        (Duty duty) =>
+            _databaseDate(duty.date) == sundayDateValue &&
+            duty.dutyType.countsAsWorking,
+      );
+
+      if (!hasBookedSundayDuty) {
+        continue;
+      }
+
+      final bool alreadyUnavailable = duties.any(
+        (Duty duty) =>
+            _databaseDate(duty.date) == sundayDateValue &&
+            duty.dutyType == DutyType.unavailable &&
+            duty.rawText == 'post_block_sunday',
+      );
+
+      if (alreadyUnavailable) {
+        continue;
+      }
+
+      duties.add(
+        Duty(
+          date: _dateOnly(sunday),
+          source: RosterSource.annualLeave,
+          dutyType: DutyType.unavailable,
+          remarks: 'Unavailable – Sunday following block annual leave',
+          rawText: 'post_block_sunday',
+        ),
+      );
+    }
   }
 
   /// Resolves a collection containing multiple dates into one winning duty
@@ -319,6 +748,144 @@ class DutyResolver {
     return second.uniqueKey.compareTo(first.uniqueKey);
   }
 
+  static void _applyBlockOverridesForDate({
+    required List<Duty> duties,
+    required DateTime date,
+    required List<AnnualLeaveBlockOverride> overrides,
+  }) {
+    for (final AnnualLeaveBlockOverride override in overrides) {
+      final bool dateInOriginal =
+          override.originalStartDate != null &&
+          override.originalEndDate != null &&
+          !_dateOnly(date).isBefore(_dateOnly(override.originalStartDate!)) &&
+          !_dateOnly(date).isAfter(_dateOnly(override.originalEndDate!));
+
+      final bool dateInOverride =
+          !_dateOnly(date).isBefore(_dateOnly(override.overrideStartDate)) &&
+          !_dateOnly(date).isAfter(_dateOnly(override.overrideEndDate));
+
+      if (dateInOriginal) {
+        duties.removeWhere(
+          (Duty duty) =>
+              duty.source == RosterSource.annualLeave &&
+              duty.dutyType == DutyType.annualLeave &&
+              _periodMatchesOverride(duty.remarks, override.periodType),
+        );
+      }
+
+      if (dateInOverride) {
+        duties.add(_blockOverrideDuty(override: override, date: date));
+      }
+    }
+  }
+
+  static void _applyBlockOverridesForRange({
+    required List<Duty> duties,
+    required DateTime start,
+    required DateTime end,
+    required List<AnnualLeaveBlockOverride> overrides,
+  }) {
+    for (final AnnualLeaveBlockOverride override in overrides) {
+      if (override.originalStartDate != null &&
+          override.originalEndDate != null) {
+        duties.removeWhere((Duty duty) {
+          if (duty.source != RosterSource.annualLeave ||
+              duty.dutyType != DutyType.annualLeave ||
+              !_periodMatchesOverride(duty.remarks, override.periodType)) {
+            return false;
+          }
+
+          final DateTime dutyDate = _dateOnly(duty.date);
+
+          return !dutyDate.isBefore(_dateOnly(override.originalStartDate!)) &&
+              !dutyDate.isAfter(_dateOnly(override.originalEndDate!));
+        });
+      }
+
+      DateTime current = _dateOnly(override.overrideStartDate);
+      final DateTime finalDate = _dateOnly(override.overrideEndDate);
+
+      if (current.isBefore(_dateOnly(start))) {
+        current = _dateOnly(start);
+      }
+
+      final DateTime cappedEnd = finalDate.isAfter(_dateOnly(end))
+          ? _dateOnly(end)
+          : finalDate;
+
+      while (!current.isAfter(cappedEnd)) {
+        duties.add(_blockOverrideDuty(override: override, date: current));
+
+        current = current.add(const Duration(days: 1));
+      }
+    }
+  }
+
+  static Duty _blockOverrideDuty({
+    required AnnualLeaveBlockOverride override,
+    required DateTime date,
+  }) {
+    String changeLabel;
+
+    switch (override.changeType) {
+      case AnnualLeaveBlockChangeType.manual:
+        changeLabel = 'Manual block leave';
+      case AnnualLeaveBlockChangeType.agreedMove:
+        changeLabel = 'Moved block annual leave';
+      case AnnualLeaveBlockChangeType.mutualSwap:
+        changeLabel = 'Mutual swap block annual leave';
+    }
+
+    return Duty(
+      date: _dateOnly(date),
+      source: RosterSource.annualLeave,
+      dutyType: DutyType.annualLeave,
+      remarks: '${_periodLabelForOverride(override.periodType)} – $changeLabel',
+      rawText: override.notes,
+    );
+  }
+
+  static bool _periodMatchesOverride(
+    String? remarks,
+    AnnualLeaveBlockPeriodType type,
+  ) {
+    final String value = (remarks ?? '').toLowerCase();
+
+    switch (type) {
+      case AnnualLeaveBlockPeriodType.spring:
+        return value.contains('spring');
+
+      case AnnualLeaveBlockPeriodType.summerFirstWeek:
+        return value.contains('summer') && value.contains('first');
+
+      case AnnualLeaveBlockPeriodType.summerSecondWeek:
+        return value.contains('summer') && value.contains('second');
+
+      case AnnualLeaveBlockPeriodType.winter:
+        return value.contains('winter');
+    }
+  }
+
+  static String _periodLabelForOverride(AnnualLeaveBlockPeriodType type) {
+    switch (type) {
+      case AnnualLeaveBlockPeriodType.spring:
+        return 'Spring block annual leave';
+
+      case AnnualLeaveBlockPeriodType.summerFirstWeek:
+        return 'Summer block annual leave – first week';
+
+      case AnnualLeaveBlockPeriodType.summerSecondWeek:
+        return 'Summer block annual leave – second week';
+
+      case AnnualLeaveBlockPeriodType.winter:
+        return 'Winter block annual leave';
+    }
+  }
+
+  static DateTime _dateOnly(DateTime value) {
+    return DateTime(value.year, value.month, value.day);
+  }
+
   static bool matchesProfile({
     required Map<String, dynamic> row,
     required String? payrollNumber,
@@ -336,6 +903,28 @@ class DutyResolver {
         driverNumber != null && rowDriver != null && driverNumber == rowDriver;
 
     return payrollMatches || driverMatches;
+  }
+
+  static Duty _floatingAnnualLeaveDutyFromRow(Map<String, dynamic> row) {
+    final String? dateValue = _nullableString(row['leave_date']);
+
+    if (dateValue == null) {
+      throw const DutyResolverException(
+        'A granted annual leave request is missing its leave date.',
+      );
+    }
+
+    final String? notes = _nullableString(row['notes']);
+
+    return Duty(
+      date: DateTime.parse(dateValue),
+      source: RosterSource.annualLeave,
+      dutyType: DutyType.annualLeave,
+      remarks: notes == null
+          ? 'Floating annual leave'
+          : 'Floating annual leave – $notes',
+      rawText: _nullableString(row['id']),
+    );
   }
 
   static Duty _manualDutyFromRow(Map<String, dynamic> row) {

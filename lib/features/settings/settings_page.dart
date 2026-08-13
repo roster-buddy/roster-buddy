@@ -3,6 +3,13 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/models/annual_leave_balance.dart';
+import '../../core/models/annual_leave_block_cycle.dart';
+import '../../core/models/annual_leave_block_override.dart';
+import '../../core/models/annual_leave_request.dart';
+import '../../core/services/annual_leave_block_service.dart';
+import '../../core/services/annual_leave_service.dart';
+
 class AppSettingsPage extends StatefulWidget {
   const AppSettingsPage({
     required this.email,
@@ -142,6 +149,12 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
     }
   }
 
+  Future<void> _openAnnualLeave() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const AnnualLeaveSettingsPage()),
+    );
+  }
+
   void _showComingSoon(String feature) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -238,7 +251,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                         'Leave blocks, floating days and carry-over',
                       ),
                       trailing: const Icon(Icons.chevron_right),
-                      onTap: () => _showComingSoon('Annual Leave'),
+                      onTap: _openAnnualLeave,
                     ),
                     const Divider(height: 1),
                     ListTile(
@@ -311,6 +324,1815 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
   }
 }
 
+class AnnualLeaveSettingsPage extends StatefulWidget {
+  const AnnualLeaveSettingsPage({super.key});
+
+  @override
+  State<AnnualLeaveSettingsPage> createState() =>
+      _AnnualLeaveSettingsPageState();
+}
+
+class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
+  static const Color navy = Color(0xFF102A43);
+  static const Color railwayBlue = Color(0xFF1769AA);
+  static const Color background = Color(0xFFF4F7FA);
+  static const Color leaveRed = Color(0xFFD64545);
+  static const Color textGrey = Color(0xFF52667A);
+  static const Color abeyanceAmber = Color(0xFFF59E0B);
+
+  final AnnualLeaveService _annualLeaveService = AnnualLeaveService();
+  final AnnualLeaveBlockService _annualLeaveBlockService =
+      AnnualLeaveBlockService();
+
+  late int _leaveYear;
+
+  bool _loading = true;
+  String? _loadError;
+
+  int _entitlementDays = 14;
+  int _startingBalanceDays = 14;
+  int _bonusDays = 0;
+  int _carryOverDays = 0;
+  int _lieuDays = 0;
+  int _remainingDays = 14;
+
+  List<AnnualLeaveRequest> _requests = <AnnualLeaveRequest>[];
+  List<_AnnualLeaveBlockPeriod> _blockPeriods = <_AnnualLeaveBlockPeriod>[];
+
+  AnnualLeaveBlockCycle? _blockCycle;
+  List<AnnualLeaveBlockOverride> _blockOverrides = <AnnualLeaveBlockOverride>[];
+
+  @override
+  void initState() {
+    super.initState();
+
+    _leaveYear = DateTime.now().year;
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+
+    try {
+      final SupabaseClient supabase = Supabase.instance.client;
+      final User? user = supabase.auth.currentUser;
+
+      if (user == null) {
+        throw const AnnualLeaveException(
+          'You must be signed in before loading annual leave.',
+        );
+      }
+
+      final DateTime yearStart = DateTime(_leaveYear, 1, 1);
+      final DateTime yearEnd = DateTime(_leaveYear, 12, 31);
+
+      final AnnualLeaveBalance balance = await _annualLeaveService
+          .getBalanceForYear(_leaveYear);
+
+      final Map<String, AnnualLeaveRequest> requestMap =
+          await _annualLeaveService.getRequestsForRange(yearStart, yearEnd);
+
+      final AnnualLeaveBlockCycle? blockCycle = await _annualLeaveBlockService
+          .getCycleForYear(_leaveYear);
+
+      final List<AnnualLeaveBlockOverride> blockOverrides =
+          await _annualLeaveBlockService.getOverridesForYear(_leaveYear);
+
+      final Map<String, dynamic>? profile = await supabase
+          .from('driver_profiles')
+          .select('driver_number')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      final String driverNumber = (profile?['driver_number'] ?? '')
+          .toString()
+          .trim();
+
+      final List<_AnnualLeaveBlockPeriod> blockPeriods =
+          <_AnnualLeaveBlockPeriod>[];
+
+      if (driverNumber.isNotEmpty) {
+        final List<dynamic> blockResponse = await supabase
+            .from('annual_leave_periods')
+            .select(
+              'period_type, start_date, end_date, '
+              'annual_leave_allocations!inner('
+              'driver_number, is_confirmed'
+              ')',
+            )
+            .lte('start_date', _databaseDate(yearEnd))
+            .gte('end_date', _databaseDate(yearStart))
+            .eq('annual_leave_allocations.driver_number', driverNumber)
+            .eq('annual_leave_allocations.is_confirmed', true)
+            .order('start_date');
+
+        for (final Map<String, dynamic> row
+            in blockResponse.whereType<Map<String, dynamic>>()) {
+          final DateTime? start = DateTime.tryParse(
+            (row['start_date'] ?? '').toString(),
+          );
+          final DateTime? end = DateTime.tryParse(
+            (row['end_date'] ?? '').toString(),
+          );
+
+          if (start == null || end == null) {
+            continue;
+          }
+
+          blockPeriods.add(
+            _AnnualLeaveBlockPeriod(
+              type: (row['period_type'] ?? '').toString(),
+              start: start,
+              end: end,
+            ),
+          );
+        }
+      }
+
+      final List<AnnualLeaveRequest> requests = requestMap.values.toList()
+        ..sort(
+          (AnnualLeaveRequest first, AnnualLeaveRequest second) =>
+              first.leaveDate.compareTo(second.leaveDate),
+        );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _entitlementDays = balance.entitlementDays;
+        _startingBalanceDays = balance.startingBalanceDays;
+        _bonusDays = balance.bonusDays;
+        _carryOverDays = balance.carryOverDays;
+        _lieuDays = balance.lieuDays;
+        _remainingDays = balance.remainingDays;
+        _requests = requests;
+        _blockPeriods = blockPeriods;
+        _blockCycle = blockCycle;
+        _blockOverrides = blockOverrides;
+        _loading = false;
+      });
+    } on AnnualLeaveException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _loading = false;
+        _loadError = error.message;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _loading = false;
+        _loadError =
+            'Roster Buddy could not load your annual leave information.';
+      });
+    }
+  }
+
+  Future<void> _changeYear(int offset) async {
+    setState(() {
+      _leaveYear += offset;
+    });
+
+    await _load();
+  }
+
+  int get _committedDays {
+    return _requests.where((AnnualLeaveRequest request) {
+      return request.requestType == AnnualLeaveRequestType.floating &&
+          request.status != AnnualLeaveRequestStatus.cancelled;
+    }).length;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: background,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: navy,
+        elevation: 0,
+        title: const Text(
+          'Annual Leave',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+      ),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: _load,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 680),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(20),
+                      children: [
+                        _buildYearSelector(),
+                        const SizedBox(height: 18),
+                        if (_loadError != null)
+                          _buildErrorCard()
+                        else ...[
+                          _buildFloatingBalanceCard(),
+                          const SizedBox(height: 18),
+                          _buildBlockLeaveCard(),
+                          const SizedBox(height: 18),
+                          _buildRequestsCard(),
+                        ],
+                        const SizedBox(height: 30),
+                      ],
+                    ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildYearSelector() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: 'Previous leave year',
+              onPressed: _loading ? null : () => _changeYear(-1),
+              icon: const Icon(Icons.chevron_left),
+            ),
+            Expanded(
+              child: Column(
+                children: [
+                  Text(
+                    '$_leaveYear Annual Leave',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: navy,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '1 January $_leaveYear – 31 December $_leaveYear',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: textGrey, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Next leave year',
+              onPressed: _loading ? null : () => _changeYear(1),
+              icon: const Icon(Icons.chevron_right),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingBalanceCard() {
+    final int totalAvailable =
+        _startingBalanceDays + _bonusDays + _carryOverDays + _lieuDays;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const ListTile(
+            leading: CircleAvatar(
+              backgroundColor: Color(0x1A1769AA),
+              child: Icon(Icons.beach_access_outlined, color: railwayBlue),
+            ),
+            title: Text(
+              'Floating annual leave',
+              style: TextStyle(color: navy, fontWeight: FontWeight.w900),
+            ),
+            subtitle: Text('Full days only'),
+          ),
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _AnnualLeaveNumberTile(
+                        value: '$_entitlementDays',
+                        label: 'Normal entitlement',
+                      ),
+                    ),
+                    Expanded(
+                      child: _AnnualLeaveNumberTile(
+                        value: '$_startingBalanceDays',
+                        label: 'Starting balance',
+                      ),
+                    ),
+                    Expanded(
+                      child: _AnnualLeaveNumberTile(
+                        value: '$_remainingDays',
+                        label: 'Remaining',
+                        emphasise: true,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _AnnualLeaveNumberTile(
+                        value: '$_bonusDays',
+                        label: 'Bonus',
+                      ),
+                    ),
+                    Expanded(
+                      child: _AnnualLeaveNumberTile(
+                        value: '$_carryOverDays',
+                        label: 'Carry-over',
+                      ),
+                    ),
+                    Expanded(
+                      child: _AnnualLeaveNumberTile(
+                        value: '$_lieuDays',
+                        label: 'Days in lieu',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(13),
+                  decoration: BoxDecoration(
+                    color: railwayBlue.withValues(alpha: 0.07),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Column(
+                    children: [
+                      _AnnualLeaveSummaryRow(
+                        label: 'Starting floating balance',
+                        value: '$_startingBalanceDays days',
+                      ),
+                      const SizedBox(height: 7),
+                      _AnnualLeaveSummaryRow(
+                        label: 'Bonus days',
+                        value: '+$_bonusDays days',
+                      ),
+                      const SizedBox(height: 7),
+                      _AnnualLeaveSummaryRow(
+                        label: 'Carry-over',
+                        value: '+$_carryOverDays days',
+                      ),
+                      const SizedBox(height: 7),
+                      _AnnualLeaveSummaryRow(
+                        label: 'Days in lieu',
+                        value: '+$_lieuDays days',
+                      ),
+                      const Divider(height: 20),
+                      _AnnualLeaveSummaryRow(
+                        label: 'Total available',
+                        value: '$totalAvailable days',
+                        bold: true,
+                      ),
+                      const SizedBox(height: 7),
+                      _AnnualLeaveSummaryRow(
+                        label: 'Committed',
+                        value: '-$_committedDays days',
+                      ),
+                      const Divider(height: 20),
+                      _AnnualLeaveSummaryRow(
+                        label: 'Remaining',
+                        value: '$_remainingDays days',
+                        bold: true,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _showBalanceSetupDialog,
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const Text('Edit yearly allowance'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _leaveYear == DateTime.now().year
+                      ? 'If you start using Roster Buddy part way through the '
+                            'year, set Starting balance to the number of floating '
+                            'days you actually have left. Bonus days, carry-over '
+                            'and days in lieu can then be added separately.'
+                      : 'Each new leave year starts with the normal 14 floating '
+                            'days. Carry-over, bonus days and days in lieu are '
+                            'added separately for that year.',
+                  style: const TextStyle(
+                    color: textGrey,
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Requested, abeyance and granted floating days count as '
+                  'committed. Cancelling a request returns that day to the '
+                  'available balance.',
+                  style: TextStyle(color: textGrey, fontSize: 12, height: 1.4),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showBalanceSetupDialog() async {
+    final TextEditingController startingController = TextEditingController(
+      text: _startingBalanceDays.toString(),
+    );
+    final TextEditingController bonusController = TextEditingController(
+      text: _bonusDays.toString(),
+    );
+    final TextEditingController carryController = TextEditingController(
+      text: _carryOverDays.toString(),
+    );
+    final TextEditingController lieuController = TextEditingController(
+      text: _lieuDays.toString(),
+    );
+
+    bool saving = false;
+    String? errorMessage;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) {
+        return StatefulBuilder(
+          builder: (BuildContext sheetContext, void Function(void Function()) setSheetState) {
+            int? valueOf(TextEditingController controller) {
+              return int.tryParse(controller.text.trim());
+            }
+
+            Future<void> save() async {
+              if (saving) {
+                return;
+              }
+
+              final int? starting = valueOf(startingController);
+              final int? bonus = valueOf(bonusController);
+              final int? carry = valueOf(carryController);
+              final int? lieu = valueOf(lieuController);
+
+              if (starting == null ||
+                  bonus == null ||
+                  carry == null ||
+                  lieu == null) {
+                setSheetState(() {
+                  errorMessage = 'Enter whole numbers for all leave values.';
+                });
+                return;
+              }
+
+              if (starting < 0 || bonus < 0 || carry < 0 || lieu < 0) {
+                setSheetState(() {
+                  errorMessage = 'Annual leave values cannot be negative.';
+                });
+                return;
+              }
+
+              setSheetState(() {
+                saving = true;
+                errorMessage = null;
+              });
+
+              try {
+                await _annualLeaveService.saveBalanceSetup(
+                  leaveYear: _leaveYear,
+                  entitlementDays: 14,
+                  startingBalanceDays: starting,
+                  bonusDays: bonus,
+                  carryOverDays: carry,
+                  lieuDays: lieu,
+                );
+
+                if (!sheetContext.mounted) {
+                  return;
+                }
+
+                Navigator.of(sheetContext).pop();
+
+                await _load();
+
+                if (!mounted) {
+                  return;
+                }
+
+                ScaffoldMessenger.of(context)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '$_leaveYear annual leave allowance updated.',
+                      ),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+              } on AnnualLeaveException catch (error) {
+                if (!sheetContext.mounted) {
+                  return;
+                }
+
+                setSheetState(() {
+                  saving = false;
+                  errorMessage = error.message;
+                });
+              } catch (_) {
+                if (!sheetContext.mounted) {
+                  return;
+                }
+
+                setSheetState(() {
+                  saving = false;
+                  errorMessage =
+                      'Roster Buddy could not save the annual leave allowance.';
+                });
+              }
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  4,
+                  20,
+                  MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '$_leaveYear floating leave',
+                        style: const TextStyle(
+                          color: navy,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Normal yearly entitlement: 14 days',
+                        style: TextStyle(color: textGrey),
+                      ),
+                      const SizedBox(height: 20),
+                      TextField(
+                        controller: startingController,
+                        enabled: !saving,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: 'Starting balance',
+                          helperText: _leaveYear == DateTime.now().year
+                              ? 'Use your actual remaining balance if joining '
+                                    'Roster Buddy part way through the year.'
+                              : 'Normally 14 at the start of a new leave year.',
+                          prefixIcon: const Icon(Icons.beach_access_outlined),
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: bonusController,
+                        enabled: !saving,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Bonus days',
+                          helperText:
+                              'Extra leave awarded during this leave year.',
+                          prefixIcon: Icon(Icons.add_circle_outline),
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: carryController,
+                        enabled: !saving,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Carry-over days',
+                          helperText:
+                              'Unused floating leave carried from the previous year.',
+                          prefixIcon: Icon(Icons.redo_outlined),
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: lieuController,
+                        enabled: !saving,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Days in lieu',
+                          helperText: 'Additional leave awarded in lieu.',
+                          prefixIcon: Icon(Icons.event_repeat_outlined),
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      if (errorMessage != null) ...[
+                        const SizedBox(height: 14),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: leaveRed.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            errorMessage!,
+                            style: const TextStyle(
+                              color: leaveRed,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 22),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: saving ? null : save,
+                          icon: saving
+                              ? const SizedBox(
+                                  width: 17,
+                                  height: 17,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.save_outlined),
+                          label: Text(saving ? 'Saving…' : 'Save allowance'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    startingController.dispose();
+    bonusController.dispose();
+    carryController.dispose();
+    lieuController.dispose();
+  }
+
+  AnnualLeaveBlockPeriodType? _blockPeriodType(String value) {
+    switch (value) {
+      case 'spring':
+        return AnnualLeaveBlockPeriodType.spring;
+      case 'summer_first_week':
+        return AnnualLeaveBlockPeriodType.summerFirstWeek;
+      case 'summer_second_week':
+        return AnnualLeaveBlockPeriodType.summerSecondWeek;
+      case 'winter':
+        return AnnualLeaveBlockPeriodType.winter;
+      default:
+        return null;
+    }
+  }
+
+  AnnualLeaveBlockOverride? _overrideForPeriod(String periodType) {
+    final AnnualLeaveBlockPeriodType? type = _blockPeriodType(periodType);
+
+    if (type == null) {
+      return null;
+    }
+
+    for (final AnnualLeaveBlockOverride override in _blockOverrides) {
+      if (override.periodType == type) {
+        return override;
+      }
+    }
+
+    return null;
+  }
+
+  String _blockChangeLabel(AnnualLeaveBlockChangeType value) {
+    switch (value) {
+      case AnnualLeaveBlockChangeType.manual:
+        return 'MANUAL';
+      case AnnualLeaveBlockChangeType.agreedMove:
+        return 'MOVED';
+      case AnnualLeaveBlockChangeType.mutualSwap:
+        return 'SWAPPED';
+    }
+  }
+
+  Future<void> _showBlockCycleDialog() async {
+    int selectedBlock = _blockCycle?.weekIndex ?? 1;
+    bool saving = false;
+    String? errorMessage;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) {
+        return StatefulBuilder(
+          builder:
+              (
+                BuildContext sheetContext,
+                void Function(void Function()) setSheetState,
+              ) {
+                Future<void> save() async {
+                  if (saving) {
+                    return;
+                  }
+
+                  setSheetState(() {
+                    saving = true;
+                    errorMessage = null;
+                  });
+
+                  try {
+                    await _annualLeaveBlockService.saveCycleForYear(
+                      leaveYear: _leaveYear,
+                      weekIndex: selectedBlock,
+                    );
+
+                    // Automatically prepare the following year's +5 allocation.
+                    await _annualLeaveBlockService.ensureNextYearCycle(
+                      currentLeaveYear: _leaveYear,
+                    );
+
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    Navigator.of(sheetContext).pop();
+
+                    await _load();
+
+                    if (!mounted) {
+                      return;
+                    }
+
+                    ScaffoldMessenger.of(context)
+                      ..hideCurrentSnackBar()
+                      ..showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '$_leaveYear block allocation saved as '
+                            'Block $selectedBlock.',
+                          ),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                  } on AnnualLeaveBlockException catch (error) {
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    setSheetState(() {
+                      saving = false;
+                      errorMessage = error.message;
+                    });
+                  } catch (_) {
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    setSheetState(() {
+                      saving = false;
+                      errorMessage =
+                          'Roster Buddy could not save the block allocation.';
+                    });
+                  }
+                }
+
+                return SafeArea(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      4,
+                      20,
+                      MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$_leaveYear block allocation',
+                            style: const TextStyle(
+                              color: navy,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'Choose the block number allocated to you on the '
+                            'Annual Leave Roster.',
+                            style: TextStyle(color: textGrey, height: 1.4),
+                          ),
+                          const SizedBox(height: 20),
+                          DropdownButtonFormField<int>(
+                            value: selectedBlock,
+                            decoration: const InputDecoration(
+                              labelText: 'Allocated block',
+                              prefixIcon: Icon(Icons.date_range_outlined),
+                              border: OutlineInputBorder(),
+                            ),
+                            items: List<DropdownMenuItem<int>>.generate(13, (
+                              int index,
+                            ) {
+                              final int value = index + 1;
+
+                              return DropdownMenuItem<int>(
+                                value: value,
+                                child: Text('Block $value'),
+                              );
+                            }),
+                            onChanged: saving
+                                ? null
+                                : (int? value) {
+                                    if (value == null) {
+                                      return;
+                                    }
+
+                                    setSheetState(() {
+                                      selectedBlock = value;
+                                    });
+                                  },
+                          ),
+                          const SizedBox(height: 16),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: railwayBlue.withValues(alpha: 0.07),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              'Next year: Block '
+                              '${AnnualLeaveBlockCycle.advanceWeekIndex(selectedBlock)} '
+                              '(moves forward 5 blocks)',
+                              style: const TextStyle(
+                                color: navy,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          if (errorMessage != null) ...[
+                            const SizedBox(height: 14),
+                            Text(
+                              errorMessage!,
+                              style: const TextStyle(
+                                color: leaveRed,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 22),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: saving ? null : save,
+                              icon: saving
+                                  ? const SizedBox(
+                                      width: 17,
+                                      height: 17,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.save_outlined),
+                              label: Text(
+                                saving ? 'Saving…' : 'Save block allocation',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+        );
+      },
+    );
+  }
+
+  Future<void> _showBlockOverrideDialog(_AnnualLeaveBlockPeriod period) async {
+    final AnnualLeaveBlockPeriodType? periodType = _blockPeriodType(
+      period.type,
+    );
+
+    if (periodType == null) {
+      return;
+    }
+
+    final AnnualLeaveBlockOverride? existing = _overrideForPeriod(period.type);
+
+    DateTime selectedStart = existing?.overrideStartDate ?? period.start;
+
+    DateTime selectedEnd = existing?.overrideEndDate ?? period.end;
+
+    AnnualLeaveBlockChangeType changeType =
+        existing?.changeType ?? AnnualLeaveBlockChangeType.agreedMove;
+
+    final TextEditingController driverController = TextEditingController(
+      text: existing?.swapDriverNumber ?? '',
+    );
+
+    final TextEditingController referenceController = TextEditingController(
+      text: existing?.swapReference ?? '',
+    );
+
+    final TextEditingController notesController = TextEditingController(
+      text: existing?.notes ?? '',
+    );
+
+    bool saving = false;
+    String? errorMessage;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) {
+        return StatefulBuilder(
+          builder:
+              (
+                BuildContext sheetContext,
+                void Function(void Function()) setSheetState,
+              ) {
+                Future<void> selectStart() async {
+                  final DateTime? value = await showDatePicker(
+                    context: sheetContext,
+                    initialDate: selectedStart,
+                    firstDate: DateTime(_leaveYear, 1, 1),
+                    lastDate: DateTime(_leaveYear, 12, 31),
+                  );
+
+                  if (value != null && sheetContext.mounted) {
+                    setSheetState(() {
+                      selectedStart = value;
+
+                      if (selectedEnd.isBefore(selectedStart)) {
+                        selectedEnd = selectedStart.add(
+                          const Duration(days: 6),
+                        );
+                      }
+                    });
+                  }
+                }
+
+                Future<void> selectEnd() async {
+                  final DateTime? value = await showDatePicker(
+                    context: sheetContext,
+                    initialDate: selectedEnd,
+                    firstDate: DateTime(_leaveYear, 1, 1),
+                    lastDate: DateTime(_leaveYear, 12, 31),
+                  );
+
+                  if (value != null && sheetContext.mounted) {
+                    setSheetState(() {
+                      selectedEnd = value;
+                    });
+                  }
+                }
+
+                Future<void> save() async {
+                  if (saving) {
+                    return;
+                  }
+
+                  if (selectedEnd.isBefore(selectedStart)) {
+                    setSheetState(() {
+                      errorMessage =
+                          'The block end date cannot be before the start date.';
+                    });
+                    return;
+                  }
+
+                  if (changeType == AnnualLeaveBlockChangeType.mutualSwap &&
+                      driverController.text.trim().isEmpty) {
+                    setSheetState(() {
+                      errorMessage =
+                          'Enter the other driver number for a mutual swap.';
+                    });
+                    return;
+                  }
+
+                  setSheetState(() {
+                    saving = true;
+                    errorMessage = null;
+                  });
+
+                  try {
+                    await _annualLeaveBlockService.saveOverride(
+                      leaveYear: _leaveYear,
+                      periodType: periodType,
+                      originalStartDate: period.start,
+                      originalEndDate: period.end,
+                      overrideStartDate: selectedStart,
+                      overrideEndDate: selectedEnd,
+                      changeType: changeType,
+                      swapDriverNumber:
+                          changeType == AnnualLeaveBlockChangeType.mutualSwap
+                          ? driverController.text
+                          : null,
+                      swapReference: referenceController.text,
+                      notes: notesController.text,
+                    );
+
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    Navigator.of(sheetContext).pop();
+
+                    await _load();
+
+                    if (!mounted) {
+                      return;
+                    }
+
+                    ScaffoldMessenger.of(context)
+                      ..hideCurrentSnackBar()
+                      ..showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '${_blockTypeLabel(period.type)} updated.',
+                          ),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                  } on AnnualLeaveBlockException catch (error) {
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    setSheetState(() {
+                      saving = false;
+                      errorMessage = error.message;
+                    });
+                  } catch (_) {
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    setSheetState(() {
+                      saving = false;
+                      errorMessage =
+                          'Roster Buddy could not save the block leave change.';
+                    });
+                  }
+                }
+
+                Future<void> restoreOriginal() async {
+                  if (existing == null || saving) {
+                    return;
+                  }
+
+                  setSheetState(() {
+                    saving = true;
+                    errorMessage = null;
+                  });
+
+                  try {
+                    await _annualLeaveBlockService.removeOverride(
+                      leaveYear: _leaveYear,
+                      periodType: periodType,
+                    );
+
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    Navigator.of(sheetContext).pop();
+
+                    await _load();
+
+                    if (!mounted) {
+                      return;
+                    }
+
+                    ScaffoldMessenger.of(context)
+                      ..hideCurrentSnackBar()
+                      ..showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '${_blockTypeLabel(period.type)} restored to the '
+                            'official Annual Leave Roster allocation.',
+                          ),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                  } catch (_) {
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    setSheetState(() {
+                      saving = false;
+                      errorMessage =
+                          'Roster Buddy could not restore the original block.';
+                    });
+                  }
+                }
+
+                return SafeArea(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      4,
+                      20,
+                      MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _blockTypeLabel(period.type),
+                            style: const TextStyle(
+                              color: navy,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            'Official allocation: '
+                            '${_displayDate(period.start)} – '
+                            '${_displayDate(period.end)}',
+                            style: const TextStyle(
+                              color: textGrey,
+                              height: 1.35,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          DropdownButtonFormField<AnnualLeaveBlockChangeType>(
+                            value: changeType,
+                            decoration: const InputDecoration(
+                              labelText: 'Change type',
+                              prefixIcon: Icon(Icons.swap_horiz_outlined),
+                              border: OutlineInputBorder(),
+                            ),
+                            items: const [
+                              DropdownMenuItem(
+                                value: AnnualLeaveBlockChangeType.agreedMove,
+                                child: Text('Agreed move'),
+                              ),
+                              DropdownMenuItem(
+                                value: AnnualLeaveBlockChangeType.mutualSwap,
+                                child: Text('Mutual swap'),
+                              ),
+                            ],
+                            onChanged: saving
+                                ? null
+                                : (AnnualLeaveBlockChangeType? value) {
+                                    if (value != null) {
+                                      setSheetState(() {
+                                        changeType = value;
+                                      });
+                                    }
+                                  },
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: saving ? null : selectStart,
+                                  icon: const Icon(
+                                    Icons.calendar_today_outlined,
+                                  ),
+                                  label: Text(
+                                    'Start\n${_displayDate(selectedStart)}',
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: saving ? null : selectEnd,
+                                  icon: const Icon(Icons.event_outlined),
+                                  label: Text(
+                                    'End\n${_displayDate(selectedEnd)}',
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (changeType ==
+                              AnnualLeaveBlockChangeType.mutualSwap) ...[
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: driverController,
+                              enabled: !saving,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Other driver number',
+                                helperText:
+                                    'Driver involved in the mutual block swap.',
+                                prefixIcon: Icon(Icons.badge_outlined),
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: referenceController,
+                            enabled: !saving,
+                            decoration: const InputDecoration(
+                              labelText: 'Swap / agreement reference',
+                              hintText: 'Optional',
+                              prefixIcon: Icon(Icons.tag_outlined),
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: notesController,
+                            enabled: !saving,
+                            minLines: 2,
+                            maxLines: 4,
+                            decoration: const InputDecoration(
+                              labelText: 'Notes',
+                              hintText: 'Optional',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                          if (errorMessage != null) ...[
+                            const SizedBox(height: 14),
+                            Text(
+                              errorMessage!,
+                              style: const TextStyle(
+                                color: leaveRed,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 22),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: saving ? null : save,
+                              icon: saving
+                                  ? const SizedBox(
+                                      width: 17,
+                                      height: 17,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.save_outlined),
+                              label: Text(
+                                saving
+                                    ? 'Saving…'
+                                    : existing == null
+                                    ? 'Save block change'
+                                    : 'Update block change',
+                              ),
+                            ),
+                          ),
+                          if (existing != null) ...[
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: saving ? null : restoreOriginal,
+                                icon: const Icon(Icons.restore_outlined),
+                                label: const Text(
+                                  'Restore official allocation',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+        );
+      },
+    );
+
+    driverController.dispose();
+    referenceController.dispose();
+    notesController.dispose();
+  }
+
+  Widget _buildBlockLeaveCard() {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const ListTile(
+            leading: CircleAvatar(
+              backgroundColor: Color(0x1AD64545),
+              child: Icon(Icons.date_range_outlined, color: leaveRed),
+            ),
+            title: Text(
+              'Block annual leave',
+              style: TextStyle(color: navy, fontWeight: FontWeight.w900),
+            ),
+            subtitle: Text('Four allocated block weeks'),
+          ),
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: railwayBlue.withValues(alpha: 0.07),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: _blockCycle == null
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Block allocation not set',
+                          style: TextStyle(
+                            color: navy,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        const Text(
+                          'Set the block number allocated to you. '
+                          'Roster Buddy will move it forward by 5 blocks '
+                          'for each following leave year.',
+                          style: TextStyle(color: textGrey, height: 1.35),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: _showBlockCycleDialog,
+                            icon: const Icon(Icons.add_outlined),
+                            label: const Text('Set allocated block'),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '$_leaveYear allocation',
+                                style: const TextStyle(
+                                  color: textGrey,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'Block ${_blockCycle!.weekIndex}',
+                                style: const TextStyle(
+                                  color: navy,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                'Next year: Block '
+                                '${_blockCycle!.nextYearWeekIndex}',
+                                style: const TextStyle(
+                                  color: textGrey,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Change block allocation',
+                          onPressed: _showBlockCycleDialog,
+                          icon: const Icon(Icons.edit_outlined),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+          const Divider(height: 1),
+          if (_blockPeriods.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(18),
+              child: Text(
+                'No confirmed block dates have been found for this '
+                'leave year. Set your block number above. The four '
+                'allocated weeks will appear here when the Annual Leave '
+                'Roster for this year has been processed.',
+                style: TextStyle(color: textGrey, height: 1.4),
+              ),
+            )
+          else
+            ..._blockPeriods.map((_AnnualLeaveBlockPeriod period) {
+              final AnnualLeaveBlockOverride? override = _overrideForPeriod(
+                period.type,
+              );
+
+              final DateTime displayedStart =
+                  override?.overrideStartDate ?? period.start;
+
+              final DateTime displayedEnd =
+                  override?.overrideEndDate ?? period.end;
+
+              return Column(
+                children: [
+                  ListTile(
+                    leading: Icon(
+                      override == null
+                          ? Icons.event_available_outlined
+                          : Icons.swap_horiz_outlined,
+                      color: leaveRed,
+                    ),
+                    title: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _blockTypeLabel(period.type),
+                            style: const TextStyle(
+                              color: navy,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        if (override != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: railwayBlue.withValues(alpha: 0.10),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              _blockChangeLabel(override.changeType),
+                              style: const TextStyle(
+                                color: railwayBlue,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        override == null
+                            ? '${_displayDate(period.start)} – '
+                                  '${_displayDate(period.end)}'
+                            : '${_displayDate(displayedStart)} – '
+                                  '${_displayDate(displayedEnd)}\n'
+                                  'Official: ${_displayDate(period.start)} – '
+                                  '${_displayDate(period.end)}',
+                      ),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _showBlockOverrideDialog(period),
+                  ),
+                  if (period != _blockPeriods.last) const Divider(height: 1),
+                ],
+              );
+            }),
+          const Divider(height: 1),
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'An agreed move or mutual swap only changes your own '
+              'allocation. The official uploaded Annual Leave Roster '
+              'remains unchanged. Summer week 1 and Summer week 2 can '
+              'be changed independently.',
+              style: TextStyle(color: textGrey, fontSize: 12, height: 1.4),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRequestsCard() {
+    final List<AnnualLeaveRequest> floatingRequests = _requests.where((
+      AnnualLeaveRequest request,
+    ) {
+      return request.requestType == AnnualLeaveRequestType.floating;
+    }).toList();
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const ListTile(
+            leading: CircleAvatar(
+              backgroundColor: Color(0x1A1769AA),
+              child: Icon(Icons.list_alt_outlined, color: railwayBlue),
+            ),
+            title: Text(
+              'Floating leave requests',
+              style: TextStyle(color: navy, fontWeight: FontWeight.w900),
+            ),
+            subtitle: Text('Requested, abeyance and granted days'),
+          ),
+          const Divider(height: 1),
+          if (floatingRequests.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(18),
+              child: Text(
+                'You have no active floating annual leave requests '
+                'for this leave year.',
+                style: TextStyle(color: textGrey, height: 1.4),
+              ),
+            )
+          else
+            ...floatingRequests.map(
+              (AnnualLeaveRequest request) => Column(
+                children: [
+                  ListTile(
+                    leading: Icon(
+                      _requestIcon(request),
+                      color: _requestColour(request),
+                    ),
+                    title: Text(
+                      _displayDate(request.leaveDate),
+                      style: const TextStyle(
+                        color: navy,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    subtitle: request.notes?.trim().isNotEmpty == true
+                        ? Text(request.notes!.trim())
+                        : null,
+                    trailing: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _requestColour(request).withValues(alpha: 0.11),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        _requestStatusLabel(request),
+                        style: TextStyle(
+                          color: _requestColour(request),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (request != floatingRequests.last)
+                    const Divider(height: 1),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            const Icon(Icons.error_outline, color: leaveRed, size: 36),
+            const SizedBox(height: 10),
+            Text(
+              _loadError!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: textGrey, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            FilledButton.icon(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Try again'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _requestStatusLabel(AnnualLeaveRequest request) {
+    switch (request.status) {
+      case AnnualLeaveRequestStatus.requested:
+        return 'REQUESTED';
+
+      case AnnualLeaveRequestStatus.abeyance:
+        if (request.queuePosition != null) {
+          return 'ABEYANCE #${request.queuePosition}';
+        }
+
+        return 'ABEYANCE';
+
+      case AnnualLeaveRequestStatus.granted:
+        return 'GRANTED';
+
+      case AnnualLeaveRequestStatus.cancelled:
+        return 'CANCELLED';
+    }
+  }
+
+  Color _requestColour(AnnualLeaveRequest request) {
+    switch (request.status) {
+      case AnnualLeaveRequestStatus.requested:
+        return railwayBlue;
+      case AnnualLeaveRequestStatus.abeyance:
+        return abeyanceAmber;
+      case AnnualLeaveRequestStatus.granted:
+        return leaveRed;
+      case AnnualLeaveRequestStatus.cancelled:
+        return textGrey;
+    }
+  }
+
+  IconData _requestIcon(AnnualLeaveRequest request) {
+    switch (request.status) {
+      case AnnualLeaveRequestStatus.requested:
+        return Icons.schedule_outlined;
+      case AnnualLeaveRequestStatus.abeyance:
+        return Icons.hourglass_top_outlined;
+      case AnnualLeaveRequestStatus.granted:
+        return Icons.event_available_outlined;
+      case AnnualLeaveRequestStatus.cancelled:
+        return Icons.cancel_outlined;
+    }
+  }
+
+  String _blockTypeLabel(String value) {
+    switch (value) {
+      case 'spring':
+        return 'Spring block';
+      case 'summer_first_week':
+        return 'Summer block – first week';
+      case 'summer_second_week':
+        return 'Summer block – second week';
+      case 'winter':
+        return 'Winter block';
+      default:
+        return 'Block annual leave';
+    }
+  }
+
+  String _displayDate(DateTime date) {
+    const List<String> months = <String>[
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
+  }
+
+  static String _databaseDate(DateTime date) {
+    final String month = date.month.toString().padLeft(2, '0');
+    final String day = date.day.toString().padLeft(2, '0');
+
+    return '${date.year}-$month-$day';
+  }
+}
+
+class _AnnualLeaveBlockPeriod {
+  const _AnnualLeaveBlockPeriod({
+    required this.type,
+    required this.start,
+    required this.end,
+  });
+
+  final String type;
+  final DateTime start;
+  final DateTime end;
+}
+
+class _AnnualLeaveNumberTile extends StatelessWidget {
+  const _AnnualLeaveNumberTile({
+    required this.value,
+    required this.label,
+    this.emphasise = false,
+  });
+
+  final String value;
+  final String label;
+  final bool emphasise;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            color: emphasise
+                ? const Color(0xFFD64545)
+                : const Color(0xFF102A43),
+            fontSize: 28,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Color(0xFF52667A),
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AnnualLeaveSummaryRow extends StatelessWidget {
+  const _AnnualLeaveSummaryRow({
+    required this.label,
+    required this.value,
+    this.bold = false,
+  });
+
+  final String label;
+  final String value;
+  final bool bold;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: const Color(0xFF52667A),
+              fontWeight: bold ? FontWeight.w800 : FontWeight.w500,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            color: const Color(0xFF102A43),
+            fontWeight: bold ? FontWeight.w900 : FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class DriverProfilePage extends StatefulWidget {
   const DriverProfilePage({super.key});
 
@@ -332,6 +2154,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
 
   bool _loading = true;
   bool _saving = false;
+  bool _permanentlyUnavailableSundays = false;
   String? _loadError;
 
   @override
@@ -374,7 +2197,10 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
     try {
       final Map<String, dynamic>? profile = await supabase
           .from('driver_profiles')
-          .select('display_name, depot, driver_number, payroll_number')
+          .select(
+            'display_name, depot, driver_number, payroll_number, '
+            'permanently_unavailable_sundays',
+          )
           .eq('user_id', user.id)
           .maybeSingle();
 
@@ -385,6 +2211,9 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
             .toString();
         _payrollNumberController.text = (profile['payroll_number'] ?? '')
             .toString();
+
+        _permanentlyUnavailableSundays =
+            profile['permanently_unavailable_sundays'] == true;
       }
 
       if (!mounted) {
@@ -463,6 +2292,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
         'depot': depot,
         'driver_number': driverNumber,
         'payroll_number': payrollNumber,
+        'permanently_unavailable_sundays': _permanentlyUnavailableSundays,
       }, onConflict: 'user_id');
 
       try {
@@ -671,6 +2501,36 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
                           ),
                           validator: (value) =>
                               _requiredNumber(value, 'payroll number'),
+                        ),
+                        const SizedBox(height: 16),
+                        Card(
+                          clipBehavior: Clip.antiAlias,
+                          child: SwitchListTile(
+                            value: _permanentlyUnavailableSundays,
+                            onChanged: _saving
+                                ? null
+                                : (bool value) {
+                                    setState(() {
+                                      _permanentlyUnavailableSundays = value;
+                                    });
+                                  },
+                            secondary: const Icon(
+                              Icons.event_busy_outlined,
+                              color: railwayBlue,
+                            ),
+                            title: const Text(
+                              'Permanently unavailable Sundays',
+                              style: TextStyle(
+                                color: navy,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            subtitle: const Text(
+                              'Keep this on if you are normally unavailable '
+                              'for Sunday work. You can still volunteer for '
+                              'an individual Sunday later.',
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 16),
                         const Card(

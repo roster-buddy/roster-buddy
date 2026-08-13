@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/models/annual_leave_request.dart';
 import '../../core/models/duty.dart';
 import '../../core/models/duty_type.dart';
 import '../../core/models/roster_source.dart';
@@ -10,6 +11,7 @@ import '../../core/services/annual_leave_service.dart';
 import '../../core/services/duty_resolver.dart';
 import '../../core/services/job_card_service.dart';
 import '../../core/services/manual_duty_service.dart';
+import '../../core/services/sunday_availability_service.dart';
 import '../upload/base_roster_activation_page.dart';
 import '../upload/storage_service.dart';
 import '../upload/upload_service.dart';
@@ -2491,9 +2493,13 @@ class _CalendarPageState extends State<CalendarPage> {
   final ManualDutyService _manualDutyService = ManualDutyService();
   final JobCardService _jobCardService = JobCardService();
   final AnnualLeaveService _annualLeaveService = AnnualLeaveService();
+  final SundayAvailabilityService _sundayAvailabilityService =
+      SundayAvailabilityService();
 
   late DateTime _displayedMonth;
   Map<String, Duty> _dutiesByDate = <String, Duty>{};
+  Map<String, AnnualLeaveRequest> _leaveRequestsByDate =
+      <String, AnnualLeaveRequest>{};
 
   bool _isLoading = true;
   String? _loadError;
@@ -2526,8 +2532,18 @@ class _CalendarPageState extends State<CalendarPage> {
     try {
       final List<DateTime> calendarDates = _calendarDates();
 
-      final Map<String, Duty> dutiesByDate = await _dutyResolver
+      final Future<Map<String, Duty>> dutiesFuture = _dutyResolver
           .getResolvedDutiesForRange(calendarDates.first, calendarDates.last);
+
+      final Future<Map<String, AnnualLeaveRequest>> leaveRequestsFuture =
+          _annualLeaveService.getRequestsForRange(
+            calendarDates.first,
+            calendarDates.last,
+          );
+
+      final Map<String, Duty> dutiesByDate = await dutiesFuture;
+      final Map<String, AnnualLeaveRequest> leaveRequestsByDate =
+          await leaveRequestsFuture;
 
       if (!mounted) {
         return;
@@ -2535,6 +2551,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
       setState(() {
         _dutiesByDate = dutiesByDate;
+        _leaveRequestsByDate = leaveRequestsByDate;
         _isLoading = false;
       });
     } catch (error) {
@@ -2544,6 +2561,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
       setState(() {
         _dutiesByDate = <String, Duty>{};
+        _leaveRequestsByDate = <String, AnnualLeaveRequest>{};
         _isLoading = false;
         _loadError = error is DutyResolverException
             ? error.message
@@ -2717,14 +2735,24 @@ class _CalendarPageState extends State<CalendarPage> {
       ),
       itemBuilder: (BuildContext context, int index) {
         final DateTime date = dates[index];
-        final Duty? duty = _dutiesByDate[_dateKey(date)];
+        final String dateKey = _dateKey(date);
+        final Duty? duty = _dutiesByDate[dateKey];
+        final AnnualLeaveRequest? leaveRequest = _leaveRequestsByDate[dateKey];
 
-        return _buildDayCell(date: date, duty: duty);
+        return _buildDayCell(
+          date: date,
+          duty: duty,
+          leaveRequest: leaveRequest,
+        );
       },
     );
   }
 
-  Widget _buildDayCell({required DateTime date, required Duty? duty}) {
+  Widget _buildDayCell({
+    required DateTime date,
+    required Duty? duty,
+    required AnnualLeaveRequest? leaveRequest,
+  }) {
     final bool belongsToDisplayedMonth =
         date.year == _displayedMonth.year &&
         date.month == _displayedMonth.month;
@@ -2773,6 +2801,42 @@ class _CalendarPageState extends State<CalendarPage> {
                     fontWeight: FontWeight.w900,
                   ),
                 ),
+                if (leaveRequest != null &&
+                    leaveRequest.status !=
+                        AnnualLeaveRequestStatus.cancelled) ...[
+                  const SizedBox(height: 3),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color:
+                          leaveRequest.status ==
+                              AnnualLeaveRequestStatus.abeyance
+                          ? const Color(0xFFF59E0B)
+                          : leaveRed,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Text(
+                      leaveRequest.status == AnnualLeaveRequestStatus.abeyance
+                          ? leaveRequest.queuePosition == null
+                                ? 'ABE'
+                                : 'ABE #${leaveRequest.queuePosition}'
+                          : leaveRequest.status ==
+                                AnnualLeaveRequestStatus.requested
+                          ? 'AL REQ'
+                          : 'AL',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 7,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
                 const Spacer(),
                 if (duty != null) ...[
                   Text(
@@ -2991,6 +3055,31 @@ class _CalendarPageState extends State<CalendarPage> {
                       style: const TextStyle(color: textGrey),
                     ),
                   ],
+                  if (_leaveRequestsByDate[_dateKey(date)] != null) ...[
+                    const SizedBox(height: 18),
+                    _buildAnnualLeaveRequestStatus(
+                      _leaveRequestsByDate[_dateKey(date)]!,
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          final AnnualLeaveRequest leaveRequest =
+                              _leaveRequestsByDate[_dateKey(date)]!;
+
+                          Navigator.of(sheetContext).pop();
+
+                          _showManageAnnualLeaveDialog(
+                            date: date,
+                            request: leaveRequest,
+                          );
+                        },
+                        icon: const Icon(Icons.event_note_outlined),
+                        label: const Text('Manage annual leave'),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 22),
                   _DutyHistorySection(
                     future: _dutyResolver.getDutiesForDate(date),
@@ -3057,25 +3146,30 @@ class _CalendarPageState extends State<CalendarPage> {
                           },
                     ),
                     const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: () {
-                          Navigator.of(sheetContext).pop();
-                          _handleDayAction(
-                            date: date,
-                            duty: duty,
-                            action: _CalendarDayAction.requestAnnualLeave,
-                          );
-                        },
-                        icon: const Icon(Icons.beach_access_outlined),
-                        label: const Text('Request annual leave'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: leaveRed,
+                    if (_leaveRequestsByDate[_dateKey(date)] == null ||
+                        _leaveRequestsByDate[_dateKey(date)]!.status ==
+                            AnnualLeaveRequestStatus.cancelled) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () {
+                            Navigator.of(sheetContext).pop();
+
+                            _handleDayAction(
+                              date: date,
+                              duty: duty,
+                              action: _CalendarDayAction.requestAnnualLeave,
+                            );
+                          },
+                          icon: const Icon(Icons.beach_access_outlined),
+                          label: const Text('Request annual leave'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: leaveRed,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 10),
+                      const SizedBox(height: 10),
+                    ],
                   ],
                   if (duty.dutyType == DutyType.restDay) ...[
                     SizedBox(
@@ -3097,6 +3191,13 @@ class _CalendarPageState extends State<CalendarPage> {
                       ),
                     ),
                     const SizedBox(height: 10),
+                  ],
+                  if (_isPostBlockUnavailableSunday(duty)) ...[
+                    _buildPostBlockSundayAction(
+                      sheetContext: sheetContext,
+                      date: date,
+                      duty: duty,
+                    ),
                   ],
                   SizedBox(
                     width: double.infinity,
@@ -3122,7 +3223,13 @@ class _CalendarPageState extends State<CalendarPage> {
     required DateTime date,
     required Duty? duty,
   }) async {
-    final List<_CalendarDayAction> actions = _actionsForDuty(duty);
+    final AnnualLeaveRequest? leaveRequest =
+        _leaveRequestsByDate[_dateKey(date)];
+
+    final List<_CalendarDayAction> actions = _actionsForDuty(
+      duty,
+      leaveRequest: leaveRequest,
+    );
 
     if (actions.isEmpty) {
       _showCalendarMessage(
@@ -3169,7 +3276,10 @@ class _CalendarPageState extends State<CalendarPage> {
     _handleDayAction(date: date, duty: duty, action: selected);
   }
 
-  List<_CalendarDayAction> _actionsForDuty(Duty? duty) {
+  List<_CalendarDayAction> _actionsForDuty(
+    Duty? duty, {
+    AnnualLeaveRequest? leaveRequest,
+  }) {
     if (duty == null) {
       return const <_CalendarDayAction>[];
     }
@@ -3178,25 +3288,43 @@ class _CalendarPageState extends State<CalendarPage> {
       return const <_CalendarDayAction>[_CalendarDayAction.allocateShift];
     }
 
+    if (_isPermanentlyUnavailableSunday(duty)) {
+      return const <_CalendarDayAction>[_CalendarDayAction.makeSundayAvailable];
+    }
+
+    final bool hasActiveLeaveRequest =
+        leaveRequest != null &&
+        leaveRequest.status != AnnualLeaveRequestStatus.cancelled;
+
+    if (duty.dutyType == DutyType.annualLeave && hasActiveLeaveRequest) {
+      return const <_CalendarDayAction>[_CalendarDayAction.manageAnnualLeave];
+    }
+
     if (duty.dutyType == DutyType.working) {
-      return const <_CalendarDayAction>[
+      return <_CalendarDayAction>[
         _CalendarDayAction.editTimes,
         _CalendarDayAction.selectTurnNumber,
         _CalendarDayAction.manualChange,
         _CalendarDayAction.shiftSwap,
         _CalendarDayAction.moveRestDayHere,
-        _CalendarDayAction.requestAnnualLeave,
+        if (hasActiveLeaveRequest)
+          _CalendarDayAction.manageAnnualLeave
+        else
+          _CalendarDayAction.requestAnnualLeave,
       ];
     }
 
     if (duty.dutyType == DutyType.training ||
         duty.dutyType == DutyType.medical) {
-      return const <_CalendarDayAction>[
+      return <_CalendarDayAction>[
         _CalendarDayAction.editTimes,
         _CalendarDayAction.manualChange,
         _CalendarDayAction.shiftSwap,
         _CalendarDayAction.moveRestDayHere,
-        _CalendarDayAction.requestAnnualLeave,
+        if (hasActiveLeaveRequest)
+          _CalendarDayAction.manageAnnualLeave
+        else
+          _CalendarDayAction.requestAnnualLeave,
       ];
     }
 
@@ -3251,6 +3379,21 @@ class _CalendarPageState extends State<CalendarPage> {
         _showAnnualLeaveRequestDialog(date: date, duty: duty);
         return;
 
+      case _CalendarDayAction.manageAnnualLeave:
+        final AnnualLeaveRequest? leaveRequest =
+            _leaveRequestsByDate[_dateKey(date)];
+
+        if (leaveRequest == null ||
+            leaveRequest.status == AnnualLeaveRequestStatus.cancelled) {
+          _showCalendarMessage(
+            'There is no active annual leave request for this date.',
+          );
+          return;
+        }
+
+        _showManageAnnualLeaveDialog(date: date, request: leaveRequest);
+        return;
+
       case _CalendarDayAction.allocateShift:
         if (duty == null || duty.dutyType != DutyType.restDay) {
           _showCalendarMessage(
@@ -3260,6 +3403,19 @@ class _CalendarPageState extends State<CalendarPage> {
         }
 
         _showAllocateShiftDialog(date: date, originalDuty: duty);
+        return;
+
+      case _CalendarDayAction.makeSundayAvailable:
+        if (duty == null ||
+            duty.date.weekday != DateTime.sunday ||
+            duty.dutyType != DutyType.unavailable) {
+          _showCalendarMessage(
+            'Sunday availability can only be changed for an unavailable Sunday.',
+          );
+          return;
+        }
+
+        _makeSundayAvailable(date: date);
         return;
     }
   }
@@ -3278,9 +3434,257 @@ class _CalendarPageState extends State<CalendarPage> {
         return 'Move rest day here';
       case _CalendarDayAction.requestAnnualLeave:
         return 'Request annual leave';
+      case _CalendarDayAction.manageAnnualLeave:
+        return 'Manage annual leave';
       case _CalendarDayAction.allocateShift:
         return 'Allocate shift – RDW';
+      case _CalendarDayAction.makeSundayAvailable:
+        return 'Make myself available';
     }
+  }
+
+  Widget _buildAnnualLeaveRequestStatus(AnnualLeaveRequest request) {
+    String title;
+    String description;
+    Color colour;
+    IconData icon;
+
+    switch (request.status) {
+      case AnnualLeaveRequestStatus.requested:
+        title = 'Annual leave requested';
+        description =
+            'Your rostered duty remains allocated while the request is awaiting a decision.';
+        colour = leaveRed;
+        icon = Icons.schedule_outlined;
+
+      case AnnualLeaveRequestStatus.abeyance:
+        title = 'Annual leave – abeyance';
+
+        if (request.queuePosition != null) {
+          description =
+              'Queue position #${request.queuePosition}. Your rostered duty remains allocated until the leave is granted.';
+        } else {
+          description =
+              'Your request is being held in abeyance. Your rostered duty remains allocated until the leave is granted.';
+        }
+
+        colour = const Color(0xFFF59E0B);
+        icon = Icons.hourglass_top_outlined;
+
+      case AnnualLeaveRequestStatus.granted:
+        title = 'Annual leave granted';
+        description = 'This annual leave request has been granted.';
+        colour = leaveRed;
+        icon = Icons.event_available_outlined;
+
+      case AnnualLeaveRequestStatus.cancelled:
+        title = 'Annual leave request cancelled';
+        description =
+            'The request was cancelled and the allocated rostered duty applies again.';
+        colour = textGrey;
+        icon = Icons.cancel_outlined;
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colour.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colour.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: colour, size: 21),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    color: colour,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              if (request.status == AnnualLeaveRequestStatus.abeyance &&
+                  request.queuePosition != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colour,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '#${request.queuePosition}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          Text(
+            description,
+            style: const TextStyle(color: textGrey, height: 1.35),
+          ),
+          if (request.notes?.trim().isNotEmpty == true) ...[
+            const SizedBox(height: 8),
+            Text(
+              request.notes!.trim(),
+              style: const TextStyle(
+                color: navy,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  bool _isPermanentlyUnavailableSunday(Duty? duty) {
+    if (duty == null) {
+      return false;
+    }
+
+    return duty.date.weekday == DateTime.sunday &&
+        duty.dutyType == DutyType.unavailable &&
+        duty.rawText == 'permanent_sunday_unavailable';
+  }
+
+  bool _isPostBlockUnavailableSunday(Duty? duty) {
+    if (duty == null) {
+      return false;
+    }
+
+    return duty.date.weekday == DateTime.sunday &&
+        duty.dutyType == DutyType.unavailable &&
+        duty.rawText == 'post_block_sunday';
+  }
+
+  Future<void> _makeSundayAvailable({required DateTime date}) async {
+    try {
+      await _sundayAvailabilityService.makeSundayAvailable(date);
+
+      await _loadMonth();
+
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage('You are now available to work ${_fullDate(date)}.');
+    } on SundayAvailabilityException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage(error.message);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage(
+        'Roster Buddy could not update your Sunday availability.',
+      );
+    }
+  }
+
+  Widget _buildPostBlockSundayAction({
+    required BuildContext sheetContext,
+    required DateTime date,
+    required Duty duty,
+  }) {
+    if (!_isPostBlockUnavailableSunday(duty)) {
+      return const SizedBox.shrink();
+    }
+
+    return FutureBuilder<bool>(
+      future: _sundayAvailabilityService.isPermanentlyUnavailableOnSundays(),
+      builder: (BuildContext context, AsyncSnapshot<bool> snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: null,
+              icon: const SizedBox(
+                width: 17,
+                height: 17,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              label: const Text('Checking Sunday availability…'),
+            ),
+          );
+        }
+
+        // Permanently unavailable drivers do not need the post-block prompt.
+        if (snapshot.data == true) {
+          return const SizedBox.shrink();
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(
+                color: restYellow.withValues(alpha: 0.22),
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(color: restYellow.withValues(alpha: 0.8)),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline, color: navy, size: 21),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'This was a booked Sunday immediately after your '
+                      'block leave week, so you are currently marked '
+                      'unavailable. Make yourself available if you want '
+                      'to work your booked Sunday duty.',
+                      style: TextStyle(
+                        color: navy,
+                        height: 1.35,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.of(sheetContext).pop();
+
+                Future<void>.delayed(const Duration(milliseconds: 150), () {
+                  if (mounted) {
+                    _makeSundayAvailable(date: date);
+                  }
+                });
+              },
+              icon: const Icon(Icons.check_circle_outline),
+              label: const Text('Make myself available'),
+              style: FilledButton.styleFrom(backgroundColor: workingGreen),
+            ),
+            const SizedBox(height: 10),
+          ],
+        );
+      },
+    );
   }
 
   void _showCalendarMessage(String message) {
@@ -3291,6 +3695,301 @@ class _CalendarPageState extends State<CalendarPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _showManageAnnualLeaveDialog({
+    required DateTime date,
+    required AnnualLeaveRequest request,
+  }) async {
+    final TextEditingController queueController = TextEditingController(
+      text: request.queuePosition?.toString() ?? '',
+    );
+
+    bool isSaving = false;
+    String? errorMessage;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) {
+        return StatefulBuilder(
+          builder: (BuildContext sheetContext, void Function(void Function()) setSheetState) {
+            Future<void> finishChange({
+              required Future<AnnualLeaveRequest> Function() action,
+              required String successMessage,
+            }) async {
+              if (isSaving) {
+                return;
+              }
+
+              setSheetState(() {
+                isSaving = true;
+                errorMessage = null;
+              });
+
+              try {
+                await action();
+
+                if (!sheetContext.mounted) {
+                  return;
+                }
+
+                Navigator.of(sheetContext).pop();
+
+                await _loadMonth();
+
+                if (!mounted) {
+                  return;
+                }
+
+                _showCalendarMessage(successMessage);
+              } on AnnualLeaveException catch (error) {
+                if (!sheetContext.mounted) {
+                  return;
+                }
+
+                setSheetState(() {
+                  isSaving = false;
+                  errorMessage = error.message;
+                });
+              } catch (_) {
+                if (!sheetContext.mounted) {
+                  return;
+                }
+
+                setSheetState(() {
+                  isSaving = false;
+                  errorMessage =
+                      'Roster Buddy could not update this annual leave request.';
+                });
+              }
+            }
+
+            Future<void> moveToAbeyance() async {
+              final int? queuePosition = int.tryParse(
+                queueController.text.trim(),
+              );
+
+              if (queuePosition == null || queuePosition < 1) {
+                setSheetState(() {
+                  errorMessage = 'Enter the current abeyance queue position.';
+                });
+                return;
+              }
+
+              await finishChange(
+                action: () => _annualLeaveService.markAbeyance(
+                  requestId: request.id,
+                  queuePosition: queuePosition,
+                ),
+                successMessage:
+                    'Annual leave moved to abeyance at queue position #$queuePosition.',
+              );
+            }
+
+            Future<void> markGranted() async {
+              await finishChange(
+                action: () =>
+                    _annualLeaveService.markGranted(requestId: request.id),
+                successMessage: 'Annual leave granted for ${_fullDate(date)}.',
+              );
+            }
+
+            Future<void> cancelRequest() async {
+              final bool? confirmed = await showCupertinoDialog<bool>(
+                context: sheetContext,
+                builder: (BuildContext dialogContext) {
+                  return CupertinoAlertDialog(
+                    title: const Text('Cancel annual leave?'),
+                    content: Text(
+                      request.status == AnnualLeaveRequestStatus.granted
+                          ? 'This will cancel the annual leave and restore the allocated rostered duty for ${_fullDate(date)}.'
+                          : 'This will cancel the annual leave request for ${_fullDate(date)} and restore the allocated rostered duty.',
+                    ),
+                    actions: [
+                      CupertinoDialogAction(
+                        onPressed: () {
+                          Navigator.of(dialogContext).pop(false);
+                        },
+                        child: const Text('Keep leave'),
+                      ),
+                      CupertinoDialogAction(
+                        isDestructiveAction: true,
+                        onPressed: () {
+                          Navigator.of(dialogContext).pop(true);
+                        },
+                        child: const Text('Cancel leave'),
+                      ),
+                    ],
+                  );
+                },
+              );
+
+              if (confirmed != true || !sheetContext.mounted) {
+                return;
+              }
+
+              await finishChange(
+                action: () =>
+                    _annualLeaveService.cancelRequest(requestId: request.id),
+                successMessage:
+                    'Annual leave cancelled. Your allocated shift for ${_fullDate(date)} now applies again.',
+              );
+            }
+
+            String statusTitle;
+
+            switch (request.status) {
+              case AnnualLeaveRequestStatus.requested:
+                statusTitle = 'Awaiting decision';
+              case AnnualLeaveRequestStatus.abeyance:
+                statusTitle = request.queuePosition == null
+                    ? 'Held in abeyance'
+                    : 'Abeyance – queue position #${request.queuePosition}';
+              case AnnualLeaveRequestStatus.granted:
+                statusTitle = 'Annual leave granted';
+              case AnnualLeaveRequestStatus.cancelled:
+                statusTitle = 'Annual leave cancelled';
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  4,
+                  20,
+                  MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Manage annual leave',
+                        style: TextStyle(
+                          color: navy,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _fullDate(date),
+                        style: const TextStyle(color: textGrey),
+                      ),
+                      const SizedBox(height: 18),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color:
+                              request.status ==
+                                  AnnualLeaveRequestStatus.abeyance
+                              ? const Color(0xFFF59E0B).withValues(alpha: 0.10)
+                              : leaveRed.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          statusTitle,
+                          style: TextStyle(
+                            color:
+                                request.status ==
+                                    AnnualLeaveRequestStatus.abeyance
+                                ? const Color(0xFFB45309)
+                                : leaveRed,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      if (request.status ==
+                              AnnualLeaveRequestStatus.requested ||
+                          request.status ==
+                              AnnualLeaveRequestStatus.abeyance) ...[
+                        const SizedBox(height: 18),
+                        TextField(
+                          controller: queueController,
+                          enabled: !isSaving,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText:
+                                request.status ==
+                                    AnnualLeaveRequestStatus.abeyance
+                                ? 'Abeyance queue position'
+                                : 'Queue position if placed in abeyance',
+                            hintText: 'For example 3',
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: isSaving ? null : moveToAbeyance,
+                            icon: const Icon(Icons.hourglass_top_outlined),
+                            label: Text(
+                              request.status ==
+                                      AnnualLeaveRequestStatus.abeyance
+                                  ? 'Update queue position'
+                                  : 'Move to abeyance',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: isSaving ? null : markGranted,
+                            icon: const Icon(Icons.event_available_outlined),
+                            label: const Text('Mark annual leave granted'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: leaveRed,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (errorMessage != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          errorMessage!,
+                          style: const TextStyle(
+                            color: leaveRed,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 18),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: isSaving ? null : cancelRequest,
+                          icon: const Icon(Icons.cancel_outlined),
+                          label: Text(
+                            request.status == AnnualLeaveRequestStatus.granted
+                                ? 'Cancel annual leave'
+                                : 'Cancel annual leave request',
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: leaveRed,
+                          ),
+                        ),
+                      ),
+                      if (isSaving) ...[
+                        const SizedBox(height: 18),
+                        const Center(child: CircularProgressIndicator()),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    queueController.dispose();
   }
 
   Future<void> _showAnnualLeaveRequestDialog({
@@ -4216,7 +4915,9 @@ enum _CalendarDayAction {
   shiftSwap,
   moveRestDayHere,
   requestAnnualLeave,
+  manageAnnualLeave,
   allocateShift,
+  makeSundayAvailable,
 }
 
 class _CalendarLegendItem extends StatelessWidget {
