@@ -1103,6 +1103,10 @@ class _DashboardPageState extends State<DashboardPage> {
                       style: const TextStyle(color: textGrey, height: 1.35),
                     ),
                   ],
+                  const SizedBox(height: 22),
+                  _DutyHistorySection(
+                    future: _dutyResolver.getDutiesForDate(date),
+                  ),
                 ],
                 const SizedBox(height: 22),
                 if (duty?.dutyType.countsAsWorking == true) ...[
@@ -2181,6 +2185,225 @@ class _DutyPresentation {
   final String? detail;
 }
 
+class _DutyHistorySection extends StatelessWidget {
+  const _DutyHistorySection({required this.future});
+
+  final Future<List<Duty>> future;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Duty>>(
+      future: future,
+      builder: (BuildContext context, AsyncSnapshot<List<Duty>> snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Row(
+            children: [
+              SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 10),
+              Text('Loading roster history…'),
+            ],
+          );
+        }
+
+        if (snapshot.hasError) {
+          return const Text(
+            'Roster history could not be loaded.',
+            style: TextStyle(color: Color(0xFF52667A)),
+          );
+        }
+
+        final List<Duty> duties = snapshot.data ?? const <Duty>[];
+
+        if (duties.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.history, size: 20, color: Color(0xFF102A43)),
+                SizedBox(width: 8),
+                Text(
+                  'Roster history',
+                  style: TextStyle(
+                    color: Color(0xFF102A43),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            for (int index = 0; index < duties.length; index++) ...[
+              _DutyHistoryEntry(duty: duties[index], isCurrent: index == 0),
+              if (index != duties.length - 1) const SizedBox(height: 8),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _DutyHistoryEntry extends StatelessWidget {
+  const _DutyHistoryEntry({required this.duty, required this.isCurrent});
+
+  final Duty duty;
+  final bool isCurrent;
+
+  @override
+  Widget build(BuildContext context) {
+    final String source = _historySourceLabel(duty.source);
+    final String dutyLabel = _historyDutyLabel(duty);
+
+    final List<String> details = <String>[];
+
+    if (duty.turnNumber?.trim().isNotEmpty == true) {
+      details.add('Turn ${duty.turnNumber!.trim()}');
+    }
+
+    final String? bookOn = duty.bookOn?.trim();
+    final String? bookOff = duty.bookOff?.trim();
+
+    if (bookOn?.isNotEmpty == true || bookOff?.isNotEmpty == true) {
+      if (bookOn?.isNotEmpty == true && bookOff?.isNotEmpty == true) {
+        details.add('$bookOn–$bookOff');
+      } else if (bookOn?.isNotEmpty == true) {
+        details.add('Book on $bookOn');
+      } else if (bookOff?.isNotEmpty == true) {
+        details.add('Book off $bookOff');
+      }
+    }
+
+    if (duty.amendmentCode?.trim().isNotEmpty == true) {
+      details.add(duty.amendmentCode!.trim().toUpperCase());
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF6F8FA),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isCurrent ? const Color(0xFF1769AA) : const Color(0xFFDCE3E8),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _RosterSourceBadge(source: duty.source),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  source,
+                  style: const TextStyle(
+                    color: Color(0xFF102A43),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              if (isCurrent)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F1FA),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Text(
+                    'Current',
+                    style: TextStyle(
+                      color: Color(0xFF1769AA),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          Text(
+            dutyLabel,
+            style: const TextStyle(
+              color: Color(0xFF102A43),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (details.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              details.join('  •  '),
+              style: const TextStyle(color: Color(0xFF52667A), height: 1.3),
+            ),
+          ],
+          if (duty.remarks?.trim().isNotEmpty == true) ...[
+            const SizedBox(height: 4),
+            Text(
+              duty.remarks!.trim(),
+              style: const TextStyle(
+                color: Color(0xFF52667A),
+                fontSize: 12,
+                height: 1.3,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static String _historySourceLabel(RosterSource source) {
+    switch (source) {
+      case RosterSource.baseRoster:
+        return 'Base Roster';
+      case RosterSource.tenDay:
+        return '10-Day Amendment';
+      case RosterSource.sevenDay:
+        return '7-Day Amendment';
+      case RosterSource.fortyEightHour:
+        return '48-Hour Amendment';
+      case RosterSource.annualLeave:
+        return 'Annual Leave';
+      case RosterSource.manual:
+        return 'Manual adjustment';
+    }
+  }
+
+  static String _historyDutyLabel(Duty duty) {
+    switch (duty.dutyType) {
+      case DutyType.working:
+        return 'Working duty';
+      case DutyType.training:
+        return 'Training';
+      case DutyType.medical:
+        return 'Medical';
+      case DutyType.restDay:
+        return 'Rest day';
+      case DutyType.annualLeave:
+        return 'Annual leave';
+      case DutyType.sick:
+        return 'Sick';
+      case DutyType.publicHoliday:
+        return 'Public holiday';
+      case DutyType.unavailable:
+        return 'Unavailable';
+      case DutyType.unknown:
+        return 'Duty';
+    }
+  }
+}
+
 class _RosterSourceBadge extends StatelessWidget {
   const _RosterSourceBadge({required this.source});
 
@@ -2696,6 +2919,10 @@ class _CalendarPageState extends State<CalendarPage> {
                       style: const TextStyle(color: textGrey),
                     ),
                   ],
+                  const SizedBox(height: 22),
+                  _DutyHistorySection(
+                    future: _dutyResolver.getDutiesForDate(date),
+                  ),
                   const SizedBox(height: 22),
                   if (duty.dutyType == DutyType.working) ...[
                     SizedBox(
