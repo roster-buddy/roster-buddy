@@ -76,6 +76,34 @@ create table if not exists public.annual_leave_block_overrides (
   unique (user_id, leave_year, period_type)
 );
 
+alter table public.annual_leave_block_overrides
+  add column if not exists original_start_date date,
+  add column if not exists original_end_date date,
+  add column if not exists override_start_date date,
+  add column if not exists override_end_date date,
+  add column if not exists change_type text,
+  add column if not exists swap_driver_number text,
+  add column if not exists swap_reference text;
+
+update public.annual_leave_block_overrides
+set
+  override_start_date = coalesce(override_start_date, start_date),
+  override_end_date = coalesce(override_end_date, end_date),
+  change_type = coalesce(
+    change_type,
+    case
+      when override_type = 'manual_correction' then 'manual'
+      when override_type = 'agreed_move' then 'agreed_move'
+      when override_type = 'mutual_swap' then 'mutual_swap'
+      else 'manual'
+    end
+  );
+
+alter table public.annual_leave_block_overrides
+  alter column override_start_date set not null,
+  alter column override_end_date set not null,
+  alter column change_type set not null;
+
 alter table public.annual_leave_block_cycles enable row level security;
 alter table public.annual_leave_block_overrides enable row level security;
 
