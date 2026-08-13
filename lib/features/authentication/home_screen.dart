@@ -3663,22 +3663,6 @@ class _CalendarPageState extends State<CalendarPage> {
 
                               _shiftChangeOption(
                                 context: dialogContext,
-                                title: 'Swap with myself',
-                                subtitle:
-                                    'Move this duty to another one of my duties.',
-                                icon: CupertinoIcons.arrow_2_squarepath,
-                                selected: selectedOption == 'Swap with myself',
-                                onTap: () {
-                                  setDialogState(() {
-                                    selectedOption = 'Swap with myself';
-                                  });
-                                },
-                              ),
-
-                              const SizedBox(height: 8),
-
-                              _shiftChangeOption(
-                                context: dialogContext,
                                 title: 'Change to Rest Day',
                                 subtitle:
                                     'Replace this working duty with a Rest Day.',
@@ -3819,30 +3803,6 @@ class _CalendarPageState extends State<CalendarPage> {
                                   placeholder: 'Notes (optional)',
                                   keyboardType: TextInputType.multiline,
                                   maxLines: 3,
-                                ),
-                              ],
-
-                              if (selectedOption ==
-                                  'Swap with myself') ...<Widget>[
-                                const SizedBox(height: 18),
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(14),
-                                  decoration: BoxDecoration(
-                                    color: CupertinoColors.systemGrey6
-                                        .resolveFrom(dialogContext),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: const Text(
-                                    'The next step will allow you to select the '
-                                    'other working duty from your roster.',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
-                                      color: CupertinoColors.activeBlue,
-                                      decoration: TextDecoration.none,
-                                    ),
-                                  ),
                                 ),
                               ],
 
@@ -4692,18 +4652,6 @@ class _CalendarPageState extends State<CalendarPage> {
                                             }
 
                                             return;
-                                          }
-
-                                          if (selectedOption ==
-                                              'Swap with myself') {
-                                            if (dialogContext.mounted) {
-                                              Navigator.of(dialogContext).pop();
-                                            }
-
-                                            _showCalendarMessage(
-                                              'Select the other working duty from '
-                                              'your calendar to continue the swap.',
-                                            );
                                           }
                                         },
                                   child: const Text('Continue'),
