@@ -3481,7 +3481,14 @@ class _CalendarPageState extends State<CalendarPage> {
         return;
 
       case _CalendarDayAction.moveRestDayHere:
-        _showCalendarMessage('Move rest day here will be connected next.');
+        if (duty == null || !duty.dutyType.countsAsWorking) {
+          _showCalendarMessage(
+            'A Rest Day can only be moved onto a working duty.',
+          );
+          return;
+        }
+
+        _confirmMoveRestDayHere(date: date, originalDuty: duty);
         return;
 
       case _CalendarDayAction.requestAnnualLeave:
@@ -3533,6 +3540,70 @@ class _CalendarPageState extends State<CalendarPage> {
 
         _makeSundayAvailable(date: date);
         return;
+    }
+  }
+
+  Future<void> _confirmMoveRestDayHere({
+    required DateTime date,
+    required Duty originalDuty,
+  }) async {
+    final bool? confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return CupertinoAlertDialog(
+          title: const Text('Move Rest Day here?'),
+          content: Text(
+            'This will make ${_fullDate(date)} a Rest Day. '
+            'The original rostered duty will remain preserved in the duty history.',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('Cancel'),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Move Rest Day'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    try {
+      await _manualDutyService.saveMovedRestDay(
+        date: date,
+        originalDuty: originalDuty,
+      );
+
+      await _loadMonth();
+
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage('Rest Day moved to ${_fullDate(date)}.');
+    } on ManualDutyException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage(error.message);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage('Roster Buddy could not move the Rest Day.');
     }
   }
 

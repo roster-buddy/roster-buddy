@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/duty.dart';
+import '../models/duty_type.dart';
 
 class ManualDutyService {
   ManualDutyService({SupabaseClient? supabase})
@@ -89,6 +90,48 @@ class ManualDutyService {
       'book_off': bookOff,
       'rostered_minutes': rosteredMinutes,
       'remarks': 'Turn selected from Job Card',
+      'original_source': _sourceName(originalDuty),
+      'original_duty_type': _dutyTypeName(originalDuty),
+      'original_turn_number': _clean(originalDuty.turnNumber),
+      'original_book_on': _clean(originalDuty.bookOn),
+      'original_book_off': _clean(originalDuty.bookOff),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'user_id,duty_date,manual_change_type');
+  }
+
+  Future<void> saveMovedRestDay({
+    required DateTime date,
+    required Duty originalDuty,
+  }) async {
+    final User? user = _supabase.auth.currentUser;
+
+    if (user == null) {
+      throw const ManualDutyException(
+        'You must be signed in before moving a Rest Day.',
+      );
+    }
+
+    final bool canMoveRestDayHere =
+        originalDuty.dutyType == DutyType.working ||
+        originalDuty.dutyType == DutyType.training ||
+        originalDuty.dutyType == DutyType.medical;
+
+    if (!canMoveRestDayHere) {
+      throw const ManualDutyException(
+        'A Rest Day can only be moved onto a working duty.',
+      );
+    }
+
+    await _supabase.from(_tableName).upsert(<String, dynamic>{
+      'user_id': user.id,
+      'duty_date': _databaseDate(date),
+      'duty_type': 'rest_day',
+      'manual_change_type': 'moved_rest_day',
+      'turn_number': null,
+      'book_on': null,
+      'book_off': null,
+      'rostered_minutes': null,
+      'remarks': 'Moved Rest Day',
       'original_source': _sourceName(originalDuty),
       'original_duty_type': _dutyTypeName(originalDuty),
       'original_turn_number': _clean(originalDuty.turnNumber),
