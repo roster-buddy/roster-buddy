@@ -12,6 +12,7 @@ import '../../core/services/duty_resolver.dart';
 import '../../core/services/job_card_service.dart';
 import '../../core/services/manual_duty_service.dart';
 import '../../core/services/sunday_availability_service.dart';
+import '../../core/services/shift_swap_service.dart';
 import '../upload/base_roster_activation_page.dart';
 import '../upload/storage_service.dart';
 import '../upload/upload_service.dart';
@@ -2491,6 +2492,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
   final DutyResolver _dutyResolver = DutyResolver();
   final ManualDutyService _manualDutyService = ManualDutyService();
+  final ShiftSwapService _shiftSwapService = ShiftSwapService();
   final JobCardService _jobCardService = JobCardService();
   final AnnualLeaveService _annualLeaveService = AnnualLeaveService();
   final SundayAvailabilityService _sundayAvailabilityService =
@@ -3475,9 +3477,14 @@ class _CalendarPageState extends State<CalendarPage> {
         return;
 
       case _CalendarDayAction.shiftSwap:
-        _showCalendarMessage(
-          'The shift-swap request form will be connected next.',
-        );
+        if (duty == null || !duty.dutyType.countsAsWorking) {
+          _showCalendarMessage(
+            'A shift swap can only be requested for a working duty.',
+          );
+          return;
+        }
+
+        _showShiftSwapDialog(date: date, originalDuty: duty);
         return;
 
       case _CalendarDayAction.moveRestDayHere:
@@ -3540,6 +3547,189 @@ class _CalendarPageState extends State<CalendarPage> {
 
         _makeSundayAvailable(date: date);
         return;
+    }
+  }
+
+  Future<void> _showShiftSwapDialog({
+    required DateTime date,
+    required Duty originalDuty,
+  }) async {
+    final List<MapEntry<String, Duty>> candidateEntries =
+        _dutiesByDate.entries
+            .where(
+              (MapEntry<String, Duty> entry) =>
+                  entry.key != _dateKey(date) &&
+                  entry.value.dutyType.countsAsWorking,
+            )
+            .toList()
+          ..sort(
+            (MapEntry<String, Duty> a, MapEntry<String, Duty> b) =>
+                a.value.date.compareTo(b.value.date),
+          );
+
+    if (candidateEntries.isEmpty) {
+      _showCalendarMessage(
+        'There are no other working duties available to swap with.',
+      );
+      return;
+    }
+
+    Duty? selectedDuty;
+    final TextEditingController notesController = TextEditingController();
+
+    try {
+      final bool? submitted = await showCupertinoDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) {
+          return StatefulBuilder(
+            builder: (BuildContext context, void Function(void Function()) setState) {
+              return CupertinoAlertDialog(
+                title: const Text('Request shift swap'),
+                content: Material(
+                  color: CupertinoColors.transparent,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Your duty',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: CupertinoColors.label.resolveFrom(context),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${_fullDate(originalDuty.date)}'
+                          '${originalDuty.turnNumber == null ? '' : ' • Turn ${originalDuty.turnNumber}'}'
+                          '${originalDuty.bookOn == null ? '' : ' • ${originalDuty.bookOn}'}'
+                          '${originalDuty.bookOff == null ? '' : '–${originalDuty.bookOff}'}',
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          'Swap with',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: CupertinoColors.label.resolveFrom(context),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: CupertinoColors.separator.resolveFrom(
+                                context,
+                              ),
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<Duty>(
+                              isExpanded: true,
+                              value: selectedDuty,
+                              hint: const Text('Select a working duty'),
+                              items: candidateEntries.map((
+                                MapEntry<String, Duty> entry,
+                              ) {
+                                final Duty duty = entry.value;
+
+                                final String turn = duty.turnNumber == null
+                                    ? ''
+                                    : ' • Turn ${duty.turnNumber}';
+
+                                final String times = duty.bookOn == null
+                                    ? ''
+                                    : ' • ${duty.bookOn}'
+                                          '${duty.bookOff == null ? '' : '–${duty.bookOff}'}';
+
+                                return DropdownMenuItem<Duty>(
+                                  value: duty,
+                                  child: Text(
+                                    '${_fullDate(duty.date)}$turn$times',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (Duty? value) {
+                                setState(() {
+                                  selectedDuty = value;
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        CupertinoTextField(
+                          controller: notesController,
+                          placeholder: 'Notes (optional)',
+                          maxLines: 3,
+                          padding: const EdgeInsets.all(10),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  CupertinoDialogAction(
+                    onPressed: () {
+                      Navigator.of(dialogContext).pop(false);
+                    },
+                    child: const Text('Cancel'),
+                  ),
+                  CupertinoDialogAction(
+                    onPressed: selectedDuty == null
+                        ? null
+                        : () {
+                            Navigator.of(dialogContext).pop(true);
+                          },
+                    child: const Text('Submit request'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+
+      if (submitted != true || selectedDuty == null || !mounted) {
+        return;
+      }
+
+      try {
+        await _shiftSwapService.createRequest(
+          originalDuty: originalDuty,
+          requestedDuty: selectedDuty!,
+          notes: notesController.text,
+        );
+
+        if (!mounted) {
+          return;
+        }
+
+        _showCalendarMessage(
+          'Shift swap request submitted for '
+          '${_fullDate(originalDuty.date)} and '
+          '${_fullDate(selectedDuty!.date)}.',
+        );
+      } on StateError catch (error) {
+        if (!mounted) {
+          return;
+        }
+
+        _showCalendarMessage(error.message);
+      } catch (_) {
+        if (!mounted) {
+          return;
+        }
+
+        _showCalendarMessage(
+          'Roster Buddy could not submit the shift swap request.',
+        );
+      }
+    } finally {
+      notesController.dispose();
     }
   }
 
