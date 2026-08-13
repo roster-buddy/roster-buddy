@@ -5,10 +5,11 @@ import '../models/duty_type.dart';
 import '../models/roster_source.dart';
 
 class DutyResolver {
-  DutyResolver({SupabaseClient? supabase})
-    : _supabase = supabase ?? Supabase.instance.client;
+  DutyResolver({SupabaseClient? supabase}) : _supabaseOverride = supabase;
 
-  final SupabaseClient _supabase;
+  final SupabaseClient? _supabaseOverride;
+
+  SupabaseClient get _supabase => _supabaseOverride ?? Supabase.instance.client;
 
   static const String _profileTableName = 'driver_profiles';
   static const String _dutyTableName = 'document_duties';
@@ -75,7 +76,7 @@ class DutyResolver {
     final List<Duty> duties = response
         .whereType<Map<String, dynamic>>()
         .where(
-          (row) => _matchesProfile(
+          (row) => matchesProfile(
             row: row,
             payrollNumber: payrollNumber,
             driverNumber: driverNumber,
@@ -157,7 +158,7 @@ class DutyResolver {
     return second.uniqueKey.compareTo(first.uniqueKey);
   }
 
-  static bool _matchesProfile({
+  static bool matchesProfile({
     required Map<String, dynamic> row,
     required String? payrollNumber,
     required String? driverNumber,
