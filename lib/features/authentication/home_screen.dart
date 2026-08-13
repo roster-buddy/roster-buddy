@@ -3700,7 +3700,12 @@ class _CalendarPageState extends State<CalendarPage> {
       try {
         await _shiftSwapService.createRequest(
           originalDuty: originalDuty,
-          requestedDuty: selectedDuty!,
+          requestedDate: _dateKey(selectedDuty!.date),
+          requestedTurnNumber: selectedDuty!.turnNumber ?? '',
+          otherDriverName: '',
+          otherPayrollNumber: '',
+          type: 'Mutual swap',
+          confirmedWithRosters: false,
           notes: notesController.text,
         );
 

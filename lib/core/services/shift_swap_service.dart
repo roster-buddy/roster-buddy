@@ -22,10 +22,8 @@ class ShiftSwap {
 
   final String id;
   final String userId;
-
   final DateTime originalDate;
   final DateTime requestedDate;
-
   final ShiftSwapStatus status;
 
   final String? originalTurnNumber;
@@ -44,29 +42,46 @@ class ShiftSwapService {
 
   Future<ShiftSwap> createRequest({
     required Duty originalDuty,
-    required Duty requestedDuty,
+    required String requestedDate,
+    required String requestedTurnNumber,
+    String? otherDriverName,
+    String? otherPayrollNumber,
+    String type = 'Mutual swap',
+    bool confirmedWithRosters = false,
     String? notes,
   }) async {
     final String? userId = _client.auth.currentUser?.id;
 
     if (userId == null) {
-      throw StateError('You must be signed in to request a shift swap.');
+      throw StateError('You must be signed in to save a shift change.');
     }
+
+    final List<String> metadata = <String>[
+      'TYPE=$type',
+      'CONFIRMED_WITH_ROSTERS=$confirmedWithRosters',
+      if (otherDriverName != null && otherDriverName.trim().isNotEmpty)
+        'OTHER_DRIVER=${otherDriverName.trim()}',
+      if (otherPayrollNumber != null && otherPayrollNumber.trim().isNotEmpty)
+        'OTHER_PAYROLL=${otherPayrollNumber.trim()}',
+      if (notes != null && notes.trim().isNotEmpty) 'NOTES=${notes.trim()}',
+    ];
 
     final Map<String, dynamic> row = await _client
         .from('shift_swaps')
         .insert({
           'user_id': userId,
           'original_date': _dateKey(originalDuty.date),
-          'requested_date': _dateKey(requestedDuty.date),
+          'requested_date': requestedDate,
           'original_turn_number': originalDuty.turnNumber,
           'original_book_on': originalDuty.bookOn,
           'original_book_off': originalDuty.bookOff,
-          'requested_turn_number': requestedDuty.turnNumber,
-          'requested_book_on': requestedDuty.bookOn,
-          'requested_book_off': requestedDuty.bookOff,
-          'status': 'pending',
-          'notes': notes?.trim().isEmpty == true ? null : notes?.trim(),
+          'requested_turn_number': requestedTurnNumber.trim().isEmpty
+              ? null
+              : requestedTurnNumber.trim(),
+          'requested_book_on': null,
+          'requested_book_off': null,
+          'status': 'approved',
+          'notes': metadata.join('\n'),
         })
         .select()
         .single();
