@@ -3484,7 +3484,11 @@ class _CalendarPageState extends State<CalendarPage> {
           return;
         }
 
-        _showShiftSwapDialog(date: date, originalDuty: duty);
+        _showShiftSwapDialog(
+          date: date,
+          originalDuty: duty,
+          initialOption: 'Mutual swap',
+        );
         return;
 
       case _CalendarDayAction.moveRestDayHere:
@@ -3553,6 +3557,7 @@ class _CalendarPageState extends State<CalendarPage> {
   Future<void> _showShiftSwapDialog({
     required DateTime date,
     required Duty originalDuty,
+    String? initialOption,
   }) async {
     final TextEditingController driverNameController = TextEditingController();
     final TextEditingController payrollController = TextEditingController();
@@ -3566,7 +3571,7 @@ class _CalendarPageState extends State<CalendarPage> {
         TextEditingController();
     final TextEditingController notesController = TextEditingController();
 
-    String? selectedOption;
+    String? selectedOption = initialOption;
     bool confirmedWithRosters = false;
 
     try {
@@ -4540,6 +4545,132 @@ class _CalendarPageState extends State<CalendarPage> {
                                                 return;
                                               }
 
+                                              if (!confirmedWithRosters) {
+                                                final SupabaseClient supabase =
+                                                    Supabase.instance.client;
+
+                                                final User? user =
+                                                    supabase.auth.currentUser;
+
+                                                String driverName = '';
+                                                String depot = '';
+                                                String payrollNumber = '';
+
+                                                if (user != null) {
+                                                  final Map<String, dynamic>?
+                                                  profile = await supabase
+                                                      .from('driver_profiles')
+                                                      .select(
+                                                        'display_name, depot, payroll_number',
+                                                      )
+                                                      .eq('user_id', user.id)
+                                                      .maybeSingle();
+
+                                                  final Map<String, dynamic>
+                                                  metadata =
+                                                      user.userMetadata ??
+                                                      <String, dynamic>{};
+
+                                                  driverName =
+                                                      (profile?['display_name'] ??
+                                                              metadata['full_name'] ??
+                                                              '')
+                                                          .toString()
+                                                          .trim();
+
+                                                  depot =
+                                                      (profile?['depot'] ??
+                                                              metadata['depot'] ??
+                                                              '')
+                                                          .toString()
+                                                          .trim();
+
+                                                  payrollNumber =
+                                                      (profile?['payroll_number'] ??
+                                                              metadata['payroll_number'] ??
+                                                              '')
+                                                          .toString()
+                                                          .trim();
+                                                }
+
+                                                final String dutyDate =
+                                                    _fullDate(date);
+
+                                                final String otherDriverName =
+                                                    driverNameController.text
+                                                        .trim();
+
+                                                final String otherPayroll =
+                                                    payrollController.text
+                                                        .trim();
+
+                                                final String proposedDate =
+                                                    requestedDateController.text
+                                                        .trim();
+
+                                                final String proposedTurn =
+                                                    requestedTurnController.text
+                                                        .trim();
+
+                                                final String notes =
+                                                    notesController.text.trim();
+
+                                                final String body =
+                                                    'Please can I request a mutual shift swap.\n\n'
+                                                    'My current duty:\n'
+                                                    '$dutyDate'
+                                                    '${originalDuty.turnNumber == null ? '' : '\nTurn: ${originalDuty.turnNumber}'}'
+                                                    '${originalDuty.bookOn == null ? '' : '\nBook on: ${originalDuty.bookOn}'}'
+                                                    '${originalDuty.bookOff == null ? '' : '\nBook off: ${originalDuty.bookOff}'}'
+                                                    '\n\n'
+                                                    'Proposed swap with:\n'
+                                                    '$otherDriverName\n'
+                                                    'Payroll Number: $otherPayroll\n'
+                                                    'Proposed duty date: $proposedDate\n'
+                                                    'Turn: $proposedTurn'
+                                                    '${notes.isEmpty ? '' : '\n\nNotes:\n$notes'}'
+                                                    '\n\nRegards'
+                                                    '${driverName.isEmpty ? '' : '\n$driverName'}'
+                                                    '${depot.isEmpty ? '' : '\n$depot'}'
+                                                    '${payrollNumber.isEmpty ? '' : '\nPayroll Number: $payrollNumber'}';
+
+                                                final String subject =
+                                                    'Mutual Shift Swap Request - $dutyDate';
+
+                                                final Uri emailUri = Uri.parse(
+                                                  'mailto:drivers.rosters@wmtrains.co.uk'
+                                                  '?subject=${Uri.encodeComponent(subject)}'
+                                                  '&body=${Uri.encodeComponent(body)}',
+                                                );
+
+                                                if (!dialogContext.mounted) {
+                                                  return;
+                                                }
+
+                                                Navigator.of(
+                                                  dialogContext,
+                                                ).pop();
+
+                                                final bool opened =
+                                                    await launchUrl(
+                                                      emailUri,
+                                                      mode: LaunchMode
+                                                          .platformDefault,
+                                                    );
+
+                                                if (!mounted) {
+                                                  return;
+                                                }
+
+                                                if (!opened) {
+                                                  _showCalendarMessage(
+                                                    'Roster Buddy could not open the email app.',
+                                                  );
+                                                }
+
+                                                return;
+                                              }
+
                                               if (dialogContext.mounted) {
                                                 Navigator.of(
                                                   dialogContext,
@@ -4547,11 +4678,7 @@ class _CalendarPageState extends State<CalendarPage> {
                                               }
 
                                               _showCalendarMessage(
-                                                confirmedWithRosters
-                                                    ? 'Mutual swap recorded.'
-                                                    : 'Mutual swap request created. '
-                                                          'The roster has not been '
-                                                          'changed.',
+                                                'Mutual swap recorded.',
                                               );
                                             } on StateError catch (error) {
                                               _showCalendarMessage(
@@ -4771,7 +4898,7 @@ class _CalendarPageState extends State<CalendarPage> {
       case _CalendarDayAction.manualChange:
         return 'Manual change';
       case _CalendarDayAction.shiftSwap:
-        return 'Shift swap';
+        return 'Mutual Swap';
       case _CalendarDayAction.moveRestDayHere:
         return 'Move rest day here';
       case _CalendarDayAction.requestAnnualLeave:

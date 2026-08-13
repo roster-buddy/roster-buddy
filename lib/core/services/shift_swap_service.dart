@@ -71,7 +71,7 @@ class ShiftSwapService {
         .insert({
           'user_id': userId,
           'original_date': _dateKey(originalDuty.date),
-          'requested_date': requestedDate,
+          'requested_date': _normaliseRequestedDate(requestedDate),
           'original_turn_number': originalDuty.turnNumber,
           'original_book_on': originalDuty.bookOn,
           'original_book_off': originalDuty.bookOff,
@@ -80,7 +80,7 @@ class ShiftSwapService {
               : requestedTurnNumber.trim(),
           'requested_book_on': null,
           'requested_book_off': null,
-          'status': 'approved',
+          'status': confirmedWithRosters ? 'approved' : 'pending',
           'notes': metadata.join('\n'),
         })
         .select()
@@ -133,6 +133,35 @@ class ShiftSwapService {
       default:
         return ShiftSwapStatus.pending;
     }
+  }
+
+  String _normaliseRequestedDate(String value) {
+    final String trimmed = value.trim();
+
+    final RegExp ukDate = RegExp(r'^(\d{1,2})/(\d{1,2})/(\d{4})$');
+    final RegExpMatch? match = ukDate.firstMatch(trimmed);
+
+    if (match != null) {
+      final int day = int.parse(match.group(1)!);
+      final int month = int.parse(match.group(2)!);
+      final int year = int.parse(match.group(3)!);
+
+      final DateTime parsed = DateTime(year, month, day);
+
+      if (parsed.year != year || parsed.month != month || parsed.day != day) {
+        throw StateError('Enter a valid proposed duty date.');
+      }
+
+      return _dateKey(parsed);
+    }
+
+    final DateTime? parsed = DateTime.tryParse(trimmed);
+
+    if (parsed == null) {
+      throw StateError('Enter the proposed duty date as DD/MM/YYYY.');
+    }
+
+    return _dateKey(parsed);
   }
 
   String _dateKey(DateTime value) {
