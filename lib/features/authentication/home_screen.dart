@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/models/duty.dart';
 import '../../core/models/duty_type.dart';
 import '../../core/models/roster_source.dart';
+import '../../core/services/annual_leave_service.dart';
 import '../../core/services/duty_resolver.dart';
 import '../../core/services/job_card_service.dart';
 import '../../core/services/manual_duty_service.dart';
@@ -1168,6 +1169,29 @@ class _DashboardPageState extends State<DashboardPage> {
                             ),
                           );
                         },
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+
+                        Future<void>.delayed(
+                          const Duration(milliseconds: 150),
+                          () {
+                            if (!mounted) {
+                              return;
+                            }
+
+                            _showDashboardDayActions(date: date, duty: duty);
+                          },
+                        );
+                      },
+                      icon: const Icon(Icons.beach_access_outlined),
+                      label: const Text('Request annual leave'),
+                      style: FilledButton.styleFrom(backgroundColor: leaveRed),
+                    ),
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -2466,6 +2490,7 @@ class _CalendarPageState extends State<CalendarPage> {
   final DutyResolver _dutyResolver = DutyResolver();
   final ManualDutyService _manualDutyService = ManualDutyService();
   final JobCardService _jobCardService = JobCardService();
+  final AnnualLeaveService _annualLeaveService = AnnualLeaveService();
 
   late DateTime _displayedMonth;
   Map<String, Duty> _dutiesByDate = <String, Duty>{};
@@ -3216,9 +3241,14 @@ class _CalendarPageState extends State<CalendarPage> {
         return;
 
       case _CalendarDayAction.requestAnnualLeave:
-        _showCalendarMessage(
-          'The annual-leave request form will be connected next.',
-        );
+        if (duty == null) {
+          _showCalendarMessage(
+            'No roster duty is available for this annual leave request.',
+          );
+          return;
+        }
+
+        _showAnnualLeaveRequestDialog(date: date, duty: duty);
         return;
 
       case _CalendarDayAction.allocateShift:
@@ -3261,6 +3291,254 @@ class _CalendarPageState extends State<CalendarPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _showAnnualLeaveRequestDialog({
+    required DateTime date,
+    required Duty duty,
+  }) async {
+    if (date.weekday == DateTime.sunday) {
+      _showCalendarMessage('Annual leave cannot be requested for a Sunday.');
+      return;
+    }
+
+    final TextEditingController notesController = TextEditingController();
+
+    int? remainingDays;
+    bool isLoadingBalance = true;
+    bool isSubmitting = false;
+    String? errorMessage;
+
+    try {
+      remainingDays = await _annualLeaveService.getRemainingFloatingDays(
+        date.year,
+      );
+    } on AnnualLeaveException catch (error) {
+      errorMessage = error.message;
+    } catch (_) {
+      errorMessage = 'Roster Buddy could not load your annual leave balance.';
+    } finally {
+      isLoadingBalance = false;
+    }
+
+    if (!mounted) {
+      notesController.dispose();
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) {
+        return StatefulBuilder(
+          builder: (BuildContext sheetContext, void Function(void Function()) setSheetState) {
+            Future<void> submitRequest() async {
+              if (isSubmitting || isLoadingBalance) {
+                return;
+              }
+
+              if ((remainingDays ?? 0) <= 0) {
+                setSheetState(() {
+                  errorMessage =
+                      'You do not have any floating annual leave days remaining.';
+                });
+                return;
+              }
+
+              setSheetState(() {
+                isSubmitting = true;
+                errorMessage = null;
+              });
+
+              try {
+                await _annualLeaveService.requestFloatingLeave(
+                  date: date,
+                  notes: notesController.text,
+                );
+
+                if (!sheetContext.mounted) {
+                  return;
+                }
+
+                Navigator.of(sheetContext).pop();
+
+                await _loadMonth();
+
+                if (!mounted) {
+                  return;
+                }
+
+                _showCalendarMessage(
+                  'Annual leave requested for ${_fullDate(date)}.',
+                );
+              } on AnnualLeaveException catch (error) {
+                if (!sheetContext.mounted) {
+                  return;
+                }
+
+                setSheetState(() {
+                  isSubmitting = false;
+                  errorMessage = error.message;
+                });
+              } catch (_) {
+                if (!sheetContext.mounted) {
+                  return;
+                }
+
+                setSheetState(() {
+                  isSubmitting = false;
+                  errorMessage =
+                      'Roster Buddy could not save this annual leave request.';
+                });
+              }
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  4,
+                  20,
+                  MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Request annual leave',
+                        style: TextStyle(
+                          color: navy,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _fullDate(date),
+                        style: const TextStyle(color: textGrey),
+                      ),
+                      const SizedBox(height: 18),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: railwayBlue.withValues(alpha: 0.07),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.event_available_outlined,
+                              color: railwayBlue,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: isLoadingBalance
+                                  ? const Text(
+                                      'Loading floating-day balance…',
+                                      style: TextStyle(color: textGrey),
+                                    )
+                                  : Text(
+                                      remainingDays == null
+                                          ? 'Floating-day balance unavailable'
+                                          : '$remainingDays floating day${remainingDays == 1 ? '' : 's'} remaining',
+                                      style: const TextStyle(
+                                        color: navy,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        duty.turnNumber?.trim().isNotEmpty == true
+                            ? 'Current duty: Turn ${duty.turnNumber!.trim()}'
+                            : 'Current duty: ${_longDutyLabel(duty)}',
+                        style: const TextStyle(
+                          color: navy,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (duty.bookOn?.trim().isNotEmpty == true ||
+                          duty.bookOff?.trim().isNotEmpty == true) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          _timeDescription(duty),
+                          style: const TextStyle(color: textGrey),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: notesController,
+                        enabled: !isSubmitting,
+                        minLines: 2,
+                        maxLines: 4,
+                        decoration: const InputDecoration(
+                          labelText: 'Notes',
+                          hintText: 'Optional',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Your rostered duty will remain in place until the annual leave is granted.',
+                        style: TextStyle(color: textGrey, height: 1.35),
+                      ),
+                      if (errorMessage != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          errorMessage!,
+                          style: const TextStyle(
+                            color: leaveRed,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed:
+                              isSubmitting ||
+                                  isLoadingBalance ||
+                                  (remainingDays ?? 0) <= 0
+                              ? null
+                              : submitRequest,
+                          icon: isSubmitting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.send_outlined),
+                          label: Text(
+                            isSubmitting
+                                ? 'Requesting…'
+                                : 'Request annual leave',
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: leaveRed,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    notesController.dispose();
   }
 
   Future<void> _showEditDutyDialog({
