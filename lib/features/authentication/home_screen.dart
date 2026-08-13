@@ -3556,414 +3556,1039 @@ class _CalendarPageState extends State<CalendarPage> {
   }) async {
     final TextEditingController driverNameController = TextEditingController();
     final TextEditingController payrollController = TextEditingController();
-    final TextEditingController requestedDateController =
-        TextEditingController();
+    final TextEditingController requestedDateController = TextEditingController(
+      text:
+          '${date.day.toString().padLeft(2, '0')}/'
+          '${date.month.toString().padLeft(2, '0')}/'
+          '${date.year}',
+    );
     final TextEditingController requestedTurnController =
         TextEditingController();
     final TextEditingController notesController = TextEditingController();
 
-    bool confirmedWithRosters = false;
     String? selectedOption;
+    bool confirmedWithRosters = false;
 
     try {
       await showCupertinoModalPopup<void>(
         context: context,
-        builder: (BuildContext popupContext) {
+        builder: (BuildContext dialogContext) {
           return StatefulBuilder(
-            builder: (BuildContext dialogContext, StateSetter setDialogState) {
-              return SafeArea(
-                top: false,
-                child: CupertinoPopupSurface(
-                  isSurfacePainted: true,
-                  child: Material(
-                    color: CupertinoColors.systemBackground.resolveFrom(
-                      dialogContext,
+            builder:
+                (
+                  BuildContext dialogContext,
+                  void Function(void Function()) setDialogState,
+                ) {
+                  return DefaultTextStyle(
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: CupertinoColors.label.resolveFrom(dialogContext),
+                      decoration: TextDecoration.none,
                     ),
-                    child: SingleChildScrollView(
-                      padding: EdgeInsets.only(
-                        left: 20,
-                        right: 20,
-                        top: 20,
-                        bottom:
-                            MediaQuery.of(dialogContext).viewInsets.bottom + 20,
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Row(
+                    child: CupertinoPopupSurface(
+                      child: SafeArea(
+                        top: false,
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: <Widget>[
-                              Expanded(
-                                child: Text(
-                                  'Shift Change',
-                                  style: CupertinoTheme.of(
-                                    dialogContext,
-                                  ).textTheme.navTitleTextStyle,
+                              Row(
+                                children: <Widget>[
+                                  const Expanded(
+                                    child: Text(
+                                      'Shift Change',
+                                      style: TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w700,
+                                        color: CupertinoColors.label,
+                                      ),
+                                    ),
+                                  ),
+                                  CupertinoButton(
+                                    padding: EdgeInsets.zero,
+                                    onPressed: () {
+                                      Navigator.of(dialogContext).pop();
+                                    },
+                                    child: const Icon(
+                                      CupertinoIcons.xmark_circle_fill,
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 6),
+
+                              Text(
+                                'Selected date: ${_fullDate(date)}',
+                                style: TextStyle(
+                                  color: CupertinoColors.secondaryLabel
+                                      .resolveFrom(dialogContext),
+                                  fontSize: 13,
                                 ),
                               ),
-                              CupertinoButton(
-                                padding: EdgeInsets.zero,
-                                onPressed: () {
-                                  Navigator.of(dialogContext).pop();
+
+                              const SizedBox(height: 20),
+
+                              Text(
+                                'What do you want to do?',
+                                style: CupertinoTheme.of(dialogContext)
+                                    .textTheme
+                                    .textStyle
+                                    .copyWith(fontWeight: FontWeight.w600),
+                              ),
+
+                              const SizedBox(height: 10),
+
+                              _shiftChangeOption(
+                                context: dialogContext,
+                                title: 'Mutual swap',
+                                subtitle: 'Swap this duty with another driver.',
+                                icon: CupertinoIcons.person_2_fill,
+                                selected: selectedOption == 'Mutual swap',
+                                onTap: () {
+                                  setDialogState(() {
+                                    selectedOption = 'Mutual swap';
+                                  });
                                 },
-                                child: const Icon(
-                                  CupertinoIcons.xmark_circle_fill,
+                              ),
+
+                              const SizedBox(height: 8),
+
+                              _shiftChangeOption(
+                                context: dialogContext,
+                                title: 'Swap with myself',
+                                subtitle:
+                                    'Move this duty to another one of my duties.',
+                                icon: CupertinoIcons.arrow_2_squarepath,
+                                selected: selectedOption == 'Swap with myself',
+                                onTap: () {
+                                  setDialogState(() {
+                                    selectedOption = 'Swap with myself';
+                                  });
+                                },
+                              ),
+
+                              const SizedBox(height: 8),
+
+                              _shiftChangeOption(
+                                context: dialogContext,
+                                title: 'Change to Rest Day',
+                                subtitle:
+                                    'Replace this working duty with a Rest Day.',
+                                icon: CupertinoIcons.moon_fill,
+                                selected:
+                                    selectedOption == 'Change to Rest Day',
+                                onTap: () {
+                                  setDialogState(() {
+                                    selectedOption = 'Change to Rest Day';
+                                  });
+                                },
+                              ),
+
+                              if (selectedOption == 'Mutual swap') ...<Widget>[
+                                const SizedBox(height: 22),
+
+                                Text(
+                                  'Mutual swap',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: CupertinoColors.label,
+                                  ),
+                                ),
+
+                                const SizedBox(height: 6),
+
+                                Text(
+                                  'Enter the details of the other driver and '
+                                  'the duty you are proposing to swap.',
+                                  style: CupertinoTheme.of(dialogContext)
+                                      .textTheme
+                                      .textStyle
+                                      .copyWith(
+                                        color: CupertinoColors.secondaryLabel
+                                            .resolveFrom(dialogContext),
+                                        fontSize: 13,
+                                      ),
+                                ),
+
+                                const SizedBox(height: 12),
+
+                                _shiftChangeTextField(
+                                  controller: driverNameController,
+                                  placeholder: 'Other driver name',
+                                  keyboardType: TextInputType.name,
+                                ),
+
+                                const SizedBox(height: 10),
+
+                                _shiftChangeTextField(
+                                  controller: payrollController,
+                                  placeholder: 'Other driver payroll number',
+                                  keyboardType: TextInputType.number,
+                                ),
+
+                                const SizedBox(height: 10),
+
+                                _shiftChangeTextField(
+                                  controller: requestedDateController,
+                                  placeholder:
+                                      'Proposed duty date (DD/MM/YYYY)',
+                                  keyboardType: TextInputType.datetime,
+                                ),
+
+                                const SizedBox(height: 10),
+
+                                _shiftChangeTextField(
+                                  controller: requestedTurnController,
+                                  placeholder: "Other driver's turn number",
+                                  keyboardType: TextInputType.text,
+                                ),
+
+                                const SizedBox(height: 12),
+
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: CupertinoColors.systemGrey6
+                                        .resolveFrom(dialogContext),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    children: <Widget>[
+                                      Expanded(
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 10,
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: <Widget>[
+                                              const Text(
+                                                'Confirmed with DTCM / Rosters',
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: CupertinoColors.label,
+                                                  decoration:
+                                                      TextDecoration.none,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 3),
+                                              Text(
+                                                confirmedWithRosters
+                                                    ? 'Confirmed — change can be applied.'
+                                                    : 'Not confirmed — request only.',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: CupertinoColors
+                                                      .secondaryLabel
+                                                      .resolveFrom(
+                                                        dialogContext,
+                                                      ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      CupertinoSwitch(
+                                        value: confirmedWithRosters,
+                                        onChanged: (bool value) {
+                                          setDialogState(() {
+                                            confirmedWithRosters = value;
+                                          });
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                const SizedBox(height: 10),
+
+                                _shiftChangeTextField(
+                                  controller: notesController,
+                                  placeholder: 'Notes (optional)',
+                                  keyboardType: TextInputType.multiline,
+                                  maxLines: 3,
+                                ),
+                              ],
+
+                              if (selectedOption ==
+                                  'Swap with myself') ...<Widget>[
+                                const SizedBox(height: 18),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: CupertinoColors.systemGrey6
+                                        .resolveFrom(dialogContext),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Text(
+                                    'The next step will allow you to select the '
+                                    'other working duty from your roster.',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                      color: CupertinoColors.activeBlue,
+                                      decoration: TextDecoration.none,
+                                    ),
+                                  ),
+                                ),
+                              ],
+
+                              if (selectedOption ==
+                                  'Change to Rest Day') ...<Widget>[
+                                const SizedBox(height: 18),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: CupertinoColors.systemGrey6
+                                        .resolveFrom(dialogContext),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    'This will make ${_fullDate(date)} a Rest Day '
+                                    'and preserve the original rostered duty in '
+                                    'your duty history.',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w400,
+                                      color: CupertinoColors.label,
+                                      decoration: TextDecoration.none,
+                                    ),
+                                  ),
+                                ),
+                              ],
+
+                              const SizedBox(height: 20),
+
+                              SizedBox(
+                                width: double.infinity,
+                                child: CupertinoButton.filled(
+                                  onPressed: selectedOption == null
+                                      ? null
+                                      : () async {
+                                          if (selectedOption ==
+                                              'Change to Rest Day') {
+                                            final DateTime selectedDay =
+                                                DateTime(
+                                                  date.year,
+                                                  date.month,
+                                                  date.day,
+                                                );
+
+                                            final DateTime weekSunday =
+                                                selectedDay.subtract(
+                                                  Duration(
+                                                    days:
+                                                        selectedDay.weekday % 7,
+                                                  ),
+                                                );
+
+                                            final List<DateTime> restDays =
+                                                <DateTime>[];
+
+                                            for (
+                                              int offset = 0;
+                                              offset < 7;
+                                              offset++
+                                            ) {
+                                              final DateTime candidate =
+                                                  weekSunday.add(
+                                                    Duration(days: offset),
+                                                  );
+
+                                              final Duty? candidateDuty =
+                                                  _dutiesByDate[_dateKey(
+                                                    candidate,
+                                                  )];
+
+                                              if (candidateDuty?.dutyType ==
+                                                  DutyType.restDay) {
+                                                restDays.add(candidate);
+                                              }
+                                            }
+
+                                            if (restDays.isEmpty) {
+                                              _showCalendarMessage(
+                                                'There are no Rest Days in this roster week to swap with.',
+                                              );
+                                              return;
+                                            }
+
+                                            final Set<DateTime>
+                                            selectedAlternatives = <DateTime>{};
+
+                                            final List<DateTime>?
+                                            chosenRestDays = await showCupertinoModalPopup<List<DateTime>>(
+                                              context: dialogContext,
+                                              builder: (BuildContext pickerContext) {
+                                                return StatefulBuilder(
+                                                  builder:
+                                                      (
+                                                        BuildContext
+                                                        pickerContext,
+                                                        void Function(
+                                                          void Function(),
+                                                        )
+                                                        setPickerState,
+                                                      ) {
+                                                        return DefaultTextStyle(
+                                                          style: TextStyle(
+                                                            fontSize: 14,
+                                                            color: CupertinoColors
+                                                                .label
+                                                                .resolveFrom(
+                                                                  pickerContext,
+                                                                ),
+                                                            decoration:
+                                                                TextDecoration
+                                                                    .none,
+                                                          ),
+                                                          child: CupertinoPopupSurface(
+                                                            child: SafeArea(
+                                                              top: false,
+                                                              child: Padding(
+                                                                padding:
+                                                                    const EdgeInsets.fromLTRB(
+                                                                      20,
+                                                                      20,
+                                                                      20,
+                                                                      24,
+                                                                    ),
+                                                                child: Column(
+                                                                  mainAxisSize:
+                                                                      MainAxisSize
+                                                                          .min,
+                                                                  crossAxisAlignment:
+                                                                      CrossAxisAlignment
+                                                                          .start,
+                                                                  children: <Widget>[
+                                                                    const Text(
+                                                                      'Which Rest Day could you work?',
+                                                                      style: TextStyle(
+                                                                        fontSize:
+                                                                            19,
+                                                                        fontWeight:
+                                                                            FontWeight.w700,
+                                                                        decoration:
+                                                                            TextDecoration.none,
+                                                                      ),
+                                                                    ),
+                                                                    const SizedBox(
+                                                                      height: 6,
+                                                                    ),
+                                                                    const Text(
+                                                                      'Select one or more Rest Days. If you select more than one, they will be offered to Rosters as alternatives for the same one-day swap.',
+                                                                    ),
+                                                                    const SizedBox(
+                                                                      height:
+                                                                          16,
+                                                                    ),
+                                                                    ...restDays.map((
+                                                                      DateTime
+                                                                      restDay,
+                                                                    ) {
+                                                                      final bool
+                                                                      selected =
+                                                                          selectedAlternatives.contains(
+                                                                            restDay,
+                                                                          );
+
+                                                                      return Padding(
+                                                                        padding: const EdgeInsets.only(
+                                                                          bottom:
+                                                                              8,
+                                                                        ),
+                                                                        child: GestureDetector(
+                                                                          behavior:
+                                                                              HitTestBehavior.opaque,
+                                                                          onTap: () {
+                                                                            setPickerState(() {
+                                                                              if (selected) {
+                                                                                selectedAlternatives.remove(
+                                                                                  restDay,
+                                                                                );
+                                                                              } else {
+                                                                                selectedAlternatives.add(
+                                                                                  restDay,
+                                                                                );
+                                                                              }
+                                                                            });
+                                                                          },
+                                                                          child: Container(
+                                                                            width:
+                                                                                double.infinity,
+                                                                            padding: const EdgeInsets.symmetric(
+                                                                              horizontal: 14,
+                                                                              vertical: 13,
+                                                                            ),
+                                                                            decoration: BoxDecoration(
+                                                                              color: selected
+                                                                                  ? CupertinoColors.activeBlue.withValues(
+                                                                                      alpha: 0.12,
+                                                                                    )
+                                                                                  : CupertinoColors.systemGrey6.resolveFrom(
+                                                                                      pickerContext,
+                                                                                    ),
+                                                                              borderRadius: BorderRadius.circular(
+                                                                                12,
+                                                                              ),
+                                                                              border: Border.all(
+                                                                                color: selected
+                                                                                    ? CupertinoColors.activeBlue.resolveFrom(
+                                                                                        pickerContext,
+                                                                                      )
+                                                                                    : const Color(
+                                                                                        0x00000000,
+                                                                                      ),
+                                                                                width: selected
+                                                                                    ? 1.5
+                                                                                    : 0,
+                                                                              ),
+                                                                            ),
+                                                                            child: Row(
+                                                                              children:
+                                                                                  <
+                                                                                    Widget
+                                                                                  >[
+                                                                                    Expanded(
+                                                                                      child: Text(
+                                                                                        _fullDate(
+                                                                                          restDay,
+                                                                                        ),
+                                                                                        style: const TextStyle(
+                                                                                          fontSize: 16,
+                                                                                          fontWeight: FontWeight.w600,
+                                                                                          decoration: TextDecoration.none,
+                                                                                        ),
+                                                                                      ),
+                                                                                    ),
+                                                                                    Icon(
+                                                                                      selected
+                                                                                          ? CupertinoIcons.check_mark_circled_solid
+                                                                                          : CupertinoIcons.circle,
+                                                                                      color: selected
+                                                                                          ? CupertinoColors.activeBlue.resolveFrom(
+                                                                                              pickerContext,
+                                                                                            )
+                                                                                          : CupertinoColors.secondaryLabel.resolveFrom(
+                                                                                              pickerContext,
+                                                                                            ),
+                                                                                    ),
+                                                                                  ],
+                                                                            ),
+                                                                          ),
+                                                                        ),
+                                                                      );
+                                                                    }),
+                                                                    const SizedBox(
+                                                                      height: 8,
+                                                                    ),
+                                                                    SizedBox(
+                                                                      width: double
+                                                                          .infinity,
+                                                                      child: CupertinoButton.filled(
+                                                                        onPressed:
+                                                                            selectedAlternatives.isEmpty
+                                                                            ? null
+                                                                            : () {
+                                                                                final List<
+                                                                                  DateTime
+                                                                                >
+                                                                                result = selectedAlternatives.toList()
+                                                                                  ..sort(
+                                                                                    (
+                                                                                      DateTime a,
+                                                                                      DateTime b,
+                                                                                    ) => a.compareTo(
+                                                                                      b,
+                                                                                    ),
+                                                                                  );
+
+                                                                                Navigator.of(
+                                                                                  pickerContext,
+                                                                                ).pop(
+                                                                                  result,
+                                                                                );
+                                                                              },
+                                                                        child: Text(
+                                                                          selectedAlternatives.length ==
+                                                                                  1
+                                                                              ? 'Continue with 1 option'
+                                                                              : 'Continue with ${selectedAlternatives.length} options',
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                    SizedBox(
+                                                                      width: double
+                                                                          .infinity,
+                                                                      child: CupertinoButton(
+                                                                        onPressed: () {
+                                                                          Navigator.of(
+                                                                            pickerContext,
+                                                                          ).pop();
+                                                                        },
+                                                                        child: const Text(
+                                                                          'Cancel',
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                  ],
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        );
+                                                      },
+                                                );
+                                              },
+                                            );
+
+                                            if (!mounted ||
+                                                !dialogContext.mounted ||
+                                                chosenRestDays == null ||
+                                                chosenRestDays.isEmpty) {
+                                              return;
+                                            }
+
+                                            final String?
+                                            confirmation = await showCupertinoDialog<String>(
+                                              context: dialogContext,
+                                              builder: (BuildContext confirmContext) {
+                                                return CupertinoAlertDialog(
+                                                  title: const Text(
+                                                    'Confirm Rest Day Change',
+                                                  ),
+                                                  content: Text(
+                                                    'Have you confirmed this change '
+                                                    'with DTCM / Rosters?\n\n'
+                                                    '${_fullDate(date)} will become '
+                                                    'your Rest Day.',
+                                                  ),
+                                                  actions: <Widget>[
+                                                    CupertinoDialogAction(
+                                                      onPressed: () {
+                                                        Navigator.of(
+                                                          confirmContext,
+                                                        ).pop('cancel');
+                                                      },
+                                                      child: const Text(
+                                                        'Cancel',
+                                                      ),
+                                                    ),
+                                                    CupertinoDialogAction(
+                                                      onPressed: () {
+                                                        Navigator.of(
+                                                          confirmContext,
+                                                        ).pop('not_confirmed');
+                                                      },
+                                                      child: const Text(
+                                                        'Not confirmed',
+                                                      ),
+                                                    ),
+                                                    CupertinoDialogAction(
+                                                      isDefaultAction: true,
+                                                      onPressed: () {
+                                                        Navigator.of(
+                                                          confirmContext,
+                                                        ).pop('confirmed');
+                                                      },
+                                                      child: const Text(
+                                                        'Confirmed with DTCM / Rosters',
+                                                      ),
+                                                    ),
+                                                  ],
+                                                );
+                                              },
+                                            );
+
+                                            if (!mounted ||
+                                                confirmation == null ||
+                                                confirmation == 'cancel') {
+                                              return;
+                                            }
+
+                                            if (confirmation ==
+                                                'not_confirmed') {
+                                              final SupabaseClient supabase =
+                                                  Supabase.instance.client;
+
+                                              final User? user =
+                                                  supabase.auth.currentUser;
+
+                                              String driverName = '';
+                                              String depot = '';
+                                              String payrollNumber = '';
+
+                                              if (user != null) {
+                                                final Map<String, dynamic>?
+                                                profile = await supabase
+                                                    .from('driver_profiles')
+                                                    .select(
+                                                      'display_name, depot, payroll_number',
+                                                    )
+                                                    .eq('user_id', user.id)
+                                                    .maybeSingle();
+
+                                                final Map<String, dynamic>
+                                                metadata =
+                                                    user.userMetadata ??
+                                                    <String, dynamic>{};
+
+                                                driverName =
+                                                    (profile?['display_name'] ??
+                                                            metadata['full_name'] ??
+                                                            '')
+                                                        .toString()
+                                                        .trim();
+
+                                                depot =
+                                                    (profile?['depot'] ??
+                                                            metadata['depot'] ??
+                                                            '')
+                                                        .toString()
+                                                        .trim();
+
+                                                payrollNumber =
+                                                    (profile?['payroll_number'] ??
+                                                            metadata['payroll_number'] ??
+                                                            '')
+                                                        .toString()
+                                                        .trim();
+                                              }
+
+                                              final String requestDate =
+                                                  _fullDate(date);
+
+                                              final String requestText;
+
+                                              if (chosenRestDays.length == 1) {
+                                                requestText =
+                                                    'Would it be possible to move my rest day to '
+                                                    '$requestDate and work on '
+                                                    '${_fullDate(chosenRestDays.first)} instead?';
+                                              } else {
+                                                final String
+                                                options = chosenRestDays
+                                                    .map(
+                                                      (DateTime restDay) =>
+                                                          '- ${_fullDate(restDay)}',
+                                                    )
+                                                    .join('\n');
+
+                                                requestText =
+                                                    'Would it be possible to move my rest day to '
+                                                    '$requestDate and work on one of the following '
+                                                    'dates instead?\n\n$options';
+                                              }
+
+                                              final List<String>
+                                              signature = <String>[
+                                                if (driverName.isNotEmpty)
+                                                  driverName,
+                                                if (depot.isNotEmpty) depot,
+                                                if (payrollNumber.isNotEmpty)
+                                                  'Payroll Number: $payrollNumber',
+                                              ];
+
+                                              final String body =
+                                                  '$requestText\n\n'
+                                                  'Regards'
+                                                  '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
+
+                                              final String subject =
+                                                  'Rest Day Swap Request - $requestDate';
+
+                                              final Uri emailUri = Uri.parse(
+                                                'mailto:drivers.rosters@wmtrains.co.uk'
+                                                '?subject=${Uri.encodeComponent(subject)}'
+                                                '&body=${Uri.encodeComponent(body)}',
+                                              );
+
+                                              if (dialogContext.mounted) {
+                                                Navigator.of(
+                                                  dialogContext,
+                                                ).pop();
+                                              }
+
+                                              final bool opened =
+                                                  await launchUrl(
+                                                    emailUri,
+                                                    mode: LaunchMode
+                                                        .platformDefault,
+                                                  );
+
+                                              if (!mounted) {
+                                                return;
+                                              }
+
+                                              if (!opened) {
+                                                _showCalendarMessage(
+                                                  'Roster Buddy could not open the email app.',
+                                                );
+                                              }
+
+                                              return;
+                                            }
+
+                                            if (confirmation != 'confirmed') {
+                                              return;
+                                            }
+
+                                            DateTime? agreedRestDay;
+
+                                            if (chosenRestDays.length == 1) {
+                                              agreedRestDay =
+                                                  chosenRestDays.first;
+                                            } else {
+                                              if (!dialogContext.mounted) {
+                                                return;
+                                              }
+
+                                              agreedRestDay = await showCupertinoDialog<DateTime>(
+                                                context: dialogContext,
+                                                builder: (BuildContext agreedContext) {
+                                                  return CupertinoAlertDialog(
+                                                    title: const Text(
+                                                      'Which Rest Day was agreed?',
+                                                    ),
+                                                    content: const Text(
+                                                      'Choose the one Rest Day that DTCM / Rosters confirmed you will work.',
+                                                    ),
+                                                    actions: <Widget>[
+                                                      ...chosenRestDays.map(
+                                                        (DateTime restDay) =>
+                                                            CupertinoDialogAction(
+                                                              onPressed: () {
+                                                                Navigator.of(
+                                                                  agreedContext,
+                                                                ).pop(restDay);
+                                                              },
+                                                              child: Text(
+                                                                _fullDate(
+                                                                  restDay,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                      ),
+                                                      CupertinoDialogAction(
+                                                        onPressed: () {
+                                                          Navigator.of(
+                                                            agreedContext,
+                                                          ).pop();
+                                                        },
+                                                        child: const Text(
+                                                          'Cancel',
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  );
+                                                },
+                                              );
+                                            }
+
+                                            if (!mounted ||
+                                                agreedRestDay == null) {
+                                              return;
+                                            }
+
+                                            final Duty? originalRestDayDuty =
+                                                _dutiesByDate[_dateKey(
+                                                  agreedRestDay,
+                                                )];
+
+                                            if (originalRestDayDuty == null ||
+                                                originalRestDayDuty.dutyType !=
+                                                    DutyType.restDay) {
+                                              _showCalendarMessage(
+                                                'The selected replacement day is no longer a Rest Day.',
+                                              );
+                                              return;
+                                            }
+
+                                            final String turnNumber =
+                                                originalDuty.turnNumber
+                                                    ?.trim() ??
+                                                '';
+                                            final String bookOn =
+                                                originalDuty.bookOn?.trim() ??
+                                                '';
+                                            final String bookOff =
+                                                originalDuty.bookOff?.trim() ??
+                                                '';
+
+                                            if (turnNumber.isEmpty ||
+                                                bookOn.isEmpty ||
+                                                bookOff.isEmpty) {
+                                              _showCalendarMessage(
+                                                'This duty does not contain enough turn information to move automatically.',
+                                              );
+                                              return;
+                                            }
+
+                                            try {
+                                              await _manualDutyService
+                                                  .saveRestDayWorked(
+                                                    date: agreedRestDay,
+                                                    turnNumber: turnNumber,
+                                                    bookOn: bookOn,
+                                                    bookOff: bookOff,
+                                                    originalDuty:
+                                                        originalRestDayDuty,
+                                                  );
+
+                                              await _manualDutyService
+                                                  .saveMovedRestDay(
+                                                    date: date,
+                                                    originalDuty: originalDuty,
+                                                  );
+
+                                              await _loadMonth();
+
+                                              if (!mounted) {
+                                                return;
+                                              }
+
+                                              if (dialogContext.mounted) {
+                                                Navigator.of(
+                                                  dialogContext,
+                                                ).pop();
+                                              }
+
+                                              _showCalendarMessage(
+                                                'Rest Day moved to ${_fullDate(date)}. '
+                                                'You will work ${_fullDate(agreedRestDay)} instead.',
+                                              );
+                                            } on ManualDutyException catch (
+                                              error
+                                            ) {
+                                              if (!mounted) {
+                                                return;
+                                              }
+
+                                              _showCalendarMessage(
+                                                error.message,
+                                              );
+                                            } catch (_) {
+                                              if (!mounted) {
+                                                return;
+                                              }
+
+                                              _showCalendarMessage(
+                                                'Roster Buddy could not complete the Rest Day swap.',
+                                              );
+                                            }
+
+                                            return;
+                                          }
+
+                                          if (selectedOption == 'Mutual swap') {
+                                            if (driverNameController.text
+                                                    .trim()
+                                                    .isEmpty ||
+                                                payrollController.text
+                                                    .trim()
+                                                    .isEmpty ||
+                                                requestedDateController.text
+                                                    .trim()
+                                                    .isEmpty ||
+                                                requestedTurnController.text
+                                                    .trim()
+                                                    .isEmpty) {
+                                              _showCalendarMessage(
+                                                'Please enter the other driver, '
+                                                'payroll number, proposed date and '
+                                                'turn number.',
+                                              );
+                                              return;
+                                            }
+
+                                            try {
+                                              await _shiftSwapService
+                                                  .createRequest(
+                                                    originalDuty: originalDuty,
+                                                    requestedDate:
+                                                        requestedDateController
+                                                            .text
+                                                            .trim(),
+                                                    requestedTurnNumber:
+                                                        requestedTurnController
+                                                            .text
+                                                            .trim(),
+                                                    otherDriverName:
+                                                        driverNameController
+                                                            .text
+                                                            .trim(),
+                                                    otherPayrollNumber:
+                                                        payrollController.text
+                                                            .trim(),
+                                                    type: 'Mutual swap',
+                                                    confirmedWithRosters:
+                                                        confirmedWithRosters,
+                                                    notes: notesController.text
+                                                        .trim(),
+                                                  );
+
+                                              if (!mounted) {
+                                                return;
+                                              }
+
+                                              if (dialogContext.mounted) {
+                                                Navigator.of(
+                                                  dialogContext,
+                                                ).pop();
+                                              }
+
+                                              _showCalendarMessage(
+                                                confirmedWithRosters
+                                                    ? 'Mutual swap recorded.'
+                                                    : 'Mutual swap request created. '
+                                                          'The roster has not been '
+                                                          'changed.',
+                                              );
+                                            } on StateError catch (error) {
+                                              _showCalendarMessage(
+                                                error.message,
+                                              );
+                                            } catch (error) {
+                                              _showCalendarMessage(
+                                                'Unable to create the shift change '
+                                                'request: $error',
+                                              );
+                                            }
+
+                                            return;
+                                          }
+
+                                          if (selectedOption ==
+                                              'Swap with myself') {
+                                            if (dialogContext.mounted) {
+                                              Navigator.of(dialogContext).pop();
+                                            }
+
+                                            _showCalendarMessage(
+                                              'Select the other working duty from '
+                                              'your calendar to continue the swap.',
+                                            );
+                                          }
+                                        },
+                                  child: const Text('Continue'),
                                 ),
                               ),
                             ],
                           ),
-
-                          const SizedBox(height: 8),
-
-                          Text(
-                            'Current duty',
-                            style: CupertinoTheme.of(dialogContext)
-                                .textTheme
-                                .textStyle
-                                .copyWith(fontWeight: FontWeight.w600),
-                          ),
-
-                          const SizedBox(height: 4),
-
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: CupertinoColors.systemGrey6.resolveFrom(
-                                dialogContext,
-                              ),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              '${_fullDate(originalDuty.date)}'
-                              ' • '
-                              '${originalDuty.turnNumber ?? 'No turn'}'
-                              ' • '
-                              '${originalDuty.bookOn ?? '--'}'
-                              '–'
-                              '${originalDuty.bookOff ?? '--'}',
-                            ),
-                          ),
-
-                          const SizedBox(height: 20),
-
-                          Text(
-                            'What do you want to do?',
-                            style: CupertinoTheme.of(dialogContext)
-                                .textTheme
-                                .textStyle
-                                .copyWith(fontWeight: FontWeight.w600),
-                          ),
-
-                          const SizedBox(height: 10),
-
-                          _shiftChangeOption(
-                            context: dialogContext,
-                            title: 'Mutual swap',
-                            subtitle: 'Swap this duty with another driver.',
-                            icon: CupertinoIcons.person_2_fill,
-                            selected: selectedOption == 'Mutual swap',
-                            onTap: () {
-                              setDialogState(() {
-                                selectedOption = 'Mutual swap';
-                              });
-                            },
-                          ),
-
-                          const SizedBox(height: 8),
-
-                          _shiftChangeOption(
-                            context: dialogContext,
-                            title: 'Swap with myself',
-                            subtitle:
-                                'Move this duty to another one of my duties.',
-                            icon: CupertinoIcons.arrow_2_squarepath,
-                            selected: selectedOption == 'Swap with myself',
-                            onTap: () {
-                              setDialogState(() {
-                                selectedOption = 'Swap with myself';
-                              });
-                            },
-                          ),
-
-                          const SizedBox(height: 8),
-
-                          _shiftChangeOption(
-                            context: dialogContext,
-                            title: 'Change to Rest Day',
-                            subtitle:
-                                'Replace this working duty with a Rest Day.',
-                            icon: CupertinoIcons.moon_fill,
-                            selected: selectedOption == 'Change to Rest Day',
-                            onTap: () {
-                              setDialogState(() {
-                                selectedOption = 'Change to Rest Day';
-                              });
-                            },
-                          ),
-
-                          if (selectedOption == 'Mutual swap') ...<Widget>[
-                            const SizedBox(height: 22),
-
-                            Text(
-                              'Mutual swap',
-                              style: CupertinoTheme.of(dialogContext)
-                                  .textTheme
-                                  .textStyle
-                                  .copyWith(fontWeight: FontWeight.w600),
-                            ),
-
-                            const SizedBox(height: 6),
-
-                            Text(
-                              'Enter the details of the other driver and '
-                              'the duty you are proposing to swap.',
-                              style: CupertinoTheme.of(dialogContext)
-                                  .textTheme
-                                  .textStyle
-                                  .copyWith(
-                                    color: CupertinoColors.secondaryLabel
-                                        .resolveFrom(dialogContext),
-                                    fontSize: 13,
-                                  ),
-                            ),
-
-                            const SizedBox(height: 12),
-
-                            _shiftChangeTextField(
-                              controller: driverNameController,
-                              placeholder: 'Other driver name',
-                              keyboardType: TextInputType.name,
-                            ),
-
-                            const SizedBox(height: 10),
-
-                            _shiftChangeTextField(
-                              controller: payrollController,
-                              placeholder: 'Other driver payroll number',
-                              keyboardType: TextInputType.number,
-                            ),
-
-                            const SizedBox(height: 10),
-
-                            _shiftChangeTextField(
-                              controller: requestedDateController,
-                              placeholder: 'Proposed duty date (DD/MM/YYYY)',
-                              keyboardType: TextInputType.datetime,
-                            ),
-
-                            const SizedBox(height: 10),
-
-                            _shiftChangeTextField(
-                              controller: requestedTurnController,
-                              placeholder: "Other driver's turn number",
-                              keyboardType: TextInputType.text,
-                            ),
-
-                            const SizedBox(height: 12),
-
-                            Container(
-                              decoration: BoxDecoration(
-                                color: CupertinoColors.systemGrey6.resolveFrom(
-                                  dialogContext,
-                                ),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Row(
-                                children: <Widget>[
-                                  Expanded(
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 10,
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: <Widget>[
-                                          const Text(
-                                            'Confirmed with DTCM / Rosters',
-                                          ),
-                                          const SizedBox(height: 3),
-                                          Text(
-                                            confirmedWithRosters
-                                                ? 'Confirmed — change can be applied.'
-                                                : 'Not confirmed — create a request/email instead.',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: CupertinoColors
-                                                  .secondaryLabel
-                                                  .resolveFrom(dialogContext),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  CupertinoSwitch(
-                                    value: confirmedWithRosters,
-                                    onChanged: (bool value) {
-                                      setDialogState(() {
-                                        confirmedWithRosters = value;
-                                      });
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            const SizedBox(height: 10),
-
-                            _shiftChangeTextField(
-                              controller: notesController,
-                              placeholder: 'Notes (optional)',
-                              keyboardType: TextInputType.multiline,
-                              maxLines: 3,
-                            ),
-                          ],
-
-                          if (selectedOption == 'Swap with myself') ...<Widget>[
-                            const SizedBox(height: 18),
-
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: CupertinoColors.systemGrey6.resolveFrom(
-                                  dialogContext,
-                                ),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Text(
-                                'Select the other working duty from your '
-                                'roster to exchange with this duty.',
-                              ),
-                            ),
-
-                            const SizedBox(height: 10),
-
-                            CupertinoButton.filled(
-                              onPressed: () {
-                                Navigator.of(dialogContext).pop();
-                                _showCalendarMessage(
-                                  'Your own-duty swap selector will be '
-                                  'opened here.',
-                                );
-                              },
-                              child: const Text('Select my other duty'),
-                            ),
-                          ],
-
-                          if (selectedOption ==
-                              'Change to Rest Day') ...<Widget>[
-                            const SizedBox(height: 18),
-
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: CupertinoColors.systemGrey6.resolveFrom(
-                                  dialogContext,
-                                ),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Text(
-                                'This will create a manually moved Rest Day '
-                                'while preserving the original roster duty '
-                                'in the history.',
-                              ),
-                            ),
-                          ],
-
-                          const SizedBox(height: 20),
-
-                          SizedBox(
-                            width: double.infinity,
-                            child: CupertinoButton.filled(
-                              onPressed: selectedOption == null
-                                  ? null
-                                  : () async {
-                                      if (selectedOption == 'Mutual swap') {
-                                        if (driverNameController.text
-                                                .trim()
-                                                .isEmpty ||
-                                            payrollController.text
-                                                .trim()
-                                                .isEmpty ||
-                                            requestedDateController.text
-                                                .trim()
-                                                .isEmpty ||
-                                            requestedTurnController.text
-                                                .trim()
-                                                .isEmpty) {
-                                          _showCalendarMessage(
-                                            'Please enter the other driver, '
-                                            'payroll number, proposed date '
-                                            'and turn number.',
-                                          );
-                                          return;
-                                        }
-
-                                        try {
-                                          await _shiftSwapService.createRequest(
-                                            originalDuty: originalDuty,
-                                            requestedDate:
-                                                requestedDateController.text
-                                                    .trim(),
-                                            requestedTurnNumber:
-                                                requestedTurnController.text
-                                                    .trim(),
-                                            otherDriverName:
-                                                driverNameController.text
-                                                    .trim(),
-                                            otherPayrollNumber:
-                                                payrollController.text.trim(),
-                                            type: 'Mutual swap',
-                                            confirmedWithRosters:
-                                                confirmedWithRosters,
-                                            notes: notesController.text.trim(),
-                                          );
-
-                                          if (!mounted) {
-                                            return;
-                                          }
-
-                                          Navigator.of(dialogContext).pop();
-
-                                          _showCalendarMessage(
-                                            confirmedWithRosters
-                                                ? 'Mutual swap recorded.'
-                                                : 'Mutual swap request created. '
-                                                      'The roster has not been changed.',
-                                          );
-                                        } on StateError catch (error) {
-                                          _showCalendarMessage(error.message);
-                                        } catch (error) {
-                                          _showCalendarMessage(
-                                            'Unable to create the shift '
-                                            'change request: $error',
-                                          );
-                                        }
-
-                                        return;
-                                      }
-
-                                      Navigator.of(dialogContext).pop();
-
-                                      _showCalendarMessage(
-                                        '$selectedOption selected.',
-                                      );
-                                    },
-                              child: const Text('Continue'),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              );
-            },
+                  );
+                },
           );
         },
       );
@@ -3984,22 +4609,24 @@ class _CalendarPageState extends State<CalendarPage> {
     required bool selected,
     required VoidCallback onTap,
   }) {
+    final Color background = selected
+        ? CupertinoColors.activeBlue.withValues(alpha: 0.12)
+        : CupertinoColors.systemGrey6.resolveFrom(context);
+
+    final Color border = selected
+        ? CupertinoColors.activeBlue.resolveFrom(context)
+        : const Color(0x00000000);
+
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(13),
         decoration: BoxDecoration(
-          color: selected
-              ? CupertinoColors.systemBlue.withValues(alpha: 0.12)
-              : CupertinoColors.systemGrey6.resolveFrom(context),
+          color: background,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected
-                ? CupertinoColors.systemBlue
-                : CupertinoColors.separator.resolveFrom(context),
-            width: selected ? 1.5 : 0.5,
-          ),
+          border: Border.all(color: border, width: selected ? 1.5 : 0),
         ),
         child: Row(
           children: <Widget>[
@@ -4007,8 +4634,8 @@ class _CalendarPageState extends State<CalendarPage> {
               icon,
               size: 24,
               color: selected
-                  ? CupertinoColors.systemBlue
-                  : CupertinoColors.label.resolveFrom(context),
+                  ? CupertinoColors.activeBlue.resolveFrom(context)
+                  : CupertinoColors.secondaryLabel.resolveFrom(context),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -4017,13 +4644,18 @@ class _CalendarPageState extends State<CalendarPage> {
                 children: <Widget>[
                   Text(
                     title,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: CupertinoColors.label,
+                      decoration: TextDecoration.none,
+                    ),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     subtitle,
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 12,
                       color: CupertinoColors.secondaryLabel.resolveFrom(
                         context,
                       ),
@@ -4036,9 +4668,10 @@ class _CalendarPageState extends State<CalendarPage> {
               selected
                   ? CupertinoIcons.check_mark_circled_solid
                   : CupertinoIcons.chevron_right,
+              size: 20,
               color: selected
-                  ? CupertinoColors.systemBlue
-                  : CupertinoColors.secondaryLabel.resolveFrom(context),
+                  ? CupertinoColors.activeBlue.resolveFrom(context)
+                  : CupertinoColors.tertiaryLabel.resolveFrom(context),
             ),
           ],
         ),
