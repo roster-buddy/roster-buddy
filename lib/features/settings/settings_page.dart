@@ -9,6 +9,7 @@ import '../../core/models/annual_leave_block_override.dart';
 import '../../core/models/annual_leave_request.dart';
 import '../../core/services/annual_leave_block_service.dart';
 import '../../core/services/annual_leave_service.dart';
+import '../upload/storage_service.dart';
 
 class AppSettingsPage extends StatefulWidget {
   const AppSettingsPage({
@@ -2605,27 +2606,79 @@ class _BaseRosterSetupPageState extends State<BaseRosterSetupPage> {
   @override
   void initState() {
     super.initState();
+    _loadSavedSetup();
+  }
 
-    final Map<String, dynamic> metadata =
-        Supabase.instance.client.auth.currentUser?.userMetadata ?? {};
+  Future<void> _loadSavedSetup() async {
+    final SupabaseClient supabase = Supabase.instance.client;
+    final User? user = supabase.auth.currentUser;
 
-    final String storedDate = (metadata['base_roster_commencement_date'] ?? '')
-        .toString();
-
-    if (storedDate.isNotEmpty) {
-      _commencementDate = DateTime.tryParse(storedDate);
+    if (user == null) {
+      return;
     }
 
-    _hasMutualSwap = metadata['has_mutual_swap'] == true;
-    _swapPartnerController.text = (metadata['swap_partner_driver_number'] ?? '')
-        .toString();
+    final Map<String, dynamic> metadata = user.userMetadata ?? {};
+    Map<String, dynamic>? profile;
 
-    final String storedFirstLine = (metadata['mutual_swap_first_line'] ?? '')
-        .toString();
-
-    if (storedFirstLine == 'swap_partner_line') {
-      _firstLine = 'swap_partner_line';
+    try {
+      profile = await supabase
+          .from('driver_profiles')
+          .select(
+            'base_roster_commencement_date, '
+            'has_mutual_roster_swap, '
+            'swap_partner_driver_number, '
+            'base_roster_starts_with_line',
+          )
+          .eq('user_id', user.id)
+          .maybeSingle();
+    } catch (_) {
+      profile = null;
     }
+
+    final String storedDate =
+        (profile?['base_roster_commencement_date'] ??
+                metadata['base_roster_commencement_date'] ??
+                '')
+            .toString()
+            .trim();
+
+    final bool hasMutualSwap =
+        profile != null && profile['has_mutual_roster_swap'] != null
+        ? profile['has_mutual_roster_swap'] == true
+        : metadata['has_mutual_swap'] == true;
+
+    final String swapPartner =
+        (profile?['swap_partner_driver_number'] ??
+                metadata['swap_partner_driver_number'] ??
+                '')
+            .toString()
+            .trim();
+
+    final String storedFirstLine =
+        (profile?['base_roster_starts_with_line'] ??
+                metadata['mutual_swap_first_line'] ??
+                '')
+            .toString()
+            .trim();
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _commencementDate = storedDate.isEmpty
+          ? null
+          : DateTime.tryParse(storedDate);
+      _hasMutualSwap = hasMutualSwap;
+      _swapPartnerController.text = hasMutualSwap ? swapPartner : '';
+      _firstLine =
+          hasMutualSwap &&
+              (storedFirstLine == 'partner' ||
+                  storedFirstLine == 'swap_partner_line' ||
+                  storedFirstLine == 'partner_line')
+          ? 'swap_partner_line'
+          : 'my_line';
+    });
   }
 
   @override
@@ -2705,28 +2758,69 @@ class _BaseRosterSetupPageState extends State<BaseRosterSetupPage> {
     });
 
     try {
-      await Supabase.instance.client.auth.updateUser(
+      final SupabaseClient supabase = Supabase.instance.client;
+      final User? user = supabase.auth.currentUser;
+
+      if (user == null) {
+        throw Exception('You must be signed in to save Base Roster setup.');
+      }
+
+      final String commencementDate = _storageDate(_commencementDate!);
+      final String? swapPartner = _hasMutualSwap
+          ? _swapPartnerController.text.trim()
+          : null;
+      final String profileStartingLine =
+          _hasMutualSwap && _firstLine == 'swap_partner_line'
+          ? 'partner'
+          : 'mine';
+
+      await supabase
+          .from('driver_profiles')
+          .update({
+            'base_roster_commencement_date': commencementDate,
+            'has_mutual_roster_swap': _hasMutualSwap,
+            'swap_partner_driver_number': swapPartner,
+            'base_roster_starts_with_line': profileStartingLine,
+          })
+          .eq('user_id', user.id);
+
+      await supabase.auth.updateUser(
         UserAttributes(
           data: {
-            'base_roster_commencement_date': _storageDate(_commencementDate!),
+            'base_roster_commencement_date': commencementDate,
             'has_mutual_swap': _hasMutualSwap,
-            'swap_partner_driver_number': _hasMutualSwap
-                ? _swapPartnerController.text.trim()
-                : null,
+            'swap_partner_driver_number': swapPartner,
             'mutual_swap_first_line': _hasMutualSwap ? _firstLine : 'my_line',
           },
         ),
+      );
+
+      final reprocessResult = await StorageService.reprocessActiveBaseRoster(
+        commencementDate: _commencementDate!,
+        hasMutualSwap: _hasMutualSwap,
+        swapPartnerDriverNumber: swapPartner,
+        startsWithPartner: _hasMutualSwap && _firstLine == 'swap_partner_line',
       );
 
       if (!mounted) {
         return;
       }
 
+      final String saveMessage;
+
+      if (reprocessResult == null) {
+        saveMessage =
+            'Base Roster setup saved. It will be used when a Base Roster is uploaded.';
+      } else if (reprocessResult.wasProcessed) {
+        saveMessage = 'Base Roster setup saved and roster updated.';
+      } else {
+        saveMessage =
+            'Base Roster setup saved. The roster update will complete in the native app.';
+      }
+
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Base Roster setup saved.')),
-        );
+        ..showSnackBar(SnackBar(content: Text(saveMessage)));
 
       Navigator.of(context).pop();
     } catch (error) {

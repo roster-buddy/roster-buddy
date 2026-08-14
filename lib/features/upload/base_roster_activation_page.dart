@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'storage_service.dart';
 
@@ -24,6 +25,90 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
   DateTime? _commencementDate;
   bool _hasMutualSwap = false;
   BaseRosterStartingLine _startingLine = BaseRosterStartingLine.mine;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedBaseRosterSetup();
+  }
+
+  Future<void> _loadSavedBaseRosterSetup() async {
+    final SupabaseClient supabase = Supabase.instance.client;
+    final User? user = supabase.auth.currentUser;
+
+    if (user == null) {
+      return;
+    }
+
+    final Map<String, dynamic> metadata = user.userMetadata ?? {};
+
+    Map<String, dynamic>? profile;
+
+    try {
+      profile = await supabase
+          .from('driver_profiles')
+          .select(
+            'base_roster_commencement_date, '
+            'has_mutual_roster_swap, '
+            'swap_partner_driver_number, '
+            'base_roster_starts_with_line',
+          )
+          .eq('user_id', user.id)
+          .maybeSingle();
+    } catch (_) {
+      profile = null;
+    }
+
+    final String commencementValue =
+        (profile?['base_roster_commencement_date'] ??
+                metadata['base_roster_commencement_date'] ??
+                '')
+            .toString()
+            .trim();
+
+    final DateTime? commencementDate = commencementValue.isEmpty
+        ? null
+        : DateTime.tryParse(commencementValue);
+
+    final bool hasMutualSwap =
+        profile?['has_mutual_roster_swap'] == true ||
+        metadata['has_mutual_swap'] == true;
+
+    final String swapPartner =
+        (profile?['swap_partner_driver_number'] ??
+                metadata['swap_partner_driver_number'] ??
+                '')
+            .toString()
+            .trim();
+
+    final String startingLine =
+        (profile?['base_roster_starts_with_line'] ??
+                metadata['mutual_swap_first_line'] ??
+                '')
+            .toString()
+            .trim();
+
+    final bool startsWithPartner =
+        startingLine == 'partner' ||
+        startingLine == 'swap_partner_line' ||
+        startingLine == 'partner_line';
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      if (commencementDate != null) {
+        _commencementDate = DateUtils.dateOnly(commencementDate);
+      }
+
+      _hasMutualSwap = hasMutualSwap;
+      _swapPartnerController.text = hasMutualSwap ? swapPartner : '';
+      _startingLine = hasMutualSwap && startsWithPartner
+          ? BaseRosterStartingLine.partner
+          : BaseRosterStartingLine.mine;
+    });
+  }
 
   @override
   void dispose() {

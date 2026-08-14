@@ -52,6 +52,92 @@ class StorageService {
   static const String _documentTableName = 'roster_documents';
   static const String _baseRosterTableName = 'base_rosters';
 
+  static Future<DocumentProcessingResult?> reprocessActiveBaseRoster({
+    required DateTime commencementDate,
+    required bool hasMutualSwap,
+    String? swapPartnerDriverNumber,
+    required bool startsWithPartner,
+  }) async {
+    final User? user = _supabase.auth.currentUser;
+
+    if (user == null) {
+      throw const StorageServiceException(
+        'You must be signed in before updating the Base Roster.',
+      );
+    }
+
+    final Map<String, dynamic>? baseRoster = await _supabase
+        .from(_baseRosterTableName)
+        .select('id, document_id, commencement_date, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+
+    if (baseRoster == null) {
+      return null;
+    }
+
+    final String documentId = (baseRoster['document_id'] ?? '')
+        .toString()
+        .trim();
+
+    if (documentId.isEmpty) {
+      return null;
+    }
+
+    final Map<String, dynamic>? document = await _supabase
+        .from(_documentTableName)
+        .select('id, storage_path, original_filename, detected_type')
+        .eq('id', documentId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+    if (document == null) {
+      return null;
+    }
+
+    final String storagePath = (document['storage_path'] ?? '')
+        .toString()
+        .trim();
+    final String originalFilename = (document['original_filename'] ?? '')
+        .toString()
+        .trim();
+
+    if (storagePath.isEmpty || originalFilename.isEmpty) {
+      return null;
+    }
+
+    final Uint8List bytes = await _supabase.storage
+        .from(_bucketName)
+        .download(storagePath);
+
+    final String? swapPartner = hasMutualSwap
+        ? swapPartnerDriverNumber?.trim()
+        : null;
+
+    await _supabase
+        .from(_baseRosterTableName)
+        .update({
+          'commencement_date': _databaseDate(commencementDate),
+          'has_mutual_swap': hasMutualSwap,
+          'swap_partner_driver_number': swapPartner,
+          'starts_with_line': startsWithPartner ? 'partner' : 'mine',
+        })
+        .eq('document_id', documentId)
+        .eq('user_id', user.id);
+
+    return DocumentProcessingService.processUploadedDocument(
+      documentId: documentId,
+      bytes: bytes,
+      originalFilename: originalFilename,
+      documentType: DocumentType.baseRoster,
+      baseRosterCommencementDate: commencementDate,
+      baseRosterSwapPartnerDriverNumber: swapPartner,
+      baseRosterStartsWithPartner: startsWithPartner,
+    );
+  }
+
   static Future<UploadRosterResult> uploadRosterDocument({
     required Uint8List bytes,
     required String originalFilename,
