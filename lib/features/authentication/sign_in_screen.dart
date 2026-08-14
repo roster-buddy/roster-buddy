@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'sign_up_screen.dart';
 import 'home_screen.dart';
+import 'initial_setup_screen.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -42,11 +43,28 @@ class _SignInScreenState extends State<SignInScreen> {
         password: _passwordController.text,
       );
 
+      final User? user = Supabase.instance.client.auth.currentUser;
+
+      bool setupCompleted = false;
+
+      if (user != null) {
+        final Map<String, dynamic>? profile = await Supabase.instance.client
+            .from('driver_profiles')
+            .select('setup_completed')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        setupCompleted = profile?['setup_completed'] == true;
+      }
+
       if (!mounted) return;
 
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-        (route) => false,
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              setupCompleted ? const HomeScreen() : const InitialSetupScreen(),
+        ),
+        (Route<dynamic> route) => false,
       );
     } on AuthException catch (error) {
       if (!mounted) return;
