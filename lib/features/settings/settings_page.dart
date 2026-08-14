@@ -15,11 +15,13 @@ class AppSettingsPage extends StatefulWidget {
   const AppSettingsPage({
     required this.email,
     required this.onSignOut,
+    this.onNavigate,
     super.key,
   });
 
   final String email;
   final Future<void> Function() onSignOut;
+  final Future<void> Function(int destination)? onNavigate;
 
   @override
   State<AppSettingsPage> createState() => _AppSettingsPageState();
@@ -152,7 +154,12 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
 
   Future<void> _openAnnualLeave() async {
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const AnnualLeaveSettingsPage()),
+      MaterialPageRoute<void>(
+        builder: (_) => AnnualLeaveSettingsPage(
+          currentTabIndex: 4,
+          onNavigate: widget.onNavigate,
+        ),
+      ),
     );
   }
 
@@ -326,7 +333,16 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
 }
 
 class AnnualLeaveSettingsPage extends StatefulWidget {
-  const AnnualLeaveSettingsPage({super.key});
+  const AnnualLeaveSettingsPage({
+    this.currentTabIndex = 3,
+    this.onNavigate,
+    this.embedded = false,
+    super.key,
+  });
+
+  final int currentTabIndex;
+  final Future<void> Function(int destination)? onNavigate;
+  final bool embedded;
 
   @override
   State<AnnualLeaveSettingsPage> createState() =>
@@ -524,15 +540,17 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: background,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: navy,
-        elevation: 0,
-        title: const Text(
-          'Annual Leave',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-      ),
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              backgroundColor: Colors.white,
+              foregroundColor: navy,
+              elevation: 0,
+              title: const Text(
+                'Annual Leave',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _load,
@@ -552,9 +570,9 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                         else ...[
                           _buildFloatingBalanceCard(),
                           const SizedBox(height: 18),
-                          _buildBlockLeaveCard(),
-                          const SizedBox(height: 18),
                           _buildRequestsCard(),
+                          const SizedBox(height: 18),
+                          _buildBlockLeaveCard(),
                           const SizedBox(height: 18),
                           _buildScheduledRequestsCard(),
                         ],
@@ -565,6 +583,57 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
           ),
         ),
       ),
+      bottomNavigationBar: widget.embedded
+          ? null
+          : NavigationBar(
+              selectedIndex: widget.currentTabIndex,
+              onDestinationSelected: (int index) async {
+                final Future<void> Function(int destination)? onNavigate =
+                    widget.onNavigate;
+
+                if (onNavigate == null) {
+                  return;
+                }
+
+                if (index == 2) {
+                  await onNavigate(index);
+                  return;
+                }
+
+                if (Navigator.of(context).canPop()) {
+                  Navigator.of(context).pop();
+                }
+
+                await onNavigate(index);
+              },
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.home_outlined),
+                  selectedIcon: Icon(Icons.home),
+                  label: 'Home',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.calendar_month_outlined),
+                  selectedIcon: Icon(Icons.calendar_month),
+                  label: 'Calendar',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.upload_file_outlined),
+                  selectedIcon: Icon(Icons.upload_file),
+                  label: 'Upload',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.beach_access_outlined),
+                  selectedIcon: Icon(Icons.beach_access),
+                  label: 'Annual Leave',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.settings_outlined),
+                  selectedIcon: Icon(Icons.settings),
+                  label: 'Settings',
+                ),
+              ],
+            ),
     );
   }
 
@@ -612,13 +681,9 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
   }
 
   Widget _buildFloatingBalanceCard() {
-    final int totalAvailable =
-        _startingBalanceDays + _bonusDays + _carryOverDays + _lieuDays;
-
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const ListTile(
             leading: CircleAvatar(
@@ -626,148 +691,159 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               child: Icon(Icons.beach_access_outlined, color: railwayBlue),
             ),
             title: Text(
-              'Floating annual leave',
+              'Floating days left',
               style: TextStyle(color: navy, fontWeight: FontWeight.w900),
             ),
-            subtitle: Text('Full days only'),
+            subtitle: Text('Full days available to take this leave year'),
           ),
           const Divider(height: 1),
           Padding(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
             child: Column(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _AnnualLeaveNumberTile(
-                        value: '$_entitlementDays',
-                        label: 'Normal entitlement',
-                      ),
-                    ),
-                    Expanded(
-                      child: _AnnualLeaveNumberTile(
-                        value: '$_startingBalanceDays',
-                        label: 'Starting balance',
-                      ),
-                    ),
-                    Expanded(
-                      child: _AnnualLeaveNumberTile(
-                        value: '$_remainingDays',
-                        label: 'Remaining',
-                        emphasise: true,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _AnnualLeaveNumberTile(
-                        value: '$_bonusDays',
-                        label: 'Bonus',
-                      ),
-                    ),
-                    Expanded(
-                      child: _AnnualLeaveNumberTile(
-                        value: '$_carryOverDays',
-                        label: 'Carry-over',
-                      ),
-                    ),
-                    Expanded(
-                      child: _AnnualLeaveNumberTile(
-                        value: '$_lieuDays',
-                        label: 'Days in lieu',
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(13),
-                  decoration: BoxDecoration(
-                    color: railwayBlue.withValues(alpha: 0.07),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Column(
-                    children: [
-                      _AnnualLeaveSummaryRow(
-                        label: 'Starting floating balance',
-                        value: '$_startingBalanceDays days',
-                      ),
-                      const SizedBox(height: 7),
-                      _AnnualLeaveSummaryRow(
-                        label: 'Bonus days',
-                        value: '+$_bonusDays days',
-                      ),
-                      const SizedBox(height: 7),
-                      _AnnualLeaveSummaryRow(
-                        label: 'Carry-over',
-                        value: '+$_carryOverDays days',
-                      ),
-                      const SizedBox(height: 7),
-                      _AnnualLeaveSummaryRow(
-                        label: 'Days in lieu',
-                        value: '+$_lieuDays days',
-                      ),
-                      const Divider(height: 20),
-                      _AnnualLeaveSummaryRow(
-                        label: 'Total available',
-                        value: '$totalAvailable days',
-                        bold: true,
-                      ),
-                      const SizedBox(height: 7),
-                      _AnnualLeaveSummaryRow(
-                        label: 'Committed',
-                        value: '-$_committedDays days',
-                      ),
-                      const Divider(height: 20),
-                      _AnnualLeaveSummaryRow(
-                        label: 'Remaining',
-                        value: '$_remainingDays days',
-                        bold: true,
-                      ),
-                    ],
+                Text(
+                  '$_remainingDays',
+                  style: const TextStyle(
+                    color: leaveRed,
+                    fontSize: 48,
+                    height: 1,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 6),
+                Text(
+                  _remainingDays == 1
+                      ? 'floating day left to take'
+                      : 'floating days left to take',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: navy,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$_leaveYear leave year',
+                  style: const TextStyle(color: textGrey, fontSize: 12),
+                ),
+                const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
-                    onPressed: _showBalanceSetupDialog,
-                    icon: const Icon(Icons.edit_outlined),
-                    label: const Text('Edit yearly allowance'),
+                    onPressed: _showFloatingBalanceBreakdown,
+                    icon: const Icon(Icons.tune_outlined),
+                    label: const Text('Breakdown & edit'),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  _leaveYear == DateTime.now().year
-                      ? 'If you start using Roster Buddy part way through the '
-                            'year, set Starting balance to the number of floating '
-                            'days you actually have left. Bonus days, carry-over '
-                            'and days in lieu can then be added separately.'
-                      : 'Each new leave year starts with the normal 14 floating '
-                            'days. Carry-over, bonus days and days in lieu are '
-                            'added separately for that year.',
-                  style: const TextStyle(
-                    color: textGrey,
-                    fontSize: 12,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Requested, abeyance and granted floating days count as '
-                  'committed. Cancelling a request returns that day to the '
-                  'available balance.',
-                  style: TextStyle(color: textGrey, fontSize: 12, height: 1.4),
                 ),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _showFloatingBalanceBreakdown() async {
+    final int totalAvailable =
+        _startingBalanceDays + _bonusDays + _carryOverDays + _lieuDays;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$_leaveYear floating leave',
+                  style: const TextStyle(
+                    color: navy,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Allowance breakdown',
+                  style: TextStyle(color: textGrey),
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: railwayBlue.withValues(alpha: 0.07),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      _AnnualLeaveSummaryRow(
+                        label: 'Normal entitlement',
+                        value: '$_entitlementDays days',
+                      ),
+                      const SizedBox(height: 8),
+                      _AnnualLeaveSummaryRow(
+                        label: 'Starting balance',
+                        value: '$_startingBalanceDays days',
+                      ),
+                      const SizedBox(height: 8),
+                      _AnnualLeaveSummaryRow(
+                        label: 'Bonus days',
+                        value: '+$_bonusDays days',
+                      ),
+                      const SizedBox(height: 8),
+                      _AnnualLeaveSummaryRow(
+                        label: 'Carry-over',
+                        value: '+$_carryOverDays days',
+                      ),
+                      const SizedBox(height: 8),
+                      _AnnualLeaveSummaryRow(
+                        label: 'Days in lieu',
+                        value: '+$_lieuDays days',
+                      ),
+                      const Divider(height: 22),
+                      _AnnualLeaveSummaryRow(
+                        label: 'Total available',
+                        value: '$totalAvailable days',
+                        bold: true,
+                      ),
+                      const SizedBox(height: 8),
+                      _AnnualLeaveSummaryRow(
+                        label: 'Committed',
+                        value: '-$_committedDays days',
+                      ),
+                      const Divider(height: 22),
+                      _AnnualLeaveSummaryRow(
+                        label: 'Days left',
+                        value: '$_remainingDays days',
+                        bold: true,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      Navigator.of(sheetContext).pop();
+                      _showBalanceSetupDialog();
+                    },
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const Text('Edit floating allowance'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1667,197 +1743,236 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const ListTile(
-            leading: CircleAvatar(
+          ListTile(
+            leading: const CircleAvatar(
               backgroundColor: Color(0x1AD64545),
               child: Icon(Icons.date_range_outlined, color: leaveRed),
             ),
-            title: Text(
+            title: const Text(
               'Block annual leave',
               style: TextStyle(color: navy, fontWeight: FontWeight.w900),
             ),
-            subtitle: Text('Four allocated block weeks'),
-          ),
-          const Divider(height: 1),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: railwayBlue.withValues(alpha: 0.07),
-                borderRadius: BorderRadius.circular(12),
+            subtitle: Text(
+              _blockCycle == null
+                  ? 'Block allocation not set'
+                  : 'Block ${_blockCycle!.weekIndex} • $_leaveYear',
+            ),
+            trailing: IconButton(
+              tooltip: _blockCycle == null
+                  ? 'Set block allocation'
+                  : 'Change block allocation',
+              onPressed: _showBlockCycleDialog,
+              icon: Icon(
+                _blockCycle == null ? Icons.add_outlined : Icons.edit_outlined,
               ),
-              child: _blockCycle == null
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Block allocation not set',
-                          style: TextStyle(
-                            color: navy,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        const Text(
-                          'Set the block number allocated to you. '
-                          'Roster Buddy will move it forward by 5 blocks '
-                          'for each following leave year.',
-                          style: TextStyle(color: textGrey, height: 1.35),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: _showBlockCycleDialog,
-                            icon: const Icon(Icons.add_outlined),
-                            label: const Text('Set allocated block'),
-                          ),
-                        ),
-                      ],
-                    )
-                  : Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '$_leaveYear allocation',
-                                style: const TextStyle(
-                                  color: textGrey,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                'Block ${_blockCycle!.weekIndex}',
-                                style: const TextStyle(
-                                  color: navy,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 5),
-                              Text(
-                                'Next year: Block '
-                                '${_blockCycle!.nextYearWeekIndex}',
-                                style: const TextStyle(
-                                  color: textGrey,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Change block allocation',
-                          onPressed: _showBlockCycleDialog,
-                          icon: const Icon(Icons.edit_outlined),
-                        ),
-                      ],
-                    ),
             ),
           ),
           const Divider(height: 1),
+
           if (_blockPeriods.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(18),
-              child: Text(
-                'No confirmed block dates have been found for this '
-                'leave year. Set your block number above. The four '
-                'allocated weeks will appear here when the Annual Leave '
-                'Roster for this year has been processed.',
-                style: TextStyle(color: textGrey, height: 1.4),
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'No block dates available',
+                    style: TextStyle(color: navy, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _blockCycle == null
+                        ? 'Set your allocated block number first. Your four '
+                              'block weeks will appear here once the Annual '
+                              'Leave Roster has been processed.'
+                        : 'Your four block weeks will appear here once the '
+                              'Annual Leave Roster for $_leaveYear has been '
+                              'processed.',
+                    style: const TextStyle(color: textGrey, height: 1.4),
+                  ),
+                ],
               ),
             )
           else
-            ..._blockPeriods.map((_AnnualLeaveBlockPeriod period) {
-              final AnnualLeaveBlockOverride? override = _overrideForPeriod(
-                period.type,
-              );
-
-              final DateTime displayedStart =
-                  override?.overrideStartDate ?? period.start;
-
-              final DateTime displayedEnd =
-                  override?.overrideEndDate ?? period.end;
-
-              return Column(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+              child: Column(
                 children: [
-                  ListTile(
-                    leading: Icon(
-                      override == null
-                          ? Icons.event_available_outlined
-                          : Icons.swap_horiz_outlined,
-                      color: leaveRed,
-                    ),
-                    title: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _blockTypeLabel(period.type),
-                            style: const TextStyle(
-                              color: navy,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                        if (override != null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 7,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: railwayBlue.withValues(alpha: 0.10),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              _blockChangeLabel(override.changeType),
-                              style: const TextStyle(
-                                color: railwayBlue,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    subtitle: Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        override == null
-                            ? '${_displayDate(period.start)} – '
-                                  '${_displayDate(period.end)}'
-                            : '${_displayDate(displayedStart)} – '
-                                  '${_displayDate(displayedEnd)}\n'
-                                  'Official: ${_displayDate(period.start)} – '
-                                  '${_displayDate(period.end)}',
-                      ),
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _showBlockOverrideDialog(period),
-                  ),
-                  if (period != _blockPeriods.last) const Divider(height: 1),
+                  for (final _AnnualLeaveBlockPeriod period in _blockPeriods)
+                    _buildBlockDateRow(period),
                 ],
-              );
-            }),
+              ),
+            ),
+
+          if (_blockPeriods.isNotEmpty) ...[
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _showBlockWeekPicker,
+                  icon: const Icon(Icons.swap_horiz_outlined),
+                  label: const Text('Edit block weeks'),
+                ),
+              ),
+            ),
+          ],
+
           const Divider(height: 1),
           const Padding(
-            padding: EdgeInsets.all(16),
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 16),
             child: Text(
-              'An agreed move or mutual swap only changes your own '
-              'allocation. The official uploaded Annual Leave Roster '
-              'remains unchanged. Summer week 1 and Summer week 2 can '
-              'be changed independently.',
+              'Use Edit block weeks for an agreed manual move or a mutual '
+              'swap. Changes apply only to your own leave; the uploaded '
+              'Annual Leave Roster remains unchanged.',
               style: TextStyle(color: textGrey, fontSize: 12, height: 1.4),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildBlockDateRow(_AnnualLeaveBlockPeriod period) {
+    final AnnualLeaveBlockOverride? override = _overrideForPeriod(period.type);
+
+    final DateTime displayedStart = override?.overrideStartDate ?? period.start;
+
+    final DateTime displayedEnd = override?.overrideEndDate ?? period.end;
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: leaveRed.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: leaveRed.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.event_available_outlined, color: leaveRed),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _blockTypeLabel(period.type),
+                        style: const TextStyle(
+                          color: navy,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    if (override != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: railwayBlue.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          _blockChangeLabel(override.changeType),
+                          style: const TextStyle(
+                            color: railwayBlue,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  '${_displayDate(displayedStart)} – '
+                  '${_displayDate(displayedEnd)}',
+                  style: const TextStyle(
+                    color: navy,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (override != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Official: ${_displayDate(period.start)} – '
+                    '${_displayDate(period.end)}',
+                    style: const TextStyle(color: textGrey, fontSize: 11),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showBlockWeekPicker() async {
+    if (_blockPeriods.isEmpty) {
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (BuildContext sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const ListTile(
+                  title: Text(
+                    'Edit block weeks',
+                    style: TextStyle(
+                      color: navy,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Choose the block week you want to move or swap.',
+                  ),
+                ),
+                for (final _AnnualLeaveBlockPeriod period in _blockPeriods)
+                  ListTile(
+                    leading: const Icon(
+                      Icons.date_range_outlined,
+                      color: leaveRed,
+                    ),
+                    title: Text(
+                      _blockTypeLabel(period.type),
+                      style: const TextStyle(
+                        color: navy,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    subtitle: Text(
+                      '${_displayDate(_overrideForPeriod(period.type)?.overrideStartDate ?? period.start)} – '
+                      '${_displayDate(_overrideForPeriod(period.type)?.overrideEndDate ?? period.end)}',
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.of(sheetContext).pop();
+                      _showBlockOverrideDialog(period);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -2708,46 +2823,6 @@ class _AnnualLeaveBlockPeriod {
   final String type;
   final DateTime start;
   final DateTime end;
-}
-
-class _AnnualLeaveNumberTile extends StatelessWidget {
-  const _AnnualLeaveNumberTile({
-    required this.value,
-    required this.label,
-    this.emphasise = false,
-  });
-
-  final String value;
-  final String label;
-  final bool emphasise;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: TextStyle(
-            color: emphasise
-                ? const Color(0xFFD64545)
-                : const Color(0xFF102A43),
-            fontSize: 28,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          label,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Color(0xFF52667A),
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ],
-    );
-  }
 }
 
 class _AnnualLeaveSummaryRow extends StatelessWidget {

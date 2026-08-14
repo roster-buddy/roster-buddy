@@ -9,6 +9,7 @@ import '../../core/models/duty_type.dart';
 import '../../core/models/roster_source.dart';
 import '../../core/services/annual_leave_service.dart';
 import '../../core/services/duty_resolver.dart';
+import '../../core/services/hidden_18_service.dart';
 import '../../core/services/job_card_service.dart';
 import '../../core/services/manual_duty_service.dart';
 import '../../core/services/sunday_availability_service.dart';
@@ -123,6 +124,25 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
 
     Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
+  Future<void> _navigateFromChild(int destination) async {
+    if (destination == 2) {
+      await _pickDocument(UploadSource.file);
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      if (destination == 0 || destination == 1) {
+        _dashboardRefreshVersion++;
+      }
+
+      _selectedIndex = destination;
+    });
   }
 
   Future<void> _pickDocument(UploadSource source) async {
@@ -405,15 +425,19 @@ class _HomeScreenState extends State<HomeScreen> {
         onRosterChanged: _notifyRosterChanged,
         refreshVersion: _dashboardRefreshVersion,
       ),
-      const TimelinePage(),
-      AppSettingsPage(email: email, onSignOut: _signOut),
+      const AnnualLeaveSettingsPage(embedded: true),
+      AppSettingsPage(
+        email: email,
+        onSignOut: _signOut,
+        onNavigate: _navigateFromChild,
+      ),
     ];
 
     const List<String> titles = [
       'Roster Buddy',
       'Calendar',
       'Upload',
-      'Timeline',
+      'Annual Leave',
       'Settings',
     ];
 
@@ -478,9 +502,9 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Upload',
           ),
           NavigationDestination(
-            icon: Icon(Icons.timeline_outlined),
-            selectedIcon: Icon(Icons.timeline),
-            label: 'Timeline',
+            icon: Icon(Icons.beach_access_outlined),
+            selectedIcon: Icon(Icons.beach_access),
+            label: 'Annual Leave',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),
@@ -1010,9 +1034,9 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
             label: 'Upload',
           ),
           NavigationDestination(
-            icon: Icon(Icons.timeline_outlined),
-            selectedIcon: Icon(Icons.timeline),
-            label: 'Timeline',
+            icon: Icon(Icons.beach_access_outlined),
+            selectedIcon: Icon(Icons.beach_access),
+            label: 'Annual Leave',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),
@@ -1055,18 +1079,18 @@ class _DashboardPageState extends State<_DashboardPage> {
   static const Color textGrey = Color(0xFF52667A);
 
   final DutyResolver _dutyResolver = DutyResolver();
+  final Hidden18Service _hidden18Service = const Hidden18Service();
   final ManualDutyService _manualDutyService = ManualDutyService();
   final JobCardService _jobCardService = JobCardService();
   final AnnualLeaveService _annualLeaveService = AnnualLeaveService();
 
+  Hidden18Result? _hidden18Result;
   Duty? _todayDuty;
-  Duty? _nextWorkingDuty;
   Map<String, Duty> _thisWeekDuties = <String, Duty>{};
   Map<String, AnnualLeaveRequest> _thisWeekLeaveRequests =
       <String, AnnualLeaveRequest>{};
 
   bool _isLoading = true;
-  bool _isFindingNextShift = true;
   String? _loadError;
 
   @override
@@ -1087,7 +1111,7 @@ class _DashboardPageState extends State<_DashboardPage> {
   Future<void> _loadDashboardDuties() async {
     setState(() {
       _isLoading = true;
-      _isFindingNextShift = true;
+      _hidden18Result = null;
       _loadError = null;
     });
 
@@ -1095,31 +1119,51 @@ class _DashboardPageState extends State<_DashboardPage> {
       final DateTime now = DateTime.now();
       final DateTime today = DateTime(now.year, now.month, now.day);
 
-      // Every Roster Buddy week starts on Sunday.
-      final DateTime weekStart = today.subtract(
-        Duration(days: today.weekday % 7),
-      );
-
-      final List<DateTime> weekDates = List<DateTime>.generate(
+      final List<DateTime> nextSevenDates = List<DateTime>.generate(
         7,
-        (int index) => weekStart.add(Duration(days: index)),
+        (int index) => today.add(Duration(days: index + 1)),
         growable: false,
       );
 
+      final DateTime fatigueRangeStart = today.subtract(
+        const Duration(days: 13),
+      );
+      final DateTime fatigueRangeEnd = nextSevenDates.last;
+
       final Future<Map<String, Duty>> dutiesFuture = _dutyResolver
-          .getResolvedDutiesForRange(weekDates.first, weekDates.last);
+          .getResolvedDutiesForRange(fatigueRangeStart, fatigueRangeEnd);
 
       final Future<Map<String, AnnualLeaveRequest>> leaveRequestsFuture =
-          _annualLeaveService.getRequestsForRange(
-            weekDates.first,
-            weekDates.last,
-          );
+          _annualLeaveService.getRequestsForRange(today, fatigueRangeEnd);
 
-      final Map<String, Duty> thisWeekDuties = await dutiesFuture;
+      final Map<String, Duty> fatigueRangeDuties = await dutiesFuture;
       final Map<String, AnnualLeaveRequest> thisWeekLeaveRequests =
           await leaveRequestsFuture;
 
-      final Duty? todayDuty = thisWeekDuties[_dashboardDateKey(today)];
+      final Map<String, Duty> thisWeekDuties = <String, Duty>{
+        for (final DateTime date in nextSevenDates)
+          if (fatigueRangeDuties[_dashboardDateKey(date)] != null)
+            _dashboardDateKey(date):
+                fatigueRangeDuties[_dashboardDateKey(date)]!,
+      };
+
+      final Hidden18Result evaluatedHidden18 = _hidden18Service.evaluate(
+        fatigueRangeDuties.values,
+      );
+
+      final Hidden18Result hidden18Result = Hidden18Result(
+        warnings: evaluatedHidden18.warnings
+            .where(
+              (Hidden18Warning warning) =>
+                  !warning.date.isBefore(today) &&
+                  !warning.date.isAfter(fatigueRangeEnd),
+            )
+            .toList(growable: false),
+        consecutiveDaysWorked: evaluatedHidden18.consecutiveDaysWorked,
+        rollingSevenDayMinutes: evaluatedHidden18.rollingSevenDayMinutes,
+      );
+
+      final Duty? todayDuty = fatigueRangeDuties[_dashboardDateKey(today)];
 
       if (!mounted) {
         return;
@@ -1130,18 +1174,8 @@ class _DashboardPageState extends State<_DashboardPage> {
         _todayDuty = todayDuty;
         _thisWeekDuties = thisWeekDuties;
         _thisWeekLeaveRequests = thisWeekLeaveRequests;
+        _hidden18Result = hidden18Result;
         _isLoading = false;
-      });
-
-      final Duty? nextWorkingDuty = await _findNextWorkingDuty(today);
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _nextWorkingDuty = nextWorkingDuty;
-        _isFindingNextShift = false;
       });
     } catch (error) {
       if (!mounted) {
@@ -1150,11 +1184,10 @@ class _DashboardPageState extends State<_DashboardPage> {
 
       setState(() {
         _todayDuty = null;
-        _nextWorkingDuty = null;
+        _hidden18Result = null;
         _thisWeekDuties = <String, Duty>{};
         _thisWeekLeaveRequests = <String, AnnualLeaveRequest>{};
         _isLoading = false;
-        _isFindingNextShift = false;
         _loadError = error is DutyResolverException
             ? error.message
             : 'Roster Buddy could not load your roster.';
@@ -1162,37 +1195,258 @@ class _DashboardPageState extends State<_DashboardPage> {
     }
   }
 
-  Future<Duty?> _findNextWorkingDuty(DateTime today) async {
-    const int maximumDays = 370;
-    const int batchSize = 31;
+  Widget _buildHidden18StatusCard() {
+    final Hidden18Result? result = _hidden18Result;
+    final bool hasBreach = result?.hasWarnings == true;
 
-    for (
-      int batchStart = 1;
-      batchStart <= maximumDays;
-      batchStart += batchSize
-    ) {
-      final int batchEnd = (batchStart + batchSize - 1).clamp(1, maximumDays);
+    final Color statusColour = hasBreach ? leaveRed : workingGreen;
 
-      final DateTime rangeStart = today.add(Duration(days: batchStart));
-      final DateTime rangeEnd = today.add(Duration(days: batchEnd));
+    final String title;
+    final String subtitle;
 
-      final Map<String, Duty> duties = await _dutyResolver
-          .getResolvedDutiesForRange(rangeStart, rangeEnd);
-
-      for (
-        DateTime date = rangeStart;
-        !date.isAfter(rangeEnd);
-        date = date.add(const Duration(days: 1))
-      ) {
-        final Duty? duty = duties[_dashboardDateKey(date)];
-
-        if (duty != null && duty.dutyType.countsAsWorking) {
-          return duty;
-        }
-      }
+    if (_isLoading || result == null) {
+      title = 'Checking Hidden 18…';
+      subtitle = 'Fatigue status is loading.';
+    } else if (hasBreach) {
+      final int count = result.warnings.length;
+      title = '$count Hidden 18 breach${count == 1 ? '' : 'es'}';
+      subtitle =
+          'A rule is breached today or forecast to be breached within '
+          'the next 7 days. Tap to review.';
+    } else {
+      title = 'Hidden 18 clear';
+      subtitle =
+          'No Hidden 18 rule breaches detected today or within the next '
+          '7 days.';
     }
 
-    return null;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: _showHidden18Check,
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(left: BorderSide(color: statusColour, width: 6)),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: statusColour.withValues(alpha: 0.12),
+                child: Icon(
+                  hasBreach
+                      ? Icons.warning_amber_rounded
+                      : Icons.check_circle_outline,
+                  color: statusColour,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: hasBreach ? leaveRed : navy,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(color: textGrey, height: 1.35),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: textGrey),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showHidden18Check() async {
+    final Hidden18Result? result = _hidden18Result;
+
+    if (_isLoading || result == null) {
+      showMessage(context, 'Fatigue information is still loading.');
+      return;
+    }
+
+    if (!result.hasWarnings) {
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (BuildContext sheetContext) {
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.check_circle_outline, color: workingGreen),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Hidden 18 check',
+                          style: TextStyle(
+                            color: navy,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'No Hidden 18 warnings are currently detected in the '
+                    'roster period checked.',
+                    style: TextStyle(color: textGrey, height: 1.4),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Current consecutive working days: '
+                    '${result.consecutiveDaysWorked}',
+                    style: const TextStyle(
+                      color: navy,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    'Highest rolling 7-day total: '
+                    '${_formatHidden18Minutes(result.rollingSevenDayMinutes)}',
+                    style: const TextStyle(
+                      color: navy,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) {
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.75,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 4, 20, 12),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: warningOrange),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Hidden 18 warnings',
+                          style: TextStyle(
+                            color: navy,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: result.warnings.length,
+                    separatorBuilder: (BuildContext context, int index) =>
+                        const Divider(height: 1),
+                    itemBuilder: (BuildContext context, int index) {
+                      final Hidden18Warning warning = result.warnings[index];
+
+                      return ListTile(
+                        leading: const Icon(
+                          Icons.warning_amber_rounded,
+                          color: warningOrange,
+                        ),
+                        title: Text(
+                          _hidden18WarningTitle(warning.type),
+                          style: const TextStyle(
+                            color: navy,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${_displayHidden18Date(warning.date)}\n'
+                          '${warning.message}',
+                        ),
+                        isThreeLine: true,
+                      );
+                    },
+                  ),
+                ),
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                  child: Text(
+                    '${result.warnings.length} warning'
+                    '${result.warnings.length == 1 ? '' : 's'} detected.',
+                    style: const TextStyle(
+                      color: textGrey,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  static String _hidden18WarningTitle(Hidden18WarningType type) {
+    switch (type) {
+      case Hidden18WarningType.shiftLength:
+        return 'Duty exceeds 12 hours';
+      case Hidden18WarningType.minimumRest:
+        return 'Less than 12 hours rest';
+      case Hidden18WarningType.rollingSevenDays:
+        return 'More than 72 hours in 7 days';
+      case Hidden18WarningType.consecutiveDays:
+        return 'More than 13 consecutive days';
+    }
+  }
+
+  static String _formatHidden18Minutes(int minutes) {
+    final int hours = minutes ~/ 60;
+    final int remainder = minutes % 60;
+
+    return '${hours}h ${remainder.toString().padLeft(2, '0')}m';
+  }
+
+  static String _displayHidden18Date(DateTime date) {
+    final String day = date.day.toString().padLeft(2, '0');
+    final String month = date.month.toString().padLeft(2, '0');
+
+    return '$day/$month/${date.year}';
   }
 
   @override
@@ -1224,99 +1478,14 @@ class _DashboardPageState extends State<_DashboardPage> {
 
               const SizedBox(height: 22),
               const SectionTitle(
-                icon: Icons.train_outlined,
-                title: "Next shift I'm working",
-              ),
-              const SizedBox(height: 10),
-              _buildNextShiftCard(),
-
-              const SizedBox(height: 22),
-              const SectionTitle(
-                icon: Icons.verified_outlined,
-                title: 'Latest roster source',
-              ),
-              const SizedBox(height: 10),
-              const Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  SourceBadge(label: '10D'),
-                  SourceBadge(label: '7D'),
-                  SourceBadge(label: '48HR'),
-                  SourceBadge(label: 'M'),
-                  SourceBadge(label: 'AW'),
-                ],
-              ),
-
-              const SizedBox(height: 22),
-              const SectionTitle(
                 icon: Icons.calendar_view_week_outlined,
-                title: 'This week',
+                title: 'Next 7 days',
               ),
               const SizedBox(height: 10),
-              _buildThisWeekCard(),
+              _buildNextSevenDaysCard(),
 
               const SizedBox(height: 22),
-              const SectionTitle(
-                icon: Icons.bolt_outlined,
-                title: 'Quick actions',
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: QuickAction(
-                      icon: Icons.upload_file,
-                      label: 'Upload roster',
-                      onTap: widget.onUpload,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: QuickAction(
-                      icon: Icons.event_available_outlined,
-                      label: 'Request leave',
-                      onTap: () {
-                        showMessage(
-                          context,
-                          'Annual leave requests will be added later.',
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: QuickAction(
-                      icon: Icons.mail_outline,
-                      label: 'Offer availability',
-                      onTap: () {
-                        showMessage(
-                          context,
-                          'Availability email drafting will be added later.',
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: QuickAction(
-                      icon: Icons.warning_amber_rounded,
-                      label: 'Fatigue check',
-                      iconColour: warningOrange,
-                      onTap: () {
-                        showMessage(
-                          context,
-                          'No fatigue warnings currently detected.',
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
+              _buildHidden18StatusCard(),
             ],
           ),
         ),
@@ -1324,9 +1493,9 @@ class _DashboardPageState extends State<_DashboardPage> {
     );
   }
 
-  Widget _buildThisWeekCard() {
+  Widget _buildNextSevenDaysCard() {
     if (_isLoading) {
-      return _buildLoadingCard('Loading this week…');
+      return _buildLoadingCard('Loading next 7 days…');
     }
 
     if (_loadError != null) {
@@ -1335,13 +1504,10 @@ class _DashboardPageState extends State<_DashboardPage> {
 
     final DateTime now = DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);
-    final DateTime weekStart = today.subtract(
-      Duration(days: today.weekday % 7),
-    );
 
     final List<DateTime> dates = List<DateTime>.generate(
       7,
-      (int index) => weekStart.add(Duration(days: index)),
+      (int index) => today.add(Duration(days: index + 1)),
       growable: false,
     );
 
@@ -3260,103 +3426,6 @@ class _DashboardPageState extends State<_DashboardPage> {
     return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
   }
 
-  Widget _buildNextShiftCard() {
-    if (_isLoading || _isFindingNextShift) {
-      return _buildLoadingCard('Finding your next working shift…');
-    }
-
-    if (_loadError != null) {
-      return _buildErrorCard();
-    }
-
-    final Duty? duty = _nextWorkingDuty;
-
-    if (duty == null) {
-      return _buildInformationCard(
-        icon: Icons.event_busy_outlined,
-        iconColour: railwayBlue,
-        title: 'No upcoming shift found',
-        description:
-            'No working duty was found in the available roster information.',
-      );
-    }
-
-    final String turnText = duty.turnNumber?.trim().isNotEmpty == true
-        ? 'Turn ${duty.turnNumber!.trim()}'
-        : _dutyTypeLabel(duty.dutyType);
-
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () {
-          _showDashboardDayDetails(date: duty.date, duty: duty);
-        },
-        onLongPress: () {
-          _showDashboardDayActions(date: duty.date, duty: duty);
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              Container(
-                width: 58,
-                height: 58,
-                decoration: BoxDecoration(
-                  color: workingGreen.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Icon(
-                  Icons.schedule,
-                  color: workingGreen,
-                  size: 30,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _fullDate(duty.date),
-                      style: const TextStyle(
-                        color: navy,
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _timeDescription(duty),
-                      style: const TextStyle(color: textGrey),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            turnText,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: railwayBlue,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        _RosterSourceBadge(source: duty.source),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right, color: textGrey),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildLoadingCard(String message) {
     return Card(
       child: Padding(
@@ -3613,29 +3682,6 @@ class _DashboardPageState extends State<_DashboardPage> {
 
     return '${weekdays[date.weekday - 1]} '
         '${date.day} ${months[date.month - 1]}';
-  }
-
-  String _dutyTypeLabel(DutyType type) {
-    switch (type) {
-      case DutyType.working:
-        return 'Working duty';
-      case DutyType.training:
-        return 'Training';
-      case DutyType.medical:
-        return 'Medical';
-      case DutyType.restDay:
-        return 'Rest day';
-      case DutyType.annualLeave:
-        return 'Annual leave';
-      case DutyType.sick:
-        return 'Sick';
-      case DutyType.publicHoliday:
-        return 'Public holiday';
-      case DutyType.unavailable:
-        return 'Unavailable';
-      case DutyType.unknown:
-        return 'Duty';
-    }
   }
 
   static void showMessage(BuildContext context, String message) {
@@ -10101,20 +10147,6 @@ class UploadPage extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class TimelinePage extends StatelessWidget {
-  const TimelinePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const PlaceholderPage(
-      icon: Icons.timeline_outlined,
-      title: 'Timeline',
-      description:
-          'Your duties, book-on times, book-off times, leave and amendments will appear here in date order.',
     );
   }
 }
