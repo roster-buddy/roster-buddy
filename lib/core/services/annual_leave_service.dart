@@ -13,6 +13,182 @@ class AnnualLeaveService {
   static const String _requestTable = 'annual_leave_requests';
   static const String _balanceTable = 'annual_leave_balances';
 
+  /// Returns true when Rosters can be contacted for [date] now.
+  ///
+  /// WMT floating annual leave requests can be made up to and including
+  /// 365 calendar days ahead.
+  bool shouldSendAnnualLeaveRequestNow(DateTime date, {DateTime? asOf}) {
+    final DateTime reference = asOf ?? DateTime.now();
+    final DateTime today = DateTime(
+      reference.year,
+      reference.month,
+      reference.day,
+    );
+    final DateTime leaveDate = DateTime(date.year, date.month, date.day);
+    final DateTime lastImmediateDate = today.add(const Duration(days: 365));
+
+    return !leaveDate.isAfter(lastImmediateDate);
+  }
+
+  /// Returns the instant at which a future annual leave request becomes
+  /// eligible to be sent: midnight exactly 365 days before the leave date.
+  ///
+  /// DateTime is deliberately created in local time before being converted
+  /// to UTC so UK GMT/BST is respected for the actual scheduled date.
+  DateTime scheduledSendTimeFor(DateTime date) {
+    final DateTime leaveDate = DateTime(date.year, date.month, date.day);
+    final DateTime sendDate = leaveDate.subtract(const Duration(days: 365));
+
+    final DateTime localMidnight = DateTime(
+      sendDate.year,
+      sendDate.month,
+      sendDate.day,
+    );
+
+    return localMidnight.toUtc();
+  }
+
+  /// Stores one future floating annual leave request for later transmission.
+  ///
+  /// Scheduled requests are deliberately separate from active annual leave
+  /// requests. They do not become AL REQ and do not reduce the live floating
+  /// balance until the scheduled request is actually sent to Rosters.
+  /// Stores one future floating annual leave request together with the
+  /// completed Rosters email that will be sent when the request enters the
+  /// 365-day window.
+  ///
+  /// Supabase calculates the actual send instant at 00:00 Europe/London,
+  /// exactly 365 days before the leave date.
+  Future<void> scheduleFloatingLeaveRequest({
+    required DateTime date,
+    required String recipientEmail,
+    required String emailSubject,
+    required String emailBody,
+    String? notes,
+  }) async {
+    final User? user = _supabase.auth.currentUser;
+
+    if (user == null) {
+      throw const AnnualLeaveException(
+        'You must be signed in before scheduling annual leave.',
+      );
+    }
+
+    final DateTime leaveDate = DateTime(date.year, date.month, date.day);
+
+    if (leaveDate.weekday == DateTime.sunday) {
+      throw const AnnualLeaveException(
+        'Annual leave cannot be requested for a Sunday.',
+      );
+    }
+
+    if (shouldSendAnnualLeaveRequestNow(leaveDate)) {
+      throw const AnnualLeaveException(
+        'This annual leave date is already within the 365-day request window.',
+      );
+    }
+
+    final String cleanedRecipient = recipientEmail.trim();
+    final String cleanedSubject = emailSubject.trim();
+    final String cleanedBody = emailBody.trim();
+
+    if (cleanedRecipient.isEmpty) {
+      throw const AnnualLeaveException('The Rosters email address is missing.');
+    }
+
+    if (cleanedSubject.isEmpty || cleanedBody.isEmpty) {
+      throw const AnnualLeaveException(
+        'The scheduled annual leave email could not be prepared.',
+      );
+    }
+
+    final String dateValue = _databaseDate(leaveDate);
+
+    final Map<String, dynamic>? activeRequest = await _supabase
+        .from(_requestTable)
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('leave_date', dateValue)
+        .eq('request_type', 'floating')
+        .inFilter('status', <String>['requested', 'abeyance', 'granted'])
+        .maybeSingle();
+
+    if (activeRequest != null) {
+      throw const AnnualLeaveException(
+        'You already have an annual leave request for this date.',
+      );
+    }
+
+    try {
+      await _supabase.rpc(
+        'schedule_annual_leave_email',
+        params: <String, dynamic>{
+          'p_leave_date': dateValue,
+          'p_recipient_email': cleanedRecipient,
+          'p_email_subject': cleanedSubject,
+          'p_email_body': cleanedBody,
+          'p_notes': _nullableText(notes),
+        },
+      );
+    } on PostgrestException catch (error) {
+      final String message = error.message.trim();
+
+      if (message.isNotEmpty) {
+        throw AnnualLeaveException(message);
+      }
+
+      throw const AnnualLeaveException(
+        'Roster Buddy could not schedule this annual leave email.',
+      );
+    }
+  }
+
+  /// Cancels a future annual leave email that has not yet been sent.
+  ///
+  /// The row is retained with status 'cancelled' for history/audit purposes.
+  /// Cancelled scheduled requests do not appear as AL QUEUED and the same
+  /// leave date can be scheduled again later.
+  Future<void> cancelScheduledFloatingLeaveRequest({
+    required DateTime date,
+  }) async {
+    final User? user = _supabase.auth.currentUser;
+
+    if (user == null) {
+      throw const AnnualLeaveException(
+        'You must be signed in before cancelling scheduled annual leave.',
+      );
+    }
+
+    final String dateValue = _databaseDate(
+      DateTime(date.year, date.month, date.day),
+    );
+
+    final Map<String, dynamic>? existing = await _supabase
+        .from('annual_leave_scheduled_requests')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('leave_date', dateValue)
+        .eq('status', 'scheduled')
+        .maybeSingle();
+
+    if (existing == null) {
+      throw const AnnualLeaveException(
+        'There is no queued annual leave request for this date.',
+      );
+    }
+
+    await _supabase
+        .from('annual_leave_scheduled_requests')
+        .update(<String, dynamic>{
+          'status': 'cancelled',
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+          'error_message': null,
+        })
+        .eq('id', existing['id'])
+        .eq('user_id', user.id)
+        .eq('status', 'scheduled');
+  }
+
   Future<AnnualLeaveRequest> requestFloatingLeave({
     required DateTime date,
     String? notes,
@@ -231,6 +407,39 @@ class AnnualLeaveService {
         .single();
 
     return AnnualLeaveRequest.fromMap(refreshed);
+  }
+
+  Future<List<AnnualLeaveRequest>> getPendingFloatingRequests() async {
+    final User? user = _supabase.auth.currentUser;
+
+    if (user == null) {
+      throw const AnnualLeaveException(
+        'You must be signed in before loading annual leave.',
+      );
+    }
+
+    final List<dynamic> response = await _supabase
+        .from(_requestTable)
+        .select(
+          'id, user_id, leave_date, status, request_type, '
+          'requested_at, decision_at, notes, queue_position',
+        )
+        .eq('user_id', user.id)
+        .eq('request_type', 'floating')
+        .neq('status', 'cancelled')
+        .order('leave_date');
+
+    final List<AnnualLeaveRequest> requests = response
+        .whereType<Map<String, dynamic>>()
+        .map(AnnualLeaveRequest.fromMap)
+        .where(
+          (AnnualLeaveRequest request) =>
+              request.status == AnnualLeaveRequestStatus.requested ||
+              request.status == AnnualLeaveRequestStatus.abeyance,
+        )
+        .toList();
+
+    return List<AnnualLeaveRequest>.unmodifiable(requests);
   }
 
   Future<Map<String, AnnualLeaveRequest>> getRequestsForRange(

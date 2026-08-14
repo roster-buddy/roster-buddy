@@ -19,6 +19,66 @@ import '../upload/upload_service.dart';
 import '../smart_scan/smart_scan_debug_page.dart';
 import '../settings/settings_page.dart';
 
+Uri _rosterBuddyMailUri({required String subject, required String body}) {
+  return Uri.parse(
+    'mailto:drivers.rosters@wmtrains.co.uk'
+    '?subject=${Uri.encodeComponent(subject)}'
+    '&body=${Uri.encodeComponent(body)}',
+  );
+}
+
+Future<bool> _openAnnualLeaveRequestCancellationEmail({
+  required String dateLabel,
+}) async {
+  final SupabaseClient supabase = Supabase.instance.client;
+  final User? user = supabase.auth.currentUser;
+
+  String driverName = '';
+  String depot = '';
+  String payrollNumber = '';
+
+  if (user != null) {
+    final Map<String, dynamic>? profile = await supabase
+        .from('driver_profiles')
+        .select('display_name, depot, payroll_number')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+    final Map<String, dynamic> metadata =
+        user.userMetadata ?? <String, dynamic>{};
+
+    driverName = (profile?['display_name'] ?? metadata['full_name'] ?? '')
+        .toString()
+        .trim();
+
+    depot = (profile?['depot'] ?? metadata['depot'] ?? '').toString().trim();
+
+    payrollNumber =
+        (profile?['payroll_number'] ?? metadata['payroll_number'] ?? '')
+            .toString()
+            .trim();
+  }
+
+  final List<String> signature = <String>[
+    if (driverName.isNotEmpty) driverName,
+    if (depot.isNotEmpty) depot,
+    if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
+  ];
+
+  final String subject = 'Annual Leave Request Cancellation - $dateLabel';
+
+  final String body =
+      'Please can I cancel my floating annual leave request for:\n\n'
+      '$dateLabel\n\n'
+      'Regards'
+      '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
+
+  return launchUrl(
+    _rosterBuddyMailUri(subject: subject, body: body),
+    mode: LaunchMode.platformDefault,
+  );
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -33,6 +93,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
   int _selectedIndex = 0;
   int _dashboardRefreshVersion = 0;
+
+  final GlobalKey<_CalendarPageState> _calendarKey =
+      GlobalKey<_CalendarPageState>();
+
+  DateTime? _calendarRequestedDate;
+  _CalendarDayAction? _calendarRequestedAction;
+  int _calendarRequestVersion = 0;
+
+  void _openCalendarAction(DateTime date, _CalendarDayAction action) {
+    final _CalendarPageState? calendarState = _calendarKey.currentState;
+
+    if (calendarState == null) {
+      setState(() {
+        _calendarRequestedDate = date;
+        _calendarRequestedAction = action;
+        _calendarRequestVersion++;
+        _selectedIndex = 1;
+      });
+      return;
+    }
+
+    calendarState.openExternalAction(date, action);
+  }
 
   Future<void> _signOut() async {
     await Supabase.instance.client.auth.signOut();
@@ -243,21 +326,83 @@ class _HomeScreenState extends State<HomeScreen> {
     _pickDocument(UploadSource.file);
   }
 
+  void _notifyRosterChanged() {
+    setState(() {
+      _dashboardRefreshVersion++;
+    });
+  }
+
+  final AnnualLeaveService _pendingActionsAnnualLeaveService =
+      AnnualLeaveService();
+
+  Future<void> _openPendingActions() async {
+    final int? destination = await Navigator.of(context).push<int>(
+      MaterialPageRoute<int>(
+        builder: (BuildContext context) {
+          return _PendingActionsPage(
+            annualLeaveService: _pendingActionsAnnualLeaveService,
+            onChanged: _notifyRosterChanged,
+            currentTabIndex: _selectedIndex,
+          );
+        },
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    _notifyRosterChanged();
+
+    if (destination == null) {
+      return;
+    }
+
+    if (destination == 2) {
+      await _pickDocument(UploadSource.file);
+      return;
+    }
+
+    setState(() {
+      if (destination == 0 || destination == 1) {
+        _dashboardRefreshVersion++;
+      }
+
+      _selectedIndex = destination;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final String email =
         Supabase.instance.client.auth.currentUser?.email ?? 'Roster Buddy user';
 
     final List<Widget> pages = [
-      DashboardPage(
+      _DashboardPage(
         email: email,
         onUpload: _openUploadPage,
+        onCalendarAction: _openCalendarAction,
+        onRosterChanged: _notifyRosterChanged,
         refreshVersion: _dashboardRefreshVersion,
       ),
-      CalendarPage(refreshVersion: _dashboardRefreshVersion),
-      DashboardPage(
+      _CalendarPage(
+        key: _calendarKey,
+        refreshVersion: _dashboardRefreshVersion,
+        requestedDate: _calendarRequestedDate,
+        requestedAction: _calendarRequestedAction,
+        requestVersion: _calendarRequestVersion,
+        onRosterChanged: _notifyRosterChanged,
+        onOpenCalendar: () {
+          setState(() {
+            _selectedIndex = 1;
+          });
+        },
+      ),
+      _DashboardPage(
         email: email,
         onUpload: _openUploadPage,
+        onCalendarAction: _openCalendarAction,
+        onRosterChanged: _notifyRosterChanged,
         refreshVersion: _dashboardRefreshVersion,
       ),
       const TimelinePage(),
@@ -289,6 +434,13 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Pending Actions',
+            onPressed: _openPendingActions,
+            icon: const Icon(Icons.notifications_outlined),
+          ),
+        ],
       ),
       body: SafeArea(
         child: IndexedStack(index: _selectedIndex, children: pages),
@@ -302,6 +454,10 @@ class _HomeScreenState extends State<HomeScreen> {
           }
 
           setState(() {
+            if (index == 0 || index == 1) {
+              _dashboardRefreshVersion++;
+            }
+
             _selectedIndex = index;
           });
         },
@@ -337,23 +493,559 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class DashboardPage extends StatefulWidget {
-  const DashboardPage({
+class _PendingActionsPage extends StatefulWidget {
+  const _PendingActionsPage({
+    required this.annualLeaveService,
+    required this.onChanged,
+    required this.currentTabIndex,
+  });
+
+  final AnnualLeaveService annualLeaveService;
+  final VoidCallback onChanged;
+  final int currentTabIndex;
+
+  @override
+  State<_PendingActionsPage> createState() => _PendingActionsPageState();
+}
+
+class _PendingActionsPageState extends State<_PendingActionsPage> {
+  static const Color navy = Color(0xFF102A43);
+  static const Color background = Color(0xFFF4F7FA);
+  static const Color leaveRed = Color(0xFFD64545);
+  static const Color textGrey = Color(0xFF52667A);
+
+  bool _isLoading = true;
+  String? _errorMessage;
+  List<AnnualLeaveRequest> _requests = <AnnualLeaveRequest>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  String _dateLabel(DateTime date) {
+    const List<String> weekdays = <String>[
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
+
+    const List<String> months = <String>[
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+
+    return '${weekdays[date.weekday - 1]} '
+        '${date.day} ${months[date.month - 1]} ${date.year}';
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final List<AnnualLeaveRequest> requests = await widget.annualLeaveService
+          .getPendingFloatingRequests();
+
+      if (!mounted) {
+        return;
+      }
+
+      final List<AnnualLeaveRequest> orderedRequests =
+          List<AnnualLeaveRequest>.of(requests)..sort(
+            (AnnualLeaveRequest a, AnnualLeaveRequest b) =>
+                a.leaveDate.compareTo(b.leaveDate),
+          );
+
+      setState(() {
+        _requests = orderedRequests;
+        _isLoading = false;
+      });
+    } on AnnualLeaveException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isLoading = false;
+        _errorMessage = error.message;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Roster Buddy could not load Pending Actions.';
+      });
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _grant(AnnualLeaveRequest request) async {
+    try {
+      await widget.annualLeaveService.markGranted(requestId: request.id);
+
+      widget.onChanged();
+      await _load();
+
+      _showMessage(
+        'Annual leave granted for ${_dateLabel(request.leaveDate)}.',
+      );
+    } on AnnualLeaveException catch (error) {
+      _showMessage(error.message);
+    } catch (_) {
+      _showMessage('Roster Buddy could not grant this annual leave request.');
+    }
+  }
+
+  Future<void> _moveToAbeyance(AnnualLeaveRequest request) async {
+    final TextEditingController controller = TextEditingController(
+      text: request.queuePosition?.toString() ?? '',
+    );
+
+    final int? queuePosition = await showDialog<int>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        String? errorText;
+
+        return StatefulBuilder(
+          builder:
+              (
+                BuildContext context,
+                void Function(void Function()) setDialogState,
+              ) {
+                return AlertDialog(
+                  title: Text(
+                    request.status == AnnualLeaveRequestStatus.abeyance
+                        ? 'Update abeyance position'
+                        : 'Move to abeyance',
+                  ),
+                  content: TextField(
+                    controller: controller,
+                    autofocus: true,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'Queue position',
+                      hintText: 'For example 3',
+                      errorText: errorText,
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(dialogContext).pop();
+                      },
+                      child: const Text('Cancel'),
+                    ),
+                    FilledButton(
+                      onPressed: () {
+                        final int? value = int.tryParse(controller.text.trim());
+
+                        if (value == null || value < 1) {
+                          setDialogState(() {
+                            errorText = 'Enter a queue position of 1 or more.';
+                          });
+                          return;
+                        }
+
+                        Navigator.of(dialogContext).pop(value);
+                      },
+                      child: const Text('Save'),
+                    ),
+                  ],
+                );
+              },
+        );
+      },
+    );
+
+    controller.dispose();
+
+    if (queuePosition == null || !mounted) {
+      return;
+    }
+
+    try {
+      await widget.annualLeaveService.markAbeyance(
+        requestId: request.id,
+        queuePosition: queuePosition,
+      );
+
+      widget.onChanged();
+      await _load();
+
+      _showMessage(
+        'Annual leave held in abeyance at queue position #$queuePosition.',
+      );
+    } on AnnualLeaveException catch (error) {
+      _showMessage(error.message);
+    } catch (_) {
+      _showMessage('Roster Buddy could not update the abeyance position.');
+    }
+  }
+
+  Future<void> _cancel(AnnualLeaveRequest request) async {
+    final bool? alreadyConfirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return CupertinoAlertDialog(
+          title: const Text('Cancellation confirmed?'),
+          content: Text(
+            'Has the cancellation of your annual leave request for '
+            '${_dateLabel(request.leaveDate)} already been confirmed '
+            'by Rosters / DTCM?',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('No'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Yes'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (alreadyConfirmed == null || !mounted) {
+      return;
+    }
+
+    try {
+      if (alreadyConfirmed) {
+        await widget.annualLeaveService.cancelRequest(requestId: request.id);
+
+        widget.onChanged();
+        await _load();
+
+        _showMessage(
+          'Annual leave request cancelled for '
+          '${_dateLabel(request.leaveDate)}.',
+        );
+
+        return;
+      }
+
+      final bool opened = await _openAnnualLeaveRequestCancellationEmail(
+        dateLabel: _dateLabel(request.leaveDate),
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (opened) {
+        _showMessage(
+          'Cancellation email prepared. The annual leave request '
+          'will remain active until Rosters / DTCM confirms cancellation.',
+        );
+      } else {
+        _showMessage(
+          'Roster Buddy could not open your email app. '
+          'The annual leave request remains active.',
+        );
+      }
+    } on AnnualLeaveException catch (error) {
+      _showMessage(error.message);
+    } catch (_) {
+      _showMessage(
+        'Roster Buddy could not process this annual leave cancellation.',
+      );
+    }
+  }
+
+  Widget _buildRequestCard(AnnualLeaveRequest request) {
+    final bool isAbeyance = request.status == AnnualLeaveRequestStatus.abeyance;
+
+    final String statusText = isAbeyance
+        ? request.queuePosition == null
+              ? 'ABE'
+              : 'ABE #${request.queuePosition}'
+        : 'AL REQ';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.beach_access_outlined, color: leaveRed),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _dateLabel(request.leaveDate),
+                    style: const TextStyle(
+                      color: navy,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isAbeyance
+                        ? const Color(0xFFF59E0B).withValues(alpha: 0.12)
+                        : leaveRed.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    statusText,
+                    style: TextStyle(
+                      color: isAbeyance ? const Color(0xFFB45309) : leaveRed,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              isAbeyance
+                  ? 'Floating annual leave held in abeyance.'
+                  : 'Floating annual leave awaiting a decision from Rosters.',
+              style: const TextStyle(color: textGrey),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => _grant(request),
+                    icon: const Icon(Icons.event_available_outlined),
+                    label: const Text('Grant'),
+                    style: FilledButton.styleFrom(backgroundColor: leaveRed),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _moveToAbeyance(request),
+                    icon: const Icon(Icons.hourglass_top_outlined),
+                    label: Text(isAbeyance ? 'Update ABE' : 'Abeyance'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _cancel(request),
+                icon: const Icon(Icons.cancel_outlined),
+                label: const Text('Cancel request'),
+                style: OutlinedButton.styleFrom(foregroundColor: leaveRed),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: background,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: navy,
+        elevation: 0,
+        title: const Text(
+          'Pending Actions',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _isLoading ? null : _load,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: _load,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+            children: [
+              const Text(
+                'Annual Leave',
+                style: TextStyle(
+                  color: navy,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Record the decision received from Rosters.',
+                style: TextStyle(color: textGrey),
+              ),
+              const SizedBox(height: 16),
+              if (_isLoading)
+                const Padding(
+                  padding: EdgeInsets.only(top: 50),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (_errorMessage != null)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          color: leaveRed,
+                          size: 30,
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          _errorMessage!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: textGrey),
+                        ),
+                        const SizedBox(height: 12),
+                        FilledButton(
+                          onPressed: _load,
+                          child: const Text('Try again'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else if (_requests.isEmpty)
+                const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(22),
+                    child: Column(
+                      children: [
+                        Icon(Icons.inbox_outlined, color: textGrey, size: 34),
+                        SizedBox(height: 10),
+                        Text(
+                          'No pending annual leave actions',
+                          style: TextStyle(
+                            color: navy,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        SizedBox(height: 5),
+                        Text(
+                          'Annual leave requests awaiting a decision will appear here.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: textGrey),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                ..._requests.map(_buildRequestCard),
+            ],
+          ),
+        ),
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: widget.currentTabIndex,
+        onDestinationSelected: (int index) {
+          Navigator.of(context).pop(index);
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.calendar_month_outlined),
+            selectedIcon: Icon(Icons.calendar_month),
+            label: 'Calendar',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.upload_file_outlined),
+            selectedIcon: Icon(Icons.upload_file),
+            label: 'Upload',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.timeline_outlined),
+            selectedIcon: Icon(Icons.timeline),
+            label: 'Timeline',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardPage extends StatefulWidget {
+  const _DashboardPage({
     required this.email,
     required this.onUpload,
+    required this.onCalendarAction,
+    required this.onRosterChanged,
     required this.refreshVersion,
-    super.key,
   });
 
   final String email;
   final VoidCallback onUpload;
+  final void Function(DateTime date, _CalendarDayAction action)
+  onCalendarAction;
+  final VoidCallback onRosterChanged;
   final int refreshVersion;
 
   @override
-  State<DashboardPage> createState() => _DashboardPageState();
+  State<_DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> {
+class _DashboardPageState extends State<_DashboardPage> {
   static const Color navy = Color(0xFF102A43);
   static const Color railwayBlue = Color(0xFF1769AA);
   static const Color workingGreen = Color(0xFF2E7D32);
@@ -365,10 +1057,13 @@ class _DashboardPageState extends State<DashboardPage> {
   final DutyResolver _dutyResolver = DutyResolver();
   final ManualDutyService _manualDutyService = ManualDutyService();
   final JobCardService _jobCardService = JobCardService();
+  final AnnualLeaveService _annualLeaveService = AnnualLeaveService();
 
   Duty? _todayDuty;
   Duty? _nextWorkingDuty;
   Map<String, Duty> _thisWeekDuties = <String, Duty>{};
+  Map<String, AnnualLeaveRequest> _thisWeekLeaveRequests =
+      <String, AnnualLeaveRequest>{};
 
   bool _isLoading = true;
   bool _isFindingNextShift = true;
@@ -381,7 +1076,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   @override
-  void didUpdateWidget(covariant DashboardPage oldWidget) {
+  void didUpdateWidget(covariant _DashboardPage oldWidget) {
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.refreshVersion != widget.refreshVersion) {
@@ -411,8 +1106,18 @@ class _DashboardPageState extends State<DashboardPage> {
         growable: false,
       );
 
-      final Map<String, Duty> thisWeekDuties = await _dutyResolver
+      final Future<Map<String, Duty>> dutiesFuture = _dutyResolver
           .getResolvedDutiesForRange(weekDates.first, weekDates.last);
+
+      final Future<Map<String, AnnualLeaveRequest>> leaveRequestsFuture =
+          _annualLeaveService.getRequestsForRange(
+            weekDates.first,
+            weekDates.last,
+          );
+
+      final Map<String, Duty> thisWeekDuties = await dutiesFuture;
+      final Map<String, AnnualLeaveRequest> thisWeekLeaveRequests =
+          await leaveRequestsFuture;
 
       final Duty? todayDuty = thisWeekDuties[_dashboardDateKey(today)];
 
@@ -424,6 +1129,7 @@ class _DashboardPageState extends State<DashboardPage> {
       setState(() {
         _todayDuty = todayDuty;
         _thisWeekDuties = thisWeekDuties;
+        _thisWeekLeaveRequests = thisWeekLeaveRequests;
         _isLoading = false;
       });
 
@@ -446,6 +1152,7 @@ class _DashboardPageState extends State<DashboardPage> {
         _todayDuty = null;
         _nextWorkingDuty = null;
         _thisWeekDuties = <String, Duty>{};
+        _thisWeekLeaveRequests = <String, AnnualLeaveRequest>{};
         _isLoading = false;
         _isFindingNextShift = false;
         _loadError = error is DutyResolverException
@@ -649,6 +1356,8 @@ class _DashboardPageState extends State<DashboardPage> {
                 child: _buildDashboardWeekTile(
                   date: dates[index],
                   duty: _thisWeekDuties[_dashboardDateKey(dates[index])],
+                  leaveRequest:
+                      _thisWeekLeaveRequests[_dashboardDateKey(dates[index])],
                 ),
               ),
               if (index < dates.length - 1) const SizedBox(width: 5),
@@ -662,13 +1371,21 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildDashboardWeekTile({
     required DateTime date,
     required Duty? duty,
+    required AnnualLeaveRequest? leaveRequest,
   }) {
     final bool isToday = _sameDashboardDate(date, DateTime.now());
-    final Color colour = _dashboardWeekColour(duty);
+    final bool isGrantedAnnualLeave =
+        leaveRequest?.status == AnnualLeaveRequestStatus.granted;
+
+    final Color colour = isGrantedAnnualLeave
+        ? leaveRed
+        : _dashboardWeekColour(duty);
+
     final bool darkText =
-        duty == null ||
-        duty.dutyType == DutyType.restDay ||
-        duty.dutyType == DutyType.unavailable;
+        !isGrantedAnnualLeave &&
+        (duty == null ||
+            duty.dutyType == DutyType.restDay ||
+            duty.dutyType == DutyType.unavailable);
 
     final Color foreground = darkText ? navy : Colors.white;
 
@@ -678,7 +1395,11 @@ class _DashboardPageState extends State<DashboardPage> {
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
         onTap: () {
-          _showDashboardDayDetails(date: date, duty: duty);
+          _showDashboardDayDetails(
+            date: date,
+            duty: duty,
+            leaveRequest: leaveRequest,
+          );
         },
         onLongPress: () {
           _showDashboardDayActions(date: date, duty: duty);
@@ -716,7 +1437,11 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
               const SizedBox(height: 5),
               Text(
-                duty == null ? '—' : _dashboardWeekStatus(duty),
+                isGrantedAnnualLeave
+                    ? 'Leave'
+                    : duty == null
+                    ? '—'
+                    : _dashboardWeekStatus(duty),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
@@ -726,7 +1451,8 @@ class _DashboardPageState extends State<DashboardPage> {
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              if (duty?.bookOn?.trim().isNotEmpty == true) ...[
+              if (!isGrantedAnnualLeave &&
+                  duty?.bookOn?.trim().isNotEmpty == true) ...[
                 const SizedBox(height: 3),
                 Text(
                   duty!.bookOn!.trim(),
@@ -738,27 +1464,70 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                 ),
               ],
-              if (duty != null) ...[
+              if (duty != null || isGrantedAnnualLeave) ...[
                 const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 1,
-                  ),
-                  decoration: BoxDecoration(
-                    color: darkText
-                        ? railwayBlue.withValues(alpha: 0.12)
-                        : Colors.white.withValues(alpha: 0.22),
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: Text(
-                    _dashboardSourceLabel(duty.source),
-                    style: TextStyle(
-                      color: foreground,
-                      fontSize: 7,
-                      fontWeight: FontWeight.w900,
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 3,
+                  runSpacing: 2,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: darkText
+                            ? railwayBlue.withValues(alpha: 0.12)
+                            : Colors.white.withValues(alpha: 0.22),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: Text(
+                        isGrantedAnnualLeave
+                            ? (leaveRequest?.requestType ==
+                                      AnnualLeaveRequestType.floating
+                                  ? 'ALD'
+                                  : 'AW')
+                            : _dashboardSourceLabel(duty!.source),
+                        style: TextStyle(
+                          color: foreground,
+                          fontSize: 7,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
                     ),
-                  ),
+                    if (!isGrantedAnnualLeave &&
+                        leaveRequest != null &&
+                        leaveRequest.status !=
+                            AnnualLeaveRequestStatus.cancelled)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color:
+                              leaveRequest.status ==
+                                  AnnualLeaveRequestStatus.abeyance
+                              ? const Color(0xFFF59E0B)
+                              : leaveRed,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: Text(
+                          leaveRequest.status ==
+                                  AnnualLeaveRequestStatus.abeyance
+                              ? leaveRequest.queuePosition == null
+                                    ? 'ABE'
+                                    : 'ABE #${leaveRequest.queuePosition}'
+                              : 'AL REQ',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 7,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ],
@@ -1027,7 +1796,17 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _showDashboardDayDetails({
     required DateTime date,
     required Duty? duty,
+    AnnualLeaveRequest? leaveRequest,
   }) async {
+    leaveRequest ??= _thisWeekLeaveRequests[_dashboardDateKey(date)];
+
+    final bool isGrantedAnnualLeave =
+        leaveRequest?.status == AnnualLeaveRequestStatus.granted;
+
+    final bool isFloatingAnnualLeave =
+        isGrantedAnnualLeave &&
+        leaveRequest?.requestType == AnnualLeaveRequestType.floating;
+
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -1049,7 +1828,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                if (duty == null)
+                if (duty == null && !isGrantedAnnualLeave)
                   const Text(
                     'No roster information is available for this date.',
                     style: TextStyle(color: textGrey),
@@ -1061,14 +1840,18 @@ class _DashboardPageState extends State<DashboardPage> {
                         width: 12,
                         height: 12,
                         decoration: BoxDecoration(
-                          color: _dashboardWeekColour(duty),
+                          color: isGrantedAnnualLeave
+                              ? leaveRed
+                              : _dashboardWeekColour(duty),
                           shape: BoxShape.circle,
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          _dashboardWeekStatus(duty),
+                          isGrantedAnnualLeave
+                              ? 'Annual Leave'
+                              : _dashboardWeekStatus(duty!),
                           style: const TextStyle(
                             color: navy,
                             fontSize: 17,
@@ -1076,34 +1859,57 @@ class _DashboardPageState extends State<DashboardPage> {
                           ),
                         ),
                       ),
-                      _RosterSourceBadge(source: duty.source),
+                      if (isGrantedAnnualLeave)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: leaveRed.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(7),
+                          ),
+                          child: Text(
+                            isFloatingAnnualLeave ? 'ALD' : 'AW',
+                            style: const TextStyle(
+                              color: leaveRed,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        )
+                      else
+                        _RosterSourceBadge(source: duty!.source),
                     ],
                   ),
-                  if (duty.bookOn?.trim().isNotEmpty == true ||
-                      duty.bookOff?.trim().isNotEmpty == true) ...[
+                  if (!isGrantedAnnualLeave &&
+                      (duty?.bookOn?.trim().isNotEmpty == true ||
+                          duty?.bookOff?.trim().isNotEmpty == true)) ...[
                     const SizedBox(height: 14),
                     Text(
-                      _timeDescription(duty),
+                      _timeDescription(duty!),
                       style: const TextStyle(
                         color: navy,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                   ],
-                  if (duty.turnNumber?.trim().isNotEmpty == true) ...[
+                  if (!isGrantedAnnualLeave &&
+                      duty?.turnNumber?.trim().isNotEmpty == true) ...[
                     const SizedBox(height: 10),
                     Text(
-                      'Turn ${duty.turnNumber!.trim()}',
+                      'Turn ${duty!.turnNumber!.trim()}',
                       style: const TextStyle(
                         color: navy,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                   ],
-                  if (duty.remarks?.trim().isNotEmpty == true) ...[
+                  if (!isGrantedAnnualLeave &&
+                      duty?.remarks?.trim().isNotEmpty == true) ...[
                     const SizedBox(height: 10),
                     Text(
-                      duty.remarks!.trim(),
+                      duty!.remarks!.trim(),
                       style: const TextStyle(color: textGrey, height: 1.35),
                     ),
                   ],
@@ -1113,7 +1919,10 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                 ],
                 const SizedBox(height: 22),
-                if (duty?.dutyType.countsAsWorking == true) ...[
+                if (duty?.dutyType.countsAsWorking == true &&
+                    (leaveRequest == null ||
+                        leaveRequest.status ==
+                            AnnualLeaveRequestStatus.cancelled)) ...[
                   FutureBuilder<JobCardMatch?>(
                     future: _findDashboardJobCard(duty!),
                     builder:
@@ -1187,13 +1996,78 @@ class _DashboardPageState extends State<DashboardPage> {
                               return;
                             }
 
-                            _showDashboardDayActions(date: date, duty: duty);
+                            widget.onCalendarAction(
+                              date,
+                              _CalendarDayAction.requestAnnualLeave,
+                            );
                           },
                         );
                       },
                       icon: const Icon(Icons.beach_access_outlined),
                       label: const Text('Request annual leave'),
                       style: FilledButton.styleFrom(backgroundColor: leaveRed),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (leaveRequest != null &&
+                    (leaveRequest.status ==
+                            AnnualLeaveRequestStatus.requested ||
+                        leaveRequest.status ==
+                            AnnualLeaveRequestStatus.abeyance)) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+
+                        Future<void>.delayed(
+                          const Duration(milliseconds: 150),
+                          () async {
+                            if (!mounted) {
+                              return;
+                            }
+
+                            await _manageDashboardAnnualLeaveRequest(
+                              date: date,
+                              request: leaveRequest!,
+                            );
+                          },
+                        );
+                      },
+                      icon: const Icon(Icons.event_note_outlined),
+                      label: const Text('Action annual leave'),
+                      style: FilledButton.styleFrom(backgroundColor: leaveRed),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (isGrantedAnnualLeave && leaveRequest != null) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+
+                        Future<void>.delayed(
+                          const Duration(milliseconds: 150),
+                          () async {
+                            if (!mounted) {
+                              return;
+                            }
+
+                            await _cancelDashboardGrantedAnnualLeave(
+                              date: date,
+                              request: leaveRequest!,
+                            );
+                          },
+                        );
+                      },
+                      icon: const Icon(Icons.cancel_outlined),
+                      label: const Text('Cancel annual leave'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: leaveRed,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -1227,6 +2101,475 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  Future<void> _manageDashboardAnnualLeaveRequest({
+    required DateTime date,
+    required AnnualLeaveRequest request,
+  }) async {
+    final String? action = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (BuildContext popupContext) {
+        return CupertinoActionSheet(
+          title: const Text('Action annual leave'),
+          message: Text(_fullDate(date)),
+          actions: [
+            CupertinoActionSheetAction(
+              isDefaultAction: true,
+              onPressed: () {
+                Navigator.of(popupContext).pop('grant');
+              },
+              child: const Text('Grant'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(popupContext).pop('abeyance');
+              },
+              child: Text(
+                request.status == AnnualLeaveRequestStatus.abeyance
+                    ? 'Update abeyance'
+                    : 'Abeyance',
+              ),
+            ),
+            CupertinoActionSheetAction(
+              isDestructiveAction: true,
+              onPressed: () {
+                Navigator.of(popupContext).pop('cancel');
+              },
+              child: const Text('Cancel request'),
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.of(popupContext).pop();
+            },
+            child: const Text('Back'),
+          ),
+        );
+      },
+    );
+
+    if (action == null || !mounted) {
+      return;
+    }
+
+    try {
+      if (action == 'grant') {
+        final bool? alreadyConfirmed = await showCupertinoDialog<bool>(
+          context: context,
+          builder: (BuildContext dialogContext) {
+            return CupertinoAlertDialog(
+              title: const Text('Annual leave confirmed?'),
+              content: Text(
+                'Has the annual leave for ${_fullDate(date)} already been '
+                'confirmed by Rosters / DTCM?',
+              ),
+              actions: [
+                CupertinoDialogAction(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(false);
+                  },
+                  child: const Text('No'),
+                ),
+                CupertinoDialogAction(
+                  isDefaultAction: true,
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(true);
+                  },
+                  child: const Text('Yes'),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (alreadyConfirmed == null || !mounted) {
+          return;
+        }
+
+        if (alreadyConfirmed) {
+          await _annualLeaveService.markGranted(requestId: request.id);
+          await _loadDashboardDuties();
+
+          if (!mounted) {
+            return;
+          }
+
+          widget.onRosterChanged();
+
+          showMessage(
+            context,
+            'Floating annual leave granted for ${_fullDate(date)}.',
+          );
+
+          return;
+        }
+
+        final SupabaseClient supabase = Supabase.instance.client;
+        final User? user = supabase.auth.currentUser;
+
+        String driverName = '';
+        String depot = '';
+        String payrollNumber = '';
+
+        if (user != null) {
+          final Map<String, dynamic>? profile = await supabase
+              .from('driver_profiles')
+              .select('display_name, depot, payroll_number')
+              .eq('user_id', user.id)
+              .maybeSingle();
+
+          final Map<String, dynamic> metadata =
+              user.userMetadata ?? <String, dynamic>{};
+
+          driverName = (profile?['display_name'] ?? metadata['full_name'] ?? '')
+              .toString()
+              .trim();
+
+          depot = (profile?['depot'] ?? metadata['depot'] ?? '')
+              .toString()
+              .trim();
+
+          payrollNumber =
+              (profile?['payroll_number'] ?? metadata['payroll_number'] ?? '')
+                  .toString()
+                  .trim();
+        }
+
+        final List<String> signature = <String>[
+          if (driverName.isNotEmpty) driverName,
+          if (depot.isNotEmpty) depot,
+          if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
+        ];
+
+        final String subject = 'Annual Leave Request - ${_fullDate(date)}';
+
+        final String body =
+            'Please can I request floating annual leave for:\n\n'
+            '${_fullDate(date)}\n\n'
+            'Regards'
+            '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
+
+        final Uri emailUri = _rosterBuddyMailUri(subject: subject, body: body);
+
+        final bool opened = await launchUrl(
+          emailUri,
+          mode: LaunchMode.platformDefault,
+        );
+
+        if (!mounted) {
+          return;
+        }
+
+        if (!opened) {
+          showMessage(context, 'Roster Buddy could not open your email app.');
+        }
+
+        return;
+      }
+
+      if (action == 'abeyance') {
+        final TextEditingController controller = TextEditingController(
+          text: request.queuePosition?.toString() ?? '',
+        );
+
+        final int? queuePosition = await showDialog<int>(
+          context: context,
+          builder: (BuildContext dialogContext) {
+            String? errorText;
+
+            return StatefulBuilder(
+              builder:
+                  (
+                    BuildContext dialogContext,
+                    void Function(void Function()) setDialogState,
+                  ) {
+                    return AlertDialog(
+                      title: const Text('Abeyance queue position'),
+                      content: TextField(
+                        controller: controller,
+                        keyboardType: TextInputType.number,
+                        autofocus: true,
+                        decoration: InputDecoration(
+                          labelText: 'Queue position',
+                          hintText: 'For example 3',
+                          errorText: errorText,
+                        ),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(dialogContext).pop();
+                          },
+                          child: const Text('Cancel'),
+                        ),
+                        FilledButton(
+                          onPressed: () {
+                            final int? value = int.tryParse(
+                              controller.text.trim(),
+                            );
+
+                            if (value == null || value < 1) {
+                              setDialogState(() {
+                                errorText =
+                                    'Enter a queue position of 1 or more.';
+                              });
+                              return;
+                            }
+
+                            Navigator.of(dialogContext).pop(value);
+                          },
+                          child: const Text('Save'),
+                        ),
+                      ],
+                    );
+                  },
+            );
+          },
+        );
+
+        controller.dispose();
+
+        if (queuePosition == null || !mounted) {
+          return;
+        }
+
+        await _annualLeaveService.markAbeyance(
+          requestId: request.id,
+          queuePosition: queuePosition,
+        );
+
+        await _loadDashboardDuties();
+
+        if (!mounted) {
+          return;
+        }
+
+        widget.onRosterChanged();
+
+        showMessage(
+          context,
+          'Annual leave held in abeyance at #$queuePosition.',
+        );
+        return;
+      }
+
+      if (action == 'cancel') {
+        final bool? alreadyConfirmed = await showCupertinoDialog<bool>(
+          context: context,
+          builder: (BuildContext dialogContext) {
+            return CupertinoAlertDialog(
+              title: const Text('Cancellation confirmed?'),
+              content: Text(
+                'Has the cancellation of your annual leave request for '
+                '${_fullDate(date)} already been confirmed by Rosters / DTCM?',
+              ),
+              actions: [
+                CupertinoDialogAction(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(false);
+                  },
+                  child: const Text('No'),
+                ),
+                CupertinoDialogAction(
+                  isDefaultAction: true,
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(true);
+                  },
+                  child: const Text('Yes'),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (alreadyConfirmed == null || !mounted) {
+          return;
+        }
+
+        if (alreadyConfirmed) {
+          await _annualLeaveService.cancelRequest(requestId: request.id);
+
+          await _loadDashboardDuties();
+
+          if (!mounted) {
+            return;
+          }
+
+          widget.onRosterChanged();
+
+          showMessage(
+            context,
+            'Annual leave request cancelled for ${_fullDate(date)}.',
+          );
+
+          return;
+        }
+
+        final bool opened = await _openAnnualLeaveRequestCancellationEmail(
+          dateLabel: _fullDate(date),
+        );
+
+        if (!mounted) {
+          return;
+        }
+
+        if (opened) {
+          showMessage(
+            context,
+            'Cancellation email prepared. The annual leave request '
+            'will remain active until Rosters / DTCM confirms cancellation.',
+          );
+        } else {
+          showMessage(
+            context,
+            'Roster Buddy could not open your email app. '
+            'The annual leave request remains active.',
+          );
+        }
+
+        return;
+      }
+    } on AnnualLeaveException catch (error) {
+      if (mounted) {
+        showMessage(context, error.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        showMessage(
+          context,
+          'Roster Buddy could not update this annual leave request.',
+        );
+      }
+    }
+  }
+
+  Future<void> _cancelDashboardGrantedAnnualLeave({
+    required DateTime date,
+    required AnnualLeaveRequest request,
+  }) async {
+    final bool? alreadyConfirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return CupertinoAlertDialog(
+          title: const Text('Cancellation confirmed?'),
+          content: Text(
+            'Has the cancellation of ${_fullDate(date)} already been '
+            'confirmed by Rosters / DTCM?',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('No'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Yes'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (alreadyConfirmed == null || !mounted) {
+      return;
+    }
+
+    try {
+      if (alreadyConfirmed) {
+        await _annualLeaveService.cancelRequest(requestId: request.id);
+        await _loadDashboardDuties();
+
+        if (!mounted) {
+          return;
+        }
+
+        widget.onRosterChanged();
+
+        showMessage(context, 'Annual leave cancelled for ${_fullDate(date)}.');
+        return;
+      }
+
+      final SupabaseClient supabase = Supabase.instance.client;
+      final User? user = supabase.auth.currentUser;
+
+      String driverName = '';
+      String depot = '';
+      String payrollNumber = '';
+
+      if (user != null) {
+        final Map<String, dynamic>? profile = await supabase
+            .from('driver_profiles')
+            .select('display_name, depot, payroll_number')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        final Map<String, dynamic> metadata =
+            user.userMetadata ?? <String, dynamic>{};
+
+        driverName = (profile?['display_name'] ?? metadata['full_name'] ?? '')
+            .toString()
+            .trim();
+
+        depot = (profile?['depot'] ?? metadata['depot'] ?? '')
+            .toString()
+            .trim();
+
+        payrollNumber =
+            (profile?['payroll_number'] ?? metadata['payroll_number'] ?? '')
+                .toString()
+                .trim();
+      }
+
+      final List<String> signature = <String>[
+        if (driverName.isNotEmpty) driverName,
+        if (depot.isNotEmpty) depot,
+        if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
+      ];
+
+      final String subject = 'Annual Leave Cancellation - ${_fullDate(date)}';
+
+      final String body =
+          'Please can I cancel my previously granted annual leave for:\n\n'
+          '${_fullDate(date)}\n\n'
+          'Regards'
+          '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
+
+      final Uri emailUri = _rosterBuddyMailUri(subject: subject, body: body);
+
+      final bool opened = await launchUrl(
+        emailUri,
+        mode: LaunchMode.platformDefault,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (!opened) {
+        showMessage(
+          context,
+          'Roster Buddy could not open your email app. '
+          'The annual leave remains granted.',
+        );
+      }
+    } on AnnualLeaveException catch (error) {
+      if (mounted) {
+        showMessage(context, error.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        showMessage(
+          context,
+          'Roster Buddy could not process the annual leave cancellation.',
+        );
+      }
+    }
+  }
+
   Future<void> _showDashboardDayActions({
     required DateTime date,
     required Duty? duty,
@@ -1256,7 +2599,7 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           );
         } else if (duty.dutyType == DutyType.restDay) {
-          actions.addAll(<Widget>[
+          actions.add(
             CupertinoActionSheetAction(
               onPressed: () {
                 closeAndRun(() {
@@ -1268,15 +2611,7 @@ class _DashboardPageState extends State<DashboardPage> {
               },
               child: const Text('Allocate shift'),
             ),
-            CupertinoActionSheetAction(
-              onPressed: () {
-                closeAndRun(() {
-                  showMessage(context, 'Shift swap will be connected next.');
-                });
-              },
-              child: const Text('Shift swap'),
-            ),
-          ]);
+          );
         } else if (duty.dutyType.countsAsWorking) {
           actions.addAll(<Widget>[
             CupertinoActionSheetAction(
@@ -1290,9 +2625,9 @@ class _DashboardPageState extends State<DashboardPage> {
             CupertinoActionSheetAction(
               onPressed: () {
                 closeAndRun(() {
-                  showMessage(
-                    context,
-                    'Turn-number selection will be connected next.',
+                  widget.onCalendarAction(
+                    date,
+                    _CalendarDayAction.selectTurnNumber,
                   );
                 });
               },
@@ -1301,9 +2636,9 @@ class _DashboardPageState extends State<DashboardPage> {
             CupertinoActionSheetAction(
               onPressed: () {
                 closeAndRun(() {
-                  showMessage(
-                    context,
-                    'Additional manual changes will be connected next.',
+                  widget.onCalendarAction(
+                    date,
+                    _CalendarDayAction.manualChange,
                   );
                 });
               },
@@ -1312,16 +2647,19 @@ class _DashboardPageState extends State<DashboardPage> {
             CupertinoActionSheetAction(
               onPressed: () {
                 closeAndRun(() {
-                  showMessage(context, 'Shift swap will be connected next.');
+                  widget.onCalendarAction(date, _CalendarDayAction.shiftSwap);
                 });
               },
-              child: const Text('Shift swap'),
+              child: const Text('Mutual Swap'),
             ),
             CupertinoActionSheetAction(
               isDestructiveAction: true,
               onPressed: () {
                 closeAndRun(() {
-                  showMessage(context, 'Move rest day will be connected next.');
+                  widget.onCalendarAction(
+                    date,
+                    _CalendarDayAction.moveRestDayHere,
+                  );
                 });
               },
               child: const Text('Move rest day here'),
@@ -1329,9 +2667,9 @@ class _DashboardPageState extends State<DashboardPage> {
             CupertinoActionSheetAction(
               onPressed: () {
                 closeAndRun(() {
-                  showMessage(
-                    context,
-                    'Annual leave requesting will be connected next.',
+                  widget.onCalendarAction(
+                    date,
+                    _CalendarDayAction.requestAnnualLeave,
                   );
                 });
               },
@@ -1585,9 +2923,33 @@ class _DashboardPageState extends State<DashboardPage> {
     required DateTime date,
     required Duty originalDuty,
   }) async {
-    final TextEditingController turnController = TextEditingController();
-    final TextEditingController bookOnController = TextEditingController();
-    final TextEditingController bookOffController = TextEditingController();
+    const String manualSelection = '__MANUAL_DASHBOARD_RDW__';
+
+    List<JobCardChoice> choices = <JobCardChoice>[];
+
+    try {
+      choices = await _jobCardService.findValidJobCardsForDate(dutyDate: date);
+    } catch (_) {
+      // Manual entry remains available if Job Cards cannot be loaded.
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    String selectedTurn = choices.isNotEmpty
+        ? choices.first.jobCard.turnNumber
+        : manualSelection;
+
+    final TextEditingController manualTurnController = TextEditingController();
+
+    final TextEditingController bookOnController = TextEditingController(
+      text: choices.isNotEmpty ? choices.first.jobCard.bookOn : '',
+    );
+
+    final TextEditingController bookOffController = TextEditingController(
+      text: choices.isNotEmpty ? choices.first.jobCard.bookOff : '',
+    );
 
     bool isSaving = false;
     String? errorMessage;
@@ -1604,17 +2966,23 @@ class _DashboardPageState extends State<DashboardPage> {
                 void Function(void Function()) setSheetState,
               ) {
                 Future<void> save() async {
-                  final String turnNumber = turnController.text.trim();
+                  final bool manual = selectedTurn == manualSelection;
+
+                  final String turnNumber = manual
+                      ? manualTurnController.text.trim()
+                      : selectedTurn.trim();
+
                   final String bookOn = _normaliseDashboardTime(
                     bookOnController.text,
                   );
+
                   final String bookOff = _normaliseDashboardTime(
                     bookOffController.text,
                   );
 
                   if (turnNumber.isEmpty) {
                     setSheetState(() {
-                      errorMessage = 'Enter the turn number.';
+                      errorMessage = 'Enter or select a turn number.';
                     });
                     return;
                   }
@@ -1647,7 +3015,9 @@ class _DashboardPageState extends State<DashboardPage> {
                     }
 
                     Navigator.of(sheetContext).pop();
+
                     await _loadDashboardDuties();
+                    widget.onRosterChanged();
 
                     if (!mounted) {
                       return;
@@ -1684,9 +3054,9 @@ class _DashboardPageState extends State<DashboardPage> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          const Text(
                             'Allocate shift – RDW',
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: navy,
                               fontSize: 22,
                               fontWeight: FontWeight.w900,
@@ -1698,22 +3068,86 @@ class _DashboardPageState extends State<DashboardPage> {
                             style: const TextStyle(color: textGrey),
                           ),
                           const SizedBox(height: 18),
-                          TextField(
-                            controller: turnController,
-                            textCapitalization: TextCapitalization.characters,
+
+                          DropdownButtonFormField<String>(
+                            initialValue: selectedTurn,
+                            isExpanded: true,
                             decoration: const InputDecoration(
-                              labelText: 'Turn number',
-                              hintText: 'For example WO201SX',
+                              labelText: 'Turn / Job Card',
                               border: OutlineInputBorder(),
                             ),
+                            items: <DropdownMenuItem<String>>[
+                              ...choices.map(
+                                (
+                                  JobCardChoice choice,
+                                ) => DropdownMenuItem<String>(
+                                  value: choice.jobCard.turnNumber,
+                                  child: Text(
+                                    'Turn ${choice.jobCard.turnNumber}'
+                                    '${choice.jobCard.bookOn.trim().isEmpty ? '' : ' • ${choice.jobCard.bookOn}–${choice.jobCard.bookOff}'}',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                              const DropdownMenuItem<String>(
+                                value: manualSelection,
+                                child: Text('Manual / cross-depot duty'),
+                              ),
+                            ],
+                            onChanged: isSaving
+                                ? null
+                                : (String? value) {
+                                    if (value == null) {
+                                      return;
+                                    }
+
+                                    setSheetState(() {
+                                      selectedTurn = value;
+                                      errorMessage = null;
+
+                                      if (value != manualSelection) {
+                                        for (final JobCardChoice choice
+                                            in choices) {
+                                          if (choice.jobCard.turnNumber ==
+                                              value) {
+                                            bookOnController.text =
+                                                choice.jobCard.bookOn;
+
+                                            bookOffController.text =
+                                                choice.jobCard.bookOff;
+
+                                            break;
+                                          }
+                                        }
+                                      }
+                                    });
+                                  },
                           ),
-                          const SizedBox(height: 14),
+
+                          if (selectedTurn == manualSelection) ...[
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: manualTurnController,
+                              enabled: !isSaving,
+                              textCapitalization: TextCapitalization.characters,
+                              decoration: const InputDecoration(
+                                labelText: 'Manual turn / duty reference',
+                                hintText:
+                                    'For example WO216 or cross-depot cover',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ],
+
+                          const SizedBox(height: 12),
+
                           Row(
                             children: [
                               Expanded(
                                 child: TextField(
                                   controller: bookOnController,
-                                  keyboardType: TextInputType.number,
+                                  enabled: !isSaving,
+                                  keyboardType: TextInputType.datetime,
                                   decoration: const InputDecoration(
                                     labelText: 'Book on',
                                     hintText: '0800',
@@ -1725,7 +3159,8 @@ class _DashboardPageState extends State<DashboardPage> {
                               Expanded(
                                 child: TextField(
                                   controller: bookOffController,
-                                  keyboardType: TextInputType.number,
+                                  enabled: !isSaving,
+                                  keyboardType: TextInputType.datetime,
                                   decoration: const InputDecoration(
                                     labelText: 'Book off',
                                     hintText: '1630',
@@ -1735,6 +3170,16 @@ class _DashboardPageState extends State<DashboardPage> {
                               ),
                             ],
                           ),
+
+                          const SizedBox(height: 10),
+
+                          const Text(
+                            'Selecting a Job Card fills its booked times '
+                            'automatically. Manual or cross-depot duties '
+                            'can still be entered.',
+                            style: TextStyle(color: textGrey, height: 1.35),
+                          ),
+
                           if (errorMessage != null) ...[
                             const SizedBox(height: 12),
                             Text(
@@ -1745,7 +3190,9 @@ class _DashboardPageState extends State<DashboardPage> {
                               ),
                             ),
                           ],
+
                           const SizedBox(height: 20),
+
                           SizedBox(
                             width: double.infinity,
                             child: FilledButton.icon(
@@ -1758,9 +3205,11 @@ class _DashboardPageState extends State<DashboardPage> {
                                         strokeWidth: 2,
                                       ),
                                     )
-                                  : const Icon(Icons.save_outlined),
+                                  : const Icon(Icons.add_circle_outline),
                               label: Text(
-                                isSaving ? 'Saving…' : 'Save Rest Day Worked',
+                                isSaving
+                                    ? 'Saving RDW…'
+                                    : 'Save Rest Day Worked',
                               ),
                               style: FilledButton.styleFrom(
                                 backgroundColor: workingGreen,
@@ -1777,7 +3226,7 @@ class _DashboardPageState extends State<DashboardPage> {
       },
     );
 
-    turnController.dispose();
+    manualTurnController.dispose();
     bookOnController.dispose();
     bookOffController.dispose();
   }
@@ -2217,6 +3666,51 @@ class _DutyHistorySection extends StatelessWidget {
 
   final Future<List<Duty>> future;
 
+  Future<void> _showTurnHistory(BuildContext context, List<Duty> duties) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) {
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.history, size: 22, color: Color(0xFF102A43)),
+                    SizedBox(width: 8),
+                    Text(
+                      'Turn History',
+                      style: TextStyle(
+                        color: Color(0xFF102A43),
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Latest change shown first.',
+                  style: TextStyle(color: Color(0xFF52667A)),
+                ),
+                const SizedBox(height: 16),
+                for (int index = 0; index < duties.length; index++) ...[
+                  _DutyHistoryEntry(duty: duties[index], isCurrent: index == 0),
+                  if (index != duties.length - 1) const SizedBox(height: 8),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<Duty>>(
@@ -2231,19 +3725,21 @@ class _DutyHistorySection extends StatelessWidget {
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
               SizedBox(width: 10),
-              Text('Loading roster history…'),
+              Text('Loading latest roster entry…'),
             ],
           );
         }
 
         if (snapshot.hasError) {
           return const Text(
-            'Roster history could not be loaded.',
+            'Roster information could not be loaded.',
             style: TextStyle(color: Color(0xFF52667A)),
           );
         }
 
-        final List<Duty> duties = snapshot.data ?? const <Duty>[];
+        final List<Duty> duties = List<Duty>.of(
+          snapshot.data ?? const <Duty>[],
+        );
 
         if (duties.isEmpty) {
           return const SizedBox.shrink();
@@ -2254,10 +3750,10 @@ class _DutyHistorySection extends StatelessWidget {
           children: [
             const Row(
               children: [
-                Icon(Icons.history, size: 20, color: Color(0xFF102A43)),
+                Icon(Icons.update, size: 20, color: Color(0xFF102A43)),
                 SizedBox(width: 8),
                 Text(
-                  'Roster history',
+                  'Latest roster entry',
                   style: TextStyle(
                     color: Color(0xFF102A43),
                     fontSize: 16,
@@ -2267,9 +3763,17 @@ class _DutyHistorySection extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            for (int index = 0; index < duties.length; index++) ...[
-              _DutyHistoryEntry(duty: duties[index], isCurrent: index == 0),
-              if (index != duties.length - 1) const SizedBox(height: 8),
+            _DutyHistoryEntry(duty: duties.first, isCurrent: true),
+            if (duties.length > 1) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showTurnHistory(context, duties),
+                  icon: const Icon(Icons.history),
+                  label: const Text('Turn History'),
+                ),
+              ),
             ],
           ],
         );
@@ -2286,7 +3790,12 @@ class _DutyHistoryEntry extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String source = _historySourceLabel(duty.source);
+    final String source =
+        duty.source == RosterSource.annualLeave &&
+            duty.remarks?.toLowerCase().startsWith('floating annual leave') ==
+                true
+        ? 'ALD'
+        : _historySourceLabel(duty.source);
     final String dutyLabel = _historyDutyLabel(duty);
 
     final List<String> details = <String>[];
@@ -2473,17 +3982,50 @@ class _RosterSourceBadge extends StatelessWidget {
   }
 }
 
-class CalendarPage extends StatefulWidget {
-  const CalendarPage({required this.refreshVersion, super.key});
+class _CalendarPage extends StatefulWidget {
+  const _CalendarPage({
+    required this.refreshVersion,
+    required this.requestedDate,
+    required this.requestedAction,
+    required this.requestVersion,
+    required this.onRosterChanged,
+    required this.onOpenCalendar,
+    super.key,
+  });
 
   final int refreshVersion;
+  final DateTime? requestedDate;
+  final _CalendarDayAction? requestedAction;
+  final int requestVersion;
+  final VoidCallback onRosterChanged;
+  final VoidCallback onOpenCalendar;
 
   @override
-  State<CalendarPage> createState() => _CalendarPageState();
+  State<_CalendarPage> createState() => _CalendarPageState();
 }
 
-class _CalendarPageState extends State<CalendarPage> {
+class _CalendarPageState extends State<_CalendarPage> {
   static const Color navy = Color(0xFF102A43);
+
+  Future<void> openExternalAction(
+    DateTime date,
+    _CalendarDayAction action,
+  ) async {
+    final Duty? cachedDuty = _dutiesByDate[_dateKey(date)];
+
+    if (cachedDuty != null) {
+      await _handleDayAction(
+        date: date,
+        duty: cachedDuty,
+        action: action,
+        resolveFresh: false,
+      );
+      return;
+    }
+
+    await _handleDayAction(date: date, duty: null, action: action);
+  }
+
   static const Color railwayBlue = Color(0xFF1769AA);
   static const Color workingGreen = Color(0xFF2E7D32);
   static const Color restYellow = Color(0xFFFFD54F);
@@ -2502,6 +4044,13 @@ class _CalendarPageState extends State<CalendarPage> {
   Map<String, Duty> _dutiesByDate = <String, Duty>{};
   Map<String, AnnualLeaveRequest> _leaveRequestsByDate =
       <String, AnnualLeaveRequest>{};
+  Set<String> _scheduledAnnualLeaveDateKeys = <String>{};
+
+  bool _isSelectingAnnualLeaveDates = false;
+  final Set<String> _selectedAnnualLeaveDateKeys = <String>{};
+
+  bool _isSelectingAnnualLeaveCancellationDates = false;
+  final Set<String> _selectedAnnualLeaveCancellationDateKeys = <String>{};
 
   bool _isLoading = true;
   String? _loadError;
@@ -2517,12 +4066,70 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   @override
-  void didUpdateWidget(covariant CalendarPage oldWidget) {
+  void didUpdateWidget(covariant _CalendarPage oldWidget) {
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.refreshVersion != widget.refreshVersion) {
       _loadMonth();
     }
+
+    if (oldWidget.requestVersion != widget.requestVersion) {
+      _openRequestedCalendarAction();
+    }
+  }
+
+  Future<void> _openRequestedCalendarAction() async {
+    final DateTime? requestedDate = widget.requestedDate;
+    final _CalendarDayAction? requestedAction = widget.requestedAction;
+
+    if (requestedDate == null || requestedAction == null) {
+      return;
+    }
+
+    final DateTime requestedMonth = DateTime(
+      requestedDate.year,
+      requestedDate.month,
+    );
+
+    if (_displayedMonth.year != requestedMonth.year ||
+        _displayedMonth.month != requestedMonth.month) {
+      setState(() {
+        _displayedMonth = requestedMonth;
+      });
+
+      await _loadMonth();
+    } else {
+      try {
+        final Map<String, Duty> latestDuties = await _dutyResolver
+            .getResolvedDutiesForRange(requestedDate, requestedDate);
+
+        if (!mounted) {
+          return;
+        }
+
+        final Duty? latestDuty = latestDuties[_dateKey(requestedDate)];
+
+        await _handleDayAction(
+          date: requestedDate,
+          duty: latestDuty ?? _dutiesByDate[_dateKey(requestedDate)],
+          action: requestedAction,
+        );
+
+        return;
+      } catch (_) {
+        // Fall through and use the currently loaded Calendar duty.
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    await _handleDayAction(
+      date: requestedDate,
+      duty: _dutiesByDate[_dateKey(requestedDate)],
+      action: requestedAction,
+    );
   }
 
   Future<void> _loadMonth() async {
@@ -2543,9 +4150,32 @@ class _CalendarPageState extends State<CalendarPage> {
             calendarDates.last,
           );
 
+      final User? user = Supabase.instance.client.auth.currentUser;
+
+      Future<List<dynamic>> scheduledRequestsFuture =
+          Future<List<dynamic>>.value(const <dynamic>[]);
+
+      if (user != null) {
+        scheduledRequestsFuture = Supabase.instance.client
+            .from('annual_leave_scheduled_requests')
+            .select('leave_date')
+            .eq('user_id', user.id)
+            .eq('status', 'scheduled')
+            .gte('leave_date', _dateKey(calendarDates.first))
+            .lte('leave_date', _dateKey(calendarDates.last));
+      }
+
       final Map<String, Duty> dutiesByDate = await dutiesFuture;
       final Map<String, AnnualLeaveRequest> leaveRequestsByDate =
           await leaveRequestsFuture;
+      final List<dynamic> scheduledRequests = await scheduledRequestsFuture;
+
+      final Set<String> scheduledDateKeys = scheduledRequests
+          .whereType<Map<String, dynamic>>()
+          .map((Map<String, dynamic> row) => row['leave_date']?.toString())
+          .whereType<String>()
+          .where((String value) => value.isNotEmpty)
+          .toSet();
 
       if (!mounted) {
         return;
@@ -2554,6 +4184,7 @@ class _CalendarPageState extends State<CalendarPage> {
       setState(() {
         _dutiesByDate = dutiesByDate;
         _leaveRequestsByDate = leaveRequestsByDate;
+        _scheduledAnnualLeaveDateKeys = scheduledDateKeys;
         _isLoading = false;
       });
     } catch (error) {
@@ -2564,6 +4195,7 @@ class _CalendarPageState extends State<CalendarPage> {
       setState(() {
         _dutiesByDate = <String, Duty>{};
         _leaveRequestsByDate = <String, AnnualLeaveRequest>{};
+        _scheduledAnnualLeaveDateKeys = <String>{};
         _isLoading = false;
         _loadError = error is DutyResolverException
             ? error.message
@@ -2627,6 +4259,14 @@ class _CalendarPageState extends State<CalendarPage> {
             padding: const EdgeInsets.all(16),
             children: [
               _buildMonthHeader(),
+              if (_isSelectingAnnualLeaveDates) ...[
+                const SizedBox(height: 12),
+                _buildAnnualLeaveMultiSelectBanner(),
+              ],
+              if (_isSelectingAnnualLeaveCancellationDates) ...[
+                const SizedBox(height: 12),
+                _buildAnnualLeaveCancellationMultiSelectBanner(),
+              ],
               const SizedBox(height: 14),
               _buildWeekdayHeader(),
               const SizedBox(height: 6),
@@ -2691,6 +4331,909 @@ class _CalendarPageState extends State<CalendarPage> {
     );
   }
 
+  Widget _buildAnnualLeaveMultiSelectBanner() {
+    final int selectedCount = _selectedAnnualLeaveDateKeys.length;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: leaveRed.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: leaveRed.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.date_range_outlined, color: leaveRed),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Select annual leave dates',
+                  style: const TextStyle(
+                    color: navy,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                '$selectedCount selected',
+                style: const TextStyle(
+                  color: leaveRed,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          const Text(
+            'Tap each working date you want to request. You can move between months and your selections will stay selected.',
+            style: TextStyle(color: textGrey, height: 1.35),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _cancelAnnualLeaveDateSelection,
+                  child: const Text('Cancel'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: selectedCount == 0
+                      ? null
+                      : _reviewSelectedAnnualLeaveDates,
+                  icon: const Icon(Icons.check),
+                  label: const Text('Review dates'),
+                  style: FilledButton.styleFrom(backgroundColor: leaveRed),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAnnualLeaveCancellationMultiSelectBanner() {
+    final int selectedCount = _selectedAnnualLeaveCancellationDateKeys.length;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.event_busy_outlined, color: leaveRed),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Select granted leave to cancel',
+                    style: TextStyle(
+                      color: navy,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                Text(
+                  '$selectedCount selected',
+                  style: const TextStyle(
+                    color: leaveRed,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 7),
+            const Text(
+              'Tap each granted annual leave date you want to cancel. '
+              'You can move between months and your selections will stay selected.',
+              style: TextStyle(color: textGrey, height: 1.35),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _cancelAnnualLeaveCancellationDateSelection,
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: selectedCount == 0
+                        ? null
+                        : _reviewSelectedAnnualLeaveCancellationDates,
+                    icon: const Icon(Icons.check),
+                    label: const Text('Review dates'),
+                    style: FilledButton.styleFrom(backgroundColor: leaveRed),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _cancelAnnualLeaveCancellationDateSelection() {
+    setState(() {
+      _isSelectingAnnualLeaveCancellationDates = false;
+      _selectedAnnualLeaveCancellationDateKeys.clear();
+    });
+  }
+
+  void _toggleAnnualLeaveCancellationDateSelection({
+    required DateTime date,
+    required AnnualLeaveRequest? leaveRequest,
+  }) {
+    if (leaveRequest == null ||
+        leaveRequest.status != AnnualLeaveRequestStatus.granted) {
+      _showCalendarMessage(
+        'Only granted annual leave dates can be selected for cancellation.',
+      );
+      return;
+    }
+
+    final String key = _dateKey(date);
+
+    setState(() {
+      if (!_selectedAnnualLeaveCancellationDateKeys.remove(key)) {
+        _selectedAnnualLeaveCancellationDateKeys.add(key);
+      }
+    });
+  }
+
+  void _cancelAnnualLeaveDateSelection() {
+    setState(() {
+      _isSelectingAnnualLeaveDates = false;
+      _selectedAnnualLeaveDateKeys.clear();
+    });
+  }
+
+  void _toggleAnnualLeaveDateSelection({
+    required DateTime date,
+    required Duty? duty,
+    required AnnualLeaveRequest? leaveRequest,
+  }) {
+    if (date.weekday == DateTime.sunday) {
+      _showCalendarMessage('Annual leave cannot be requested for a Sunday.');
+      return;
+    }
+
+    if (duty == null || !duty.dutyType.countsAsWorking) {
+      _showCalendarMessage(
+        'Annual leave can only be requested for a working, training or medical duty.',
+      );
+      return;
+    }
+
+    if (leaveRequest != null &&
+        leaveRequest.status != AnnualLeaveRequestStatus.cancelled) {
+      _showCalendarMessage(
+        'There is already an active annual leave request for ${_fullDate(date)}.',
+      );
+      return;
+    }
+
+    final String key = _dateKey(date);
+
+    setState(() {
+      if (!_selectedAnnualLeaveDateKeys.remove(key)) {
+        _selectedAnnualLeaveDateKeys.add(key);
+      }
+    });
+  }
+
+  Future<void> _reviewSelectedAnnualLeaveDates() async {
+    if (_selectedAnnualLeaveDateKeys.isEmpty) {
+      return;
+    }
+
+    final List<DateTime> dates =
+        _selectedAnnualLeaveDateKeys.map(DateTime.parse).toList()..sort();
+
+    final List<DateTime> immediateDates = <DateTime>[];
+    final List<DateTime> scheduledDates = <DateTime>[];
+
+    for (final DateTime date in dates) {
+      if (_annualLeaveService.shouldSendAnnualLeaveRequestNow(date)) {
+        immediateDates.add(date);
+      } else {
+        scheduledDates.add(date);
+      }
+    }
+
+    final StringBuffer summary = StringBuffer();
+
+    if (immediateDates.isNotEmpty) {
+      summary.writeln(
+        '${immediateDates.length} date${immediateDates.length == 1 ? '' : 's'} '
+        'will be requested now:',
+      );
+
+      for (final DateTime date in immediateDates) {
+        summary.writeln('• ${_fullDate(date)}');
+      }
+    }
+
+    if (immediateDates.isNotEmpty && scheduledDates.isNotEmpty) {
+      summary.writeln();
+    }
+
+    if (scheduledDates.isNotEmpty) {
+      summary.writeln(
+        '${scheduledDates.length} date${scheduledDates.length == 1 ? '' : 's'} '
+        'will be scheduled for 00:00 UK time, exactly 365 days beforehand:',
+      );
+
+      for (final DateTime date in scheduledDates) {
+        summary.writeln('• ${_fullDate(date)}');
+      }
+    }
+
+    Uri? immediateEmailUri;
+
+    if (immediateDates.isNotEmpty) {
+      final SupabaseClient supabase = Supabase.instance.client;
+      final User? user = supabase.auth.currentUser;
+
+      String driverName = '';
+      String depot = '';
+      String payrollNumber = '';
+
+      if (user != null) {
+        final Map<String, dynamic>? profile = await supabase
+            .from('driver_profiles')
+            .select('display_name, depot, payroll_number')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        final Map<String, dynamic> metadata =
+            user.userMetadata ?? <String, dynamic>{};
+
+        driverName = (profile?['display_name'] ?? metadata['full_name'] ?? '')
+            .toString()
+            .trim();
+
+        depot = (profile?['depot'] ?? metadata['depot'] ?? '')
+            .toString()
+            .trim();
+
+        payrollNumber =
+            (profile?['payroll_number'] ?? metadata['payroll_number'] ?? '')
+                .toString()
+                .trim();
+      }
+
+      final String requestedDates = immediateDates
+          .map((DateTime date) => '- ${_fullDate(date)}')
+          .join('\n');
+
+      final List<String> signature = <String>[
+        if (driverName.isNotEmpty) driverName,
+        if (depot.isNotEmpty) depot,
+        if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
+      ];
+
+      final String body =
+          'Please can I request floating annual leave for the following '
+          '${immediateDates.length == 1 ? 'date' : 'dates'}:\n\n'
+          '$requestedDates\n\n'
+          'Regards'
+          '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
+
+      final String subject = immediateDates.length == 1
+          ? 'Annual Leave Request - ${_fullDate(immediateDates.first)}'
+          : 'Annual Leave Request - ${immediateDates.length} Dates';
+
+      immediateEmailUri = _rosterBuddyMailUri(subject: subject, body: body);
+    }
+
+    Future<bool>? emailLaunchFuture;
+
+    if (!mounted) {
+      return;
+    }
+
+    final bool? confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return CupertinoAlertDialog(
+          title: Text(
+            'Request ${dates.length} annual leave '
+            'date${dates.length == 1 ? '' : 's'}?',
+          ),
+          content: Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(summary.toString().trim()),
+          ),
+          actions: <Widget>[
+            CupertinoDialogAction(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('Continue editing'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Confirm requests'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    final bool? alreadyAuthorised = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return CupertinoAlertDialog(
+          title: const Text('Annual leave authorised?'),
+          content: Text(
+            dates.length == 1
+                ? 'Has this annual leave date already been authorised '
+                      'by Rosters / DTCM?'
+                : 'Have these ${dates.length} annual leave dates already '
+                      'been authorised by Rosters / DTCM?',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () {
+                if (immediateEmailUri != null) {
+                  emailLaunchFuture = launchUrl(
+                    immediateEmailUri,
+                    mode: LaunchMode.platformDefault,
+                  );
+                }
+
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('No'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Yes'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (alreadyAuthorised == null || !mounted) {
+      return;
+    }
+
+    try {
+      if (alreadyAuthorised) {
+        final Map<int, int> authorisedCountByYear = <int, int>{};
+
+        for (final DateTime date in dates) {
+          authorisedCountByYear.update(
+            date.year,
+            (int value) => value + 1,
+            ifAbsent: () => 1,
+          );
+        }
+
+        for (final MapEntry<int, int> entry in authorisedCountByYear.entries) {
+          final int remaining = await _annualLeaveService
+              .getRemainingFloatingDays(entry.key);
+
+          if (entry.value > remaining) {
+            throw AnnualLeaveException(
+              'You selected ${entry.value} floating leave '
+              'date${entry.value == 1 ? '' : 's'} in ${entry.key}, '
+              'but only $remaining '
+              '${remaining == 1 ? 'day remains' : 'days remain'}.',
+            );
+          }
+        }
+
+        for (final DateTime date in dates) {
+          final AnnualLeaveRequest request = await _annualLeaveService
+              .requestFloatingLeave(date: date);
+
+          await _annualLeaveService.markGranted(requestId: request.id);
+        }
+
+        await _loadMonth();
+
+        if (!mounted) {
+          return;
+        }
+
+        widget.onRosterChanged();
+
+        setState(() {
+          _isSelectingAnnualLeaveDates = false;
+          _selectedAnnualLeaveDateKeys.clear();
+        });
+
+        _showCalendarMessage(
+          dates.length == 1
+              ? 'Floating annual leave granted for '
+                    '${_fullDate(dates.first)}.'
+              : '${dates.length} floating annual leave dates granted.',
+        );
+
+        return;
+      }
+
+      // Validate immediate requests against the available floating balance
+      // before writing any live AL REQ rows.
+      final Map<int, int> immediateCountByYear = <int, int>{};
+
+      for (final DateTime date in immediateDates) {
+        immediateCountByYear.update(
+          date.year,
+          (int value) => value + 1,
+          ifAbsent: () => 1,
+        );
+      }
+
+      for (final MapEntry<int, int> entry in immediateCountByYear.entries) {
+        final int remaining = await _annualLeaveService
+            .getRemainingFloatingDays(entry.key);
+
+        if (entry.value > remaining) {
+          throw AnnualLeaveException(
+            'You selected ${entry.value} floating leave '
+            'date${entry.value == 1 ? '' : 's'} in ${entry.key}, '
+            'but only $remaining '
+            '${remaining == 1 ? 'day remains' : 'days remain'}.',
+          );
+        }
+      }
+
+      final SupabaseClient supabase = Supabase.instance.client;
+      final User? user = supabase.auth.currentUser;
+
+      String driverName = '';
+      String depot = '';
+      String payrollNumber = '';
+
+      if (user != null) {
+        final Map<String, dynamic>? profile = await supabase
+            .from('driver_profiles')
+            .select('display_name, depot, payroll_number')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        final Map<String, dynamic> metadata =
+            user.userMetadata ?? <String, dynamic>{};
+
+        driverName = (profile?['display_name'] ?? metadata['full_name'] ?? '')
+            .toString()
+            .trim();
+
+        depot = (profile?['depot'] ?? metadata['depot'] ?? '')
+            .toString()
+            .trim();
+
+        payrollNumber =
+            (profile?['payroll_number'] ?? metadata['payroll_number'] ?? '')
+                .toString()
+                .trim();
+      }
+
+      final List<String> signature = <String>[
+        if (driverName.isNotEmpty) driverName,
+        if (depot.isNotEmpty) depot,
+        if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
+      ];
+
+      // Future requests store their fully populated email now. Supabase
+      // schedules each email for 00:00 Europe/London exactly 365 days before
+      // the requested leave date.
+      for (final DateTime date in scheduledDates) {
+        final String body =
+            'Please can I request floating annual leave for:\n\n'
+            '${_fullDate(date)}\n\n'
+            'Regards'
+            '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
+
+        final String subject = 'Annual Leave Request - ${_fullDate(date)}';
+
+        await _annualLeaveService.scheduleFloatingLeaveRequest(
+          date: date,
+          recipientEmail: 'drivers.rosters@wmtrains.co.uk',
+          emailSubject: subject,
+          emailBody: body,
+        );
+      }
+
+      // Dates already inside the request window become live requests now.
+      for (final DateTime date in immediateDates) {
+        await _annualLeaveService.requestFloatingLeave(date: date);
+      }
+
+      bool emailOpened = true;
+
+      if (emailLaunchFuture != null) {
+        emailOpened = await emailLaunchFuture ?? false;
+      }
+
+      await _loadMonth();
+
+      if (!mounted) {
+        return;
+      }
+
+      widget.onRosterChanged();
+
+      setState(() {
+        _isSelectingAnnualLeaveDates = false;
+        _selectedAnnualLeaveDateKeys.clear();
+      });
+
+      if (immediateDates.isNotEmpty && scheduledDates.isNotEmpty) {
+        _showCalendarMessage(
+          '${immediateDates.length} annual leave '
+          '${immediateDates.length == 1 ? 'request is' : 'requests are'} ready '
+          'to send now and ${scheduledDates.length} '
+          '${scheduledDates.length == 1 ? 'date has' : 'dates have'} been '
+          'scheduled for later.',
+        );
+      } else if (scheduledDates.isNotEmpty) {
+        _showCalendarMessage(
+          '${scheduledDates.length} annual leave '
+          '${scheduledDates.length == 1 ? 'date has' : 'dates have'} been '
+          'scheduled for the 365-day request point.',
+        );
+      } else {
+        _showCalendarMessage(
+          '${immediateDates.length} annual leave '
+          '${immediateDates.length == 1 ? 'request is' : 'requests are'} '
+          'ready to send to Rosters.',
+        );
+      }
+
+      if (!emailOpened) {
+        _showCalendarMessage(
+          'The annual leave request was saved, but Roster Buddy could not '
+          'open the email app.',
+        );
+      }
+    } on AnnualLeaveException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage(error.message);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage(
+        'Roster Buddy could not process the selected annual leave dates.',
+      );
+    }
+  }
+
+  Future<void> _processSingleAnnualLeaveRequest({
+    required DateTime date,
+  }) async {
+    if (date.weekday == DateTime.sunday) {
+      _showCalendarMessage('Annual leave cannot be requested for a Sunday.');
+      return;
+    }
+
+    try {
+      final SupabaseClient supabase = Supabase.instance.client;
+      final User? user = supabase.auth.currentUser;
+
+      String driverName = '';
+      String depot = '';
+      String payrollNumber = '';
+
+      if (user != null) {
+        final Map<String, dynamic>? profile = await supabase
+            .from('driver_profiles')
+            .select('display_name, depot, payroll_number')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        final Map<String, dynamic> metadata =
+            user.userMetadata ?? <String, dynamic>{};
+
+        driverName = (profile?['display_name'] ?? metadata['full_name'] ?? '')
+            .toString()
+            .trim();
+
+        depot = (profile?['depot'] ?? metadata['depot'] ?? '')
+            .toString()
+            .trim();
+
+        payrollNumber =
+            (profile?['payroll_number'] ?? metadata['payroll_number'] ?? '')
+                .toString()
+                .trim();
+      }
+
+      final List<String> signature = <String>[
+        if (driverName.isNotEmpty) driverName,
+        if (depot.isNotEmpty) depot,
+        if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
+      ];
+
+      final String subject = 'Annual Leave Request - ${_fullDate(date)}';
+
+      final String body =
+          'Please can I request floating annual leave for:\n\n'
+          '${_fullDate(date)}\n\n'
+          'Regards'
+          '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
+
+      final Uri emailUri = _rosterBuddyMailUri(subject: subject, body: body);
+
+      Future<bool>? emailLaunchFuture;
+
+      if (!mounted) {
+        return;
+      }
+
+      final bool? alreadyAuthorised = await showCupertinoDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) {
+          return CupertinoAlertDialog(
+            title: const Text('Annual leave authorised?'),
+            content: Text(
+              'Has the annual leave for ${_fullDate(date)} already been '
+              'authorised by Rosters / DTCM?',
+            ),
+            actions: [
+              CupertinoDialogAction(
+                onPressed: () {
+                  // Only launch Mail now when the request is inside
+                  // the 365-day request window.
+                  if (_annualLeaveService.shouldSendAnnualLeaveRequestNow(
+                    date,
+                  )) {
+                    emailLaunchFuture = launchUrl(
+                      emailUri,
+                      mode: LaunchMode.platformDefault,
+                    );
+                  }
+
+                  Navigator.of(dialogContext).pop(false);
+                },
+                child: const Text('No'),
+              ),
+              CupertinoDialogAction(
+                isDefaultAction: true,
+                onPressed: () {
+                  Navigator.of(dialogContext).pop(true);
+                },
+                child: const Text('Yes'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (alreadyAuthorised == null || !mounted) {
+        return;
+      }
+
+      if (alreadyAuthorised) {
+        final int remainingDays = await _annualLeaveService
+            .getRemainingFloatingDays(date.year);
+
+        if (remainingDays <= 0) {
+          throw const AnnualLeaveException(
+            'You do not have any floating annual leave days remaining.',
+          );
+        }
+
+        final AnnualLeaveRequest request = await _annualLeaveService
+            .requestFloatingLeave(date: date);
+
+        await _annualLeaveService.markGranted(requestId: request.id);
+
+        await _loadMonth();
+
+        if (!mounted) {
+          return;
+        }
+
+        widget.onRosterChanged();
+
+        _showCalendarMessage(
+          'Floating annual leave granted for ${_fullDate(date)}.',
+        );
+
+        return;
+      }
+
+      if (!_annualLeaveService.shouldSendAnnualLeaveRequestNow(date)) {
+        await _annualLeaveService.scheduleFloatingLeaveRequest(
+          date: date,
+          recipientEmail: 'drivers.rosters@wmtrains.co.uk',
+          emailSubject: subject,
+          emailBody: body,
+        );
+
+        if (!mounted) {
+          return;
+        }
+
+        final DateTime sendDate = DateTime(
+          date.year,
+          date.month,
+          date.day,
+        ).subtract(const Duration(days: 365));
+
+        _showCalendarMessage(
+          'Annual leave for ${_fullDate(date)} is scheduled to be sent '
+          'at 00:00 on ${_fullDate(sendDate)}.',
+        );
+
+        return;
+      }
+
+      final int remainingDays = await _annualLeaveService
+          .getRemainingFloatingDays(date.year);
+
+      if (remainingDays <= 0) {
+        throw const AnnualLeaveException(
+          'You do not have any floating annual leave days remaining.',
+        );
+      }
+
+      await _annualLeaveService.requestFloatingLeave(date: date);
+
+      final bool opened = emailLaunchFuture == null
+          ? false
+          : await emailLaunchFuture ?? false;
+
+      await _loadMonth();
+
+      if (!mounted) {
+        return;
+      }
+
+      widget.onRosterChanged();
+
+      if (!opened) {
+        _showCalendarMessage(
+          'Annual leave was saved, but Roster Buddy could not open the email app.',
+        );
+        return;
+      }
+
+      _showCalendarMessage('Annual leave requested for ${_fullDate(date)}.');
+    } on AnnualLeaveException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage(error.message);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage(
+        'Roster Buddy could not process this annual leave request.',
+      );
+    }
+  }
+
+  Future<void> _startAnnualLeaveMultiSelect({
+    required DateTime initialDate,
+    required Duty initialDuty,
+  }) async {
+    if (initialDate.weekday == DateTime.sunday) {
+      _showCalendarMessage('Annual leave cannot be requested for a Sunday.');
+      return;
+    }
+
+    if (!initialDuty.dutyType.countsAsWorking) {
+      _showCalendarMessage(
+        'Annual leave can only be requested for a working, training or medical duty.',
+      );
+      return;
+    }
+
+    final AnnualLeaveRequest? existing =
+        _leaveRequestsByDate[_dateKey(initialDate)];
+
+    if (existing != null &&
+        existing.status != AnnualLeaveRequestStatus.cancelled) {
+      _showCalendarMessage(
+        'There is already an active annual leave request for this date.',
+      );
+      return;
+    }
+
+    widget.onOpenCalendar();
+
+    setState(() {
+      _isSelectingAnnualLeaveDates = true;
+      _selectedAnnualLeaveDateKeys
+        ..clear()
+        ..add(_dateKey(initialDate));
+
+      _displayedMonth = DateTime(initialDate.year, initialDate.month);
+    });
+
+    await _loadMonth();
+  }
+
+  Future<void> _chooseAnnualLeaveRequestScope({
+    required DateTime date,
+    required Duty duty,
+  }) async {
+    if (_scheduledAnnualLeaveDateKeys.contains(_dateKey(date))) {
+      _showCalendarMessage(
+        'Annual leave for this date is already queued to be sent.',
+      );
+      return;
+    }
+
+    final String? choice = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (BuildContext popupContext) {
+        return CupertinoActionSheet(
+          title: const Text('Request annual leave'),
+          message: Text(_fullDate(date)),
+          actions: [
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(popupContext).pop('single');
+              },
+              child: const Text('Just this date'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(popupContext).pop('multiple');
+              },
+              child: const Text('Multiple dates'),
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.of(popupContext).pop();
+            },
+            child: const Text('Cancel'),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || choice == null) {
+      return;
+    }
+
+    if (choice == 'single') {
+      await _processSingleAnnualLeaveRequest(date: date);
+      return;
+    }
+
+    await _startAnnualLeaveMultiSelect(initialDate: date, initialDuty: duty);
+  }
+
   Widget _buildWeekdayHeader() {
     const List<String> weekdays = <String>[
       'Sun',
@@ -2740,11 +5283,15 @@ class _CalendarPageState extends State<CalendarPage> {
         final String dateKey = _dateKey(date);
         final Duty? duty = _dutiesByDate[dateKey];
         final AnnualLeaveRequest? leaveRequest = _leaveRequestsByDate[dateKey];
+        final bool isQueuedAnnualLeave = _scheduledAnnualLeaveDateKeys.contains(
+          dateKey,
+        );
 
         return _buildDayCell(
           date: date,
           duty: duty,
           leaveRequest: leaveRequest,
+          isQueuedAnnualLeave: isQueuedAnnualLeave,
         );
       },
     );
@@ -2754,6 +5301,7 @@ class _CalendarPageState extends State<CalendarPage> {
     required DateTime date,
     required Duty? duty,
     required AnnualLeaveRequest? leaveRequest,
+    required bool isQueuedAnnualLeave,
   }) {
     final bool belongsToDisplayedMonth =
         date.year == _displayedMonth.year &&
@@ -2763,16 +5311,26 @@ class _CalendarPageState extends State<CalendarPage> {
     final bool isToday =
         date.year == now.year && date.month == now.month && date.day == now.day;
 
-    final Color dutyColour = duty == null
+    final bool isGrantedAnnualLeave =
+        leaveRequest?.status == AnnualLeaveRequestStatus.granted;
+
+    final Color dutyColour = isGrantedAnnualLeave
+        ? leaveRed
+        : duty == null
         ? Colors.white
         : _colourForDuty(duty.dutyType);
 
     final bool useDarkText =
-        duty == null ||
-        duty.dutyType == DutyType.restDay ||
-        duty.dutyType == DutyType.unavailable;
+        !isGrantedAnnualLeave &&
+        (duty == null ||
+            duty.dutyType == DutyType.restDay ||
+            duty.dutyType == DutyType.unavailable);
 
     final Color foreground = useDarkText ? navy : Colors.white;
+    final bool isSelectedAnnualLeaveDate = _selectedAnnualLeaveDateKeys
+        .contains(_dateKey(date));
+    final bool isSelectedAnnualLeaveCancellationDate =
+        _selectedAnnualLeaveCancellationDateKeys.contains(_dateKey(date));
 
     return Opacity(
       opacity: belongsToDisplayedMonth ? 1 : 0.42,
@@ -2781,31 +5339,110 @@ class _CalendarPageState extends State<CalendarPage> {
         borderRadius: BorderRadius.circular(11),
         child: InkWell(
           borderRadius: BorderRadius.circular(11),
-          onTap: () => _showDayDetails(date: date, duty: duty),
-          onLongPress: () => _showDayActions(date: date, duty: duty),
+          onTap: () {
+            if (_isSelectingAnnualLeaveCancellationDates) {
+              _toggleAnnualLeaveCancellationDateSelection(
+                date: date,
+                leaveRequest: leaveRequest,
+              );
+              return;
+            }
+
+            if (_isSelectingAnnualLeaveDates) {
+              _toggleAnnualLeaveDateSelection(
+                date: date,
+                duty: duty,
+                leaveRequest: leaveRequest,
+              );
+              return;
+            }
+
+            _showDayDetails(date: date, duty: duty);
+          },
+          onLongPress:
+              (_isSelectingAnnualLeaveDates ||
+                  _isSelectingAnnualLeaveCancellationDates)
+              ? null
+              : () => _showDayActions(date: date, duty: duty),
           child: Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(11),
               border: Border.all(
-                color: isToday ? railwayBlue : const Color(0xFFD8E0E8),
-                width: isToday ? 2.5 : 1,
+                color:
+                    (isSelectedAnnualLeaveDate ||
+                        isSelectedAnnualLeaveCancellationDate)
+                    ? leaveRed
+                    : isToday
+                    ? railwayBlue
+                    : const Color(0xFFD8E0E8),
+                width:
+                    (isSelectedAnnualLeaveDate ||
+                        isSelectedAnnualLeaveCancellationDate)
+                    ? 3
+                    : isToday
+                    ? 2.5
+                    : 1,
               ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  date.day.toString(),
-                  style: TextStyle(
-                    color: foreground,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        date.day.toString(),
+                        style: TextStyle(
+                          color: foreground,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    if (isSelectedAnnualLeaveDate ||
+                        isSelectedAnnualLeaveCancellationDate)
+                      Container(
+                        width: 18,
+                        height: 18,
+                        decoration: const BoxDecoration(
+                          color: leaveRed,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.check,
+                          size: 13,
+                          color: Colors.white,
+                        ),
+                      ),
+                  ],
                 ),
+                if (isQueuedAnnualLeave && !isGrantedAnnualLeave) ...[
+                  const SizedBox(height: 3),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: railwayBlue,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: const Text(
+                      'AL QUEUED',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 7,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
                 if (leaveRequest != null &&
-                    leaveRequest.status !=
-                        AnnualLeaveRequestStatus.cancelled) ...[
+                    leaveRequest.status != AnnualLeaveRequestStatus.cancelled &&
+                    !isGrantedAnnualLeave) ...[
                   const SizedBox(height: 3),
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -2840,9 +5477,9 @@ class _CalendarPageState extends State<CalendarPage> {
                   ),
                 ],
                 const Spacer(),
-                if (duty != null) ...[
+                if (duty != null || isGrantedAnnualLeave) ...[
                   Text(
-                    _shortDutyLabel(duty),
+                    isGrantedAnnualLeave ? 'Leave' : _shortDutyLabel(duty!),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -2851,10 +5488,11 @@ class _CalendarPageState extends State<CalendarPage> {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  if (duty.bookOn?.trim().isNotEmpty == true) ...[
+                  if (!isGrantedAnnualLeave &&
+                      duty?.bookOn?.trim().isNotEmpty == true) ...[
                     const SizedBox(height: 2),
                     Text(
-                      duty.bookOn!.trim(),
+                      duty!.bookOn!.trim(),
                       maxLines: 1,
                       style: TextStyle(
                         color: foreground,
@@ -2878,7 +5516,12 @@ class _CalendarPageState extends State<CalendarPage> {
                         borderRadius: BorderRadius.circular(5),
                       ),
                       child: Text(
-                        _sourceLabel(duty.source),
+                        isGrantedAnnualLeave
+                            ? (leaveRequest?.requestType ==
+                                      AnnualLeaveRequestType.floating
+                                  ? 'ALD'
+                                  : 'AW')
+                            : _sourceLabel(duty!.source),
                         style: TextStyle(
                           color: foreground,
                           fontSize: 7,
@@ -2942,64 +5585,51 @@ class _CalendarPageState extends State<CalendarPage> {
     required DateTime date,
     required Duty originalDuty,
   }) async {
-    List<JobCardChoice> choices;
+    const String manualSelection = '__MANUAL_TURN__';
+
+    List<JobCardChoice> choices = <JobCardChoice>[];
 
     try {
       choices = await _jobCardService.findValidJobCardsForDate(dutyDate: date);
-    } on JobCardServiceException catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      _showCalendarMessage(error.message);
-      return;
     } catch (_) {
-      if (!mounted) {
-        return;
-      }
-
-      _showCalendarMessage(
-        'Roster Buddy could not load the valid Job Card turns.',
-      );
-      return;
+      // Manual entry remains available even if Job Cards cannot be loaded.
     }
 
     if (!mounted) {
       return;
     }
 
-    if (choices.isEmpty) {
-      _showCalendarMessage(
-        'There are no Job Card turns available for ${_fullDate(date)}.',
-      );
-      return;
-    }
-
-    final JobCardChoice?
-    selected = await showCupertinoModalPopup<JobCardChoice>(
+    final Object? selected = await showCupertinoModalPopup<Object>(
       context: context,
       builder: (BuildContext popupContext) {
         return CupertinoActionSheet(
           title: Text('Select turn – ${_fullDate(date)}'),
           message: Text(
-            'Only Job Cards valid for this date are shown. '
-            'Selecting a turn will update the duty while keeping the '
-            'original roster information in its history.',
+            choices.isEmpty
+                ? 'No Job Card turns are available for this date. '
+                      'You can enter the turn manually.'
+                : 'Select a Job Card turn or enter the duty manually.',
           ),
-          actions: choices
-              .map(
-                (JobCardChoice choice) => CupertinoActionSheetAction(
-                  onPressed: () {
-                    Navigator.of(popupContext).pop(choice);
-                  },
-                  child: Text(
-                    'Turn ${choice.jobCard.turnNumber}  •  '
-                    '${choice.jobCard.bookOn}–${choice.jobCard.bookOff}'
-                    '${choice.jobCard.dayCode.trim().isEmpty ? '' : '  •  ${choice.jobCard.dayCode}'}',
-                  ),
+          actions: <Widget>[
+            ...choices.map(
+              (JobCardChoice choice) => CupertinoActionSheetAction(
+                onPressed: () {
+                  Navigator.of(popupContext).pop(choice);
+                },
+                child: Text(
+                  'Turn ${choice.jobCard.turnNumber}  •  '
+                  '${choice.jobCard.bookOn}–${choice.jobCard.bookOff}'
+                  '${choice.jobCard.dayCode.trim().isEmpty ? '' : '  •  ${choice.jobCard.dayCode}'}',
                 ),
-              )
-              .toList(growable: false),
+              ),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(popupContext).pop(manualSelection);
+              },
+              child: const Text('Enter turn manually'),
+            ),
+          ],
           cancelButton: CupertinoActionSheetAction(
             onPressed: () {
               Navigator.of(popupContext).pop();
@@ -3014,39 +5644,258 @@ class _CalendarPageState extends State<CalendarPage> {
       return;
     }
 
-    final card = selected.jobCard;
+    if (selected is JobCardChoice) {
+      final card = selected.jobCard;
 
-    try {
-      await _manualDutyService.saveSelectedTurn(
-        date: date,
-        turnNumber: card.turnNumber,
-        bookOn: card.bookOn,
-        bookOff: card.bookOff,
-        originalDuty: originalDuty,
-      );
+      try {
+        await _manualDutyService.saveSelectedTurn(
+          date: date,
+          turnNumber: card.turnNumber,
+          bookOn: card.bookOn,
+          bookOff: card.bookOff,
+          originalDuty: originalDuty,
+        );
 
-      await _loadMonth();
+        await _loadMonth();
 
-      if (!mounted) {
-        return;
+        if (!mounted) {
+          return;
+        }
+
+        _showCalendarMessage(
+          'Turn ${card.turnNumber} selected for ${_fullDate(date)}.',
+        );
+      } on ManualDutyException catch (error) {
+        if (!mounted) {
+          return;
+        }
+
+        _showCalendarMessage(error.message);
+      } catch (_) {
+        if (!mounted) {
+          return;
+        }
+
+        _showCalendarMessage('Roster Buddy could not save the selected turn.');
       }
 
-      _showCalendarMessage(
-        'Turn ${card.turnNumber} selected for ${_fullDate(date)}.',
-      );
-    } on ManualDutyException catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      _showCalendarMessage(error.message);
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-
-      _showCalendarMessage('Roster Buddy could not save the selected turn.');
+      return;
     }
+
+    if (selected != manualSelection) {
+      return;
+    }
+
+    final TextEditingController turnController = TextEditingController(
+      text: originalDuty.turnNumber?.trim() ?? '',
+    );
+    final TextEditingController bookOnController = TextEditingController(
+      text: originalDuty.bookOn?.trim() ?? '',
+    );
+    final TextEditingController bookOffController = TextEditingController(
+      text: originalDuty.bookOff?.trim() ?? '',
+    );
+
+    bool isSaving = false;
+    String? formError;
+
+    final bool? saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (BuildContext sheetContext) {
+        return StatefulBuilder(
+          builder:
+              (
+                BuildContext context,
+                void Function(void Function()) setSheetState,
+              ) {
+                Future<void> saveManualTurn() async {
+                  final String turnNumber = turnController.text.trim();
+                  final String bookOn = _normaliseTimeInput(
+                    bookOnController.text,
+                  );
+                  final String bookOff = _normaliseTimeInput(
+                    bookOffController.text,
+                  );
+
+                  if (turnNumber.isEmpty) {
+                    setSheetState(() {
+                      formError = 'Enter the turn number.';
+                    });
+                    return;
+                  }
+
+                  if (!_isValidTime(bookOn) || !_isValidTime(bookOff)) {
+                    setSheetState(() {
+                      formError =
+                          'Enter valid 24-hour times, for example 0800 or 08:00.';
+                    });
+                    return;
+                  }
+
+                  setSheetState(() {
+                    isSaving = true;
+                    formError = null;
+                  });
+
+                  try {
+                    await _manualDutyService.saveSelectedTurn(
+                      date: date,
+                      turnNumber: turnNumber,
+                      bookOn: bookOn,
+                      bookOff: bookOff,
+                      originalDuty: originalDuty,
+                    );
+
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    Navigator.of(sheetContext).pop(true);
+                  } on ManualDutyException catch (error) {
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    setSheetState(() {
+                      isSaving = false;
+                      formError = error.message;
+                    });
+                  } catch (_) {
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    setSheetState(() {
+                      isSaving = false;
+                      formError =
+                          'Roster Buddy could not save the manual turn.';
+                    });
+                  }
+                }
+
+                return SafeArea(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      4,
+                      20,
+                      MediaQuery.viewInsetsOf(context).bottom + 24,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Enter turn manually',
+                            style: TextStyle(
+                              color: navy,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _fullDate(date),
+                            style: const TextStyle(color: textGrey),
+                          ),
+                          const SizedBox(height: 18),
+                          TextField(
+                            controller: turnController,
+                            enabled: !isSaving,
+                            textCapitalization: TextCapitalization.characters,
+                            decoration: const InputDecoration(
+                              labelText: 'Turn number / duty reference',
+                              hintText: 'For example WO201',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: bookOnController,
+                                  enabled: !isSaving,
+                                  keyboardType: TextInputType.datetime,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Book on',
+                                    hintText: '0800',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextField(
+                                  controller: bookOffController,
+                                  enabled: !isSaving,
+                                  keyboardType: TextInputType.datetime,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Book off',
+                                    hintText: '1630',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (formError != null) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              formError!,
+                              style: const TextStyle(
+                                color: leaveRed,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 18),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: isSaving ? null : saveManualTurn,
+                              icon: isSaving
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.save_outlined),
+                              label: Text(
+                                isSaving ? 'Saving…' : 'Save selected turn',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+        );
+      },
+    );
+
+    turnController.dispose();
+    bookOnController.dispose();
+    bookOffController.dispose();
+
+    if (saved != true || !mounted) {
+      return;
+    }
+
+    await _loadMonth();
+
+    if (!mounted) {
+      return;
+    }
+
+    _showCalendarMessage('Turn updated for ${_fullDate(date)}.');
   }
 
   Future<JobCardMatch?> _findCalendarJobCard(Duty duty) async {
@@ -3095,7 +5944,288 @@ class _CalendarPageState extends State<CalendarPage> {
     }
   }
 
+  Future<void> _cancelQueuedAnnualLeaveRequest(DateTime date) async {
+    final bool? confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return CupertinoAlertDialog(
+          title: const Text('Cancel queued annual leave?'),
+          content: Text(
+            'The scheduled annual leave request for ${_fullDate(date)} '
+            'will be removed from the send queue.',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('Keep queued'),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Cancel request'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    try {
+      await _annualLeaveService.cancelScheduledFloatingLeaveRequest(date: date);
+
+      await _loadMonth();
+
+      if (!mounted) {
+        return;
+      }
+
+      widget.onRosterChanged();
+
+      _showCalendarMessage(
+        'Queued annual leave cancelled for ${_fullDate(date)}.',
+      );
+    } on AnnualLeaveException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage(error.message);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage(
+        'Roster Buddy could not cancel this queued annual leave request.',
+      );
+    }
+  }
+
+  Future<void> _recordRequestedAnnualLeaveDecision({
+    required DateTime date,
+    required AnnualLeaveRequest request,
+  }) async {
+    final bool? alreadyConfirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return CupertinoAlertDialog(
+          title: const Text('Annual leave confirmed?'),
+          content: Text(
+            'Has the annual leave for ${_fullDate(date)} already been '
+            'confirmed by Rosters / DTCM?',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('No'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Yes'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (alreadyConfirmed == null || !mounted) {
+      return;
+    }
+
+    try {
+      if (alreadyConfirmed) {
+        await _annualLeaveService.markGranted(requestId: request.id);
+
+        await _loadMonth();
+
+        if (!mounted) {
+          return;
+        }
+
+        widget.onRosterChanged();
+
+        _showCalendarMessage(
+          'Floating annual leave granted for ${_fullDate(date)}.',
+        );
+
+        return;
+      }
+
+      final SupabaseClient supabase = Supabase.instance.client;
+      final User? user = supabase.auth.currentUser;
+
+      String driverName = '';
+      String depot = '';
+      String payrollNumber = '';
+
+      if (user != null) {
+        final Map<String, dynamic>? profile = await supabase
+            .from('driver_profiles')
+            .select('display_name, depot, payroll_number')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        final Map<String, dynamic> metadata =
+            user.userMetadata ?? <String, dynamic>{};
+
+        driverName = (profile?['display_name'] ?? metadata['full_name'] ?? '')
+            .toString()
+            .trim();
+
+        depot = (profile?['depot'] ?? metadata['depot'] ?? '')
+            .toString()
+            .trim();
+
+        payrollNumber =
+            (profile?['payroll_number'] ?? metadata['payroll_number'] ?? '')
+                .toString()
+                .trim();
+      }
+
+      final List<String> signature = <String>[
+        if (driverName.isNotEmpty) driverName,
+        if (depot.isNotEmpty) depot,
+        if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
+      ];
+
+      final String subject = 'Annual Leave Request - ${_fullDate(date)}';
+
+      final String body =
+          'Please can I request floating annual leave for:\n\n'
+          '${_fullDate(date)}\n\n'
+          'Regards'
+          '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
+
+      final Uri emailUri = _rosterBuddyMailUri(subject: subject, body: body);
+
+      final bool opened = await launchUrl(
+        emailUri,
+        mode: LaunchMode.platformDefault,
+      );
+
+      if (!opened && mounted) {
+        _showCalendarMessage('Roster Buddy could not open the email app.');
+      }
+    } on AnnualLeaveException catch (error) {
+      if (mounted) {
+        _showCalendarMessage(error.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        _showCalendarMessage(
+          'Roster Buddy could not record the annual leave decision.',
+        );
+      }
+    }
+  }
+
+  Future<void> _cancelActiveAnnualLeaveRequest({
+    required DateTime date,
+    required AnnualLeaveRequest request,
+  }) async {
+    final bool? alreadyConfirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return CupertinoAlertDialog(
+          title: const Text('Cancellation confirmed?'),
+          content: Text(
+            'Has the cancellation of your annual leave request for '
+            '${_fullDate(date)} already been confirmed by Rosters / DTCM?',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('No'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Yes'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (alreadyConfirmed == null || !mounted) {
+      return;
+    }
+
+    try {
+      if (alreadyConfirmed) {
+        await _annualLeaveService.cancelRequest(requestId: request.id);
+
+        await _loadMonth();
+
+        if (!mounted) {
+          return;
+        }
+
+        widget.onRosterChanged();
+
+        _showCalendarMessage(
+          'Annual leave request cancelled for ${_fullDate(date)}. '
+          'Your allocated rostered duty now applies again.',
+        );
+
+        return;
+      }
+
+      final bool opened = await _openAnnualLeaveRequestCancellationEmail(
+        dateLabel: _fullDate(date),
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (opened) {
+        _showCalendarMessage(
+          'Cancellation email prepared. The annual leave request '
+          'will remain active until Rosters / DTCM confirms cancellation.',
+        );
+      } else {
+        _showCalendarMessage(
+          'Roster Buddy could not open your email app. '
+          'The annual leave request remains active.',
+        );
+      }
+    } on AnnualLeaveException catch (error) {
+      if (mounted) {
+        _showCalendarMessage(error.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        _showCalendarMessage(
+          'Roster Buddy could not process this annual leave cancellation.',
+        );
+      }
+    }
+  }
+
   void _showDayDetails({required DateTime date, required Duty? duty}) {
+    final AnnualLeaveRequest? leaveRequest =
+        _leaveRequestsByDate[_dateKey(date)];
+
+    final bool isGrantedAnnualLeave =
+        leaveRequest?.status == AnnualLeaveRequestStatus.granted;
+
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -3117,7 +6247,7 @@ class _CalendarPageState extends State<CalendarPage> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                if (duty == null)
+                if (duty == null && !isGrantedAnnualLeave)
                   const Text(
                     'No roster information is available for this date.',
                     style: TextStyle(color: textGrey),
@@ -3129,14 +6259,18 @@ class _CalendarPageState extends State<CalendarPage> {
                         width: 12,
                         height: 12,
                         decoration: BoxDecoration(
-                          color: _colourForDuty(duty.dutyType),
+                          color: isGrantedAnnualLeave
+                              ? leaveRed
+                              : _colourForDuty(duty!.dutyType),
                           shape: BoxShape.circle,
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          _longDutyLabel(duty),
+                          isGrantedAnnualLeave
+                              ? 'Annual Leave'
+                              : _longDutyLabel(duty!),
                           style: const TextStyle(
                             color: navy,
                             fontSize: 17,
@@ -3144,28 +6278,117 @@ class _CalendarPageState extends State<CalendarPage> {
                           ),
                         ),
                       ),
-                      _RosterSourceBadge(source: duty.source),
+                      if (isGrantedAnnualLeave)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: leaveRed.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(7),
+                          ),
+                          child: Text(
+                            leaveRequest?.requestType ==
+                                    AnnualLeaveRequestType.floating
+                                ? 'ALD'
+                                : 'AW',
+                            style: const TextStyle(
+                              color: leaveRed,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        )
+                      else
+                        _RosterSourceBadge(source: duty!.source),
                     ],
                   ),
-                  if (duty.bookOn != null || duty.bookOff != null) ...[
+                  if (!isGrantedAnnualLeave &&
+                      duty != null &&
+                      (duty.bookOn != null || duty.bookOff != null)) ...[
                     const SizedBox(height: 14),
                     Text(
                       _timeDescription(duty),
                       style: const TextStyle(color: navy),
                     ),
                   ],
-                  if (duty.turnNumber?.trim().isNotEmpty == true) ...[
+                  if (!isGrantedAnnualLeave &&
+                      duty?.turnNumber?.trim().isNotEmpty == true) ...[
                     const SizedBox(height: 8),
                     Text(
-                      'Turn ${duty.turnNumber!.trim()}',
+                      'Turn ${duty!.turnNumber!.trim()}',
                       style: const TextStyle(color: navy),
                     ),
                   ],
-                  if (duty.remarks?.trim().isNotEmpty == true) ...[
+                  if (!isGrantedAnnualLeave &&
+                      duty?.remarks?.trim().isNotEmpty == true) ...[
                     const SizedBox(height: 8),
                     Text(
-                      duty.remarks!.trim(),
+                      duty!.remarks!.trim(),
                       style: const TextStyle(color: textGrey),
+                    ),
+                  ],
+                  if (_scheduledAnnualLeaveDateKeys.contains(
+                    _dateKey(date),
+                  )) ...[
+                    const SizedBox(height: 18),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: railwayBlue.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: railwayBlue.withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.schedule_send_outlined,
+                            color: railwayBlue,
+                          ),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Annual leave queued',
+                                  style: TextStyle(
+                                    color: navy,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                SizedBox(height: 3),
+                                Text(
+                                  'This request is waiting for its 365-day send date.',
+                                  style: TextStyle(
+                                    color: textGrey,
+                                    height: 1.3,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.of(sheetContext).pop();
+                          _cancelQueuedAnnualLeaveRequest(date);
+                        },
+                        icon: const Icon(Icons.cancel_outlined),
+                        label: const Text('Cancel queued request'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: leaveRed,
+                        ),
+                      ),
                     ),
                   ],
                   if (_leaveRequestsByDate[_dateKey(date)] != null) ...[
@@ -3174,6 +6397,42 @@ class _CalendarPageState extends State<CalendarPage> {
                       _leaveRequestsByDate[_dateKey(date)]!,
                     ),
                     const SizedBox(height: 12),
+                    if (_leaveRequestsByDate[_dateKey(date)]!.status ==
+                            AnnualLeaveRequestStatus.requested ||
+                        _leaveRequestsByDate[_dateKey(date)]!.status ==
+                            AnnualLeaveRequestStatus.abeyance) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () {
+                            final AnnualLeaveRequest leaveRequest =
+                                _leaveRequestsByDate[_dateKey(date)]!;
+
+                            Navigator.of(sheetContext).pop();
+
+                            Future<void>.delayed(
+                              const Duration(milliseconds: 150),
+                              () async {
+                                if (!mounted) {
+                                  return;
+                                }
+
+                                await _showManageAnnualLeaveDialog(
+                                  date: date,
+                                  request: leaveRequest,
+                                );
+                              },
+                            );
+                          },
+                          icon: const Icon(Icons.event_note_outlined),
+                          label: const Text('Action annual leave'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: leaveRed,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
@@ -3183,13 +6442,37 @@ class _CalendarPageState extends State<CalendarPage> {
 
                           Navigator.of(sheetContext).pop();
 
-                          _showManageAnnualLeaveDialog(
-                            date: date,
-                            request: leaveRequest,
+                          Future<void>.delayed(
+                            const Duration(milliseconds: 150),
+                            () async {
+                              if (!mounted) {
+                                return;
+                              }
+
+                              if (leaveRequest.status ==
+                                  AnnualLeaveRequestStatus.granted) {
+                                await _chooseGrantedAnnualLeaveCancellationScope(
+                                  date: date,
+                                );
+                              } else {
+                                await _cancelActiveAnnualLeaveRequest(
+                                  date: date,
+                                  request: leaveRequest,
+                                );
+                              }
+                            },
                           );
                         },
-                        icon: const Icon(Icons.event_note_outlined),
-                        label: const Text('Manage annual leave'),
+                        icon: const Icon(Icons.cancel_outlined),
+                        label: Text(
+                          _leaveRequestsByDate[_dateKey(date)]!.status ==
+                                  AnnualLeaveRequestStatus.granted
+                              ? 'Cancel annual leave'
+                              : 'Cancel annual leave request',
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: leaveRed,
+                        ),
                       ),
                     ),
                   ],
@@ -3198,7 +6481,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     future: _dutyResolver.getDutiesForDate(date),
                   ),
                   const SizedBox(height: 22),
-                  if (duty.dutyType == DutyType.working) ...[
+                  if (duty != null && duty.dutyType == DutyType.working) ...[
                     FutureBuilder<JobCardMatch?>(
                       future: _findCalendarJobCard(duty),
                       builder:
@@ -3259,9 +6542,12 @@ class _CalendarPageState extends State<CalendarPage> {
                           },
                     ),
                     const SizedBox(height: 12),
-                    if (_leaveRequestsByDate[_dateKey(date)] == null ||
-                        _leaveRequestsByDate[_dateKey(date)]!.status ==
-                            AnnualLeaveRequestStatus.cancelled) ...[
+                    if (!_scheduledAnnualLeaveDateKeys.contains(
+                          _dateKey(date),
+                        ) &&
+                        (_leaveRequestsByDate[_dateKey(date)] == null ||
+                            _leaveRequestsByDate[_dateKey(date)]!.status ==
+                                AnnualLeaveRequestStatus.cancelled)) ...[
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
@@ -3284,7 +6570,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       const SizedBox(height: 10),
                     ],
                   ],
-                  if (duty.dutyType == DutyType.restDay) ...[
+                  if (duty != null && duty.dutyType == DutyType.restDay) ...[
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
@@ -3305,7 +6591,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     ),
                     const SizedBox(height: 10),
                   ],
-                  if (_isPostBlockUnavailableSunday(duty)) ...[
+                  if (duty != null && _isPostBlockUnavailableSunday(duty)) ...[
                     _buildPostBlockSundayAction(
                       sheetContext: sheetContext,
                       date: date,
@@ -3431,6 +6717,7 @@ class _CalendarPageState extends State<CalendarPage> {
         duty.dutyType == DutyType.medical) {
       return <_CalendarDayAction>[
         _CalendarDayAction.editTimes,
+        _CalendarDayAction.selectTurnNumber,
         _CalendarDayAction.manualChange,
         _CalendarDayAction.shiftSwap,
         _CalendarDayAction.moveRestDayHere,
@@ -3444,47 +6731,65 @@ class _CalendarPageState extends State<CalendarPage> {
     return const <_CalendarDayAction>[];
   }
 
-  void _handleDayAction({
+  Future<void> _handleDayAction({
     required DateTime date,
     required Duty? duty,
     required _CalendarDayAction action,
-  }) {
+    bool resolveFresh = true,
+  }) async {
+    Duty? effectiveDuty = duty;
+
+    if (resolveFresh) {
+      try {
+        final Map<String, Duty> latestDuties = await _dutyResolver
+            .getResolvedDutiesForRange(date, date);
+
+        effectiveDuty = latestDuties[_dateKey(date)] ?? duty;
+      } catch (_) {
+        // If a fresh resolve fails, fall back to the duty already displayed.
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
     switch (action) {
       case _CalendarDayAction.editTimes:
-        if (duty == null) {
+        if (effectiveDuty == null) {
           _showCalendarMessage(
             'No roster duty is available to edit for this date.',
           );
           return;
         }
 
-        _showEditDutyDialog(date: date, originalDuty: duty);
+        _showEditDutyDialog(date: date, originalDuty: effectiveDuty);
         return;
 
       case _CalendarDayAction.selectTurnNumber:
-        if (duty == null || !duty.dutyType.countsAsWorking) {
+        if (effectiveDuty == null || !effectiveDuty.dutyType.countsAsWorking) {
           _showCalendarMessage(
             'A turn can only be selected for a working duty.',
           );
           return;
         }
 
-        _showSelectTurnNumberDialog(date: date, originalDuty: duty);
+        _showSelectTurnNumberDialog(date: date, originalDuty: effectiveDuty);
         return;
 
       case _CalendarDayAction.manualChange:
-        if (duty == null) {
+        if (effectiveDuty == null) {
           _showCalendarMessage(
             'No roster duty is available for this manual change.',
           );
           return;
         }
 
-        _showManualChangeDialog(date: date, originalDuty: duty);
+        _showManualChangeDialog(date: date, originalDuty: effectiveDuty);
         return;
 
       case _CalendarDayAction.shiftSwap:
-        if (duty == null || !duty.dutyType.countsAsWorking) {
+        if (effectiveDuty == null || !effectiveDuty.dutyType.countsAsWorking) {
           _showCalendarMessage(
             'A shift swap can only be requested for a working duty.',
           );
@@ -3493,31 +6798,31 @@ class _CalendarPageState extends State<CalendarPage> {
 
         _showShiftSwapDialog(
           date: date,
-          originalDuty: duty,
+          originalDuty: effectiveDuty,
           initialOption: 'Mutual swap',
         );
         return;
 
       case _CalendarDayAction.moveRestDayHere:
-        if (duty == null || !duty.dutyType.countsAsWorking) {
+        if (effectiveDuty == null || !effectiveDuty.dutyType.countsAsWorking) {
           _showCalendarMessage(
             'A Rest Day can only be moved onto a working duty.',
           );
           return;
         }
 
-        _confirmMoveRestDayHere(date: date, originalDuty: duty);
+        _confirmMoveRestDayHere(date: date, originalDuty: effectiveDuty);
         return;
 
       case _CalendarDayAction.requestAnnualLeave:
-        if (duty == null) {
+        if (effectiveDuty == null) {
           _showCalendarMessage(
             'No roster duty is available for this annual leave request.',
           );
           return;
         }
 
-        _showAnnualLeaveRequestDialog(date: date, duty: duty);
+        await _chooseAnnualLeaveRequestScope(date: date, duty: effectiveDuty);
         return;
 
       case _CalendarDayAction.manageAnnualLeave:
@@ -3536,20 +6841,21 @@ class _CalendarPageState extends State<CalendarPage> {
         return;
 
       case _CalendarDayAction.allocateShift:
-        if (duty == null || duty.dutyType != DutyType.restDay) {
+        if (effectiveDuty == null ||
+            effectiveDuty.dutyType != DutyType.restDay) {
           _showCalendarMessage(
             'A Rest Day Worked shift can only be allocated on a Rest Day.',
           );
           return;
         }
 
-        _showAllocateShiftDialog(date: date, originalDuty: duty);
+        _showAllocateShiftDialog(date: date, originalDuty: effectiveDuty);
         return;
 
       case _CalendarDayAction.makeSundayAvailable:
-        if (duty == null ||
-            duty.date.weekday != DateTime.sunday ||
-            duty.dutyType != DutyType.unavailable) {
+        if (effectiveDuty == null ||
+            effectiveDuty.date.weekday != DateTime.sunday ||
+            effectiveDuty.dutyType != DutyType.unavailable) {
           _showCalendarMessage(
             'Sunday availability can only be changed for an unavailable Sunday.',
           );
@@ -3671,6 +6977,8 @@ class _CalendarPageState extends State<CalendarPage> {
                       if (!mounted) {
                         return;
                       }
+
+                      widget.onRosterChanged();
 
                       _showCalendarMessage(
                         'Manual change saved for ${_fullDate(date)}.',
@@ -4545,11 +7853,11 @@ class _CalendarPageState extends State<CalendarPage> {
                                               final String subject =
                                                   'Rest Day Swap Request - $requestDate';
 
-                                              final Uri emailUri = Uri.parse(
-                                                'mailto:drivers.rosters@wmtrains.co.uk'
-                                                '?subject=${Uri.encodeComponent(subject)}'
-                                                '&body=${Uri.encodeComponent(body)}',
-                                              );
+                                              final Uri emailUri =
+                                                  _rosterBuddyMailUri(
+                                                    subject: subject,
+                                                    body: body,
+                                                  );
 
                                               if (dialogContext.mounted) {
                                                 Navigator.of(
@@ -4871,11 +8179,11 @@ class _CalendarPageState extends State<CalendarPage> {
                                                 final String subject =
                                                     'Mutual Shift Swap Request - $dutyDate';
 
-                                                final Uri emailUri = Uri.parse(
-                                                  'mailto:drivers.rosters@wmtrains.co.uk'
-                                                  '?subject=${Uri.encodeComponent(subject)}'
-                                                  '&body=${Uri.encodeComponent(body)}',
-                                                );
+                                                final Uri emailUri =
+                                                    _rosterBuddyMailUri(
+                                                      subject: subject,
+                                                      body: body,
+                                                    );
 
                                                 if (!dialogContext.mounted) {
                                                   return;
@@ -5388,6 +8696,275 @@ class _CalendarPageState extends State<CalendarPage> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _chooseGrantedAnnualLeaveCancellationScope({
+    required DateTime date,
+  }) async {
+    final String? choice = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (BuildContext popupContext) {
+        return CupertinoActionSheet(
+          title: const Text('Cancel annual leave'),
+          message: Text(_fullDate(date)),
+          actions: [
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(popupContext).pop('single');
+              },
+              child: const Text('Just this date'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(popupContext).pop('multiple');
+              },
+              child: const Text('Multiple dates'),
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.of(popupContext).pop();
+            },
+            child: const Text('Back'),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || choice == null) {
+      return;
+    }
+
+    if (choice == 'single') {
+      await _processGrantedAnnualLeaveCancellation(<DateTime>[date]);
+      return;
+    }
+
+    widget.onOpenCalendar();
+
+    setState(() {
+      _isSelectingAnnualLeaveDates = false;
+      _selectedAnnualLeaveDateKeys.clear();
+
+      _isSelectingAnnualLeaveCancellationDates = true;
+      _selectedAnnualLeaveCancellationDateKeys
+        ..clear()
+        ..add(_dateKey(date));
+
+      _displayedMonth = DateTime(date.year, date.month);
+    });
+
+    await _loadMonth();
+  }
+
+  Future<void> _reviewSelectedAnnualLeaveCancellationDates() async {
+    if (_selectedAnnualLeaveCancellationDateKeys.isEmpty) {
+      return;
+    }
+
+    final List<DateTime> dates =
+        _selectedAnnualLeaveCancellationDateKeys.map(DateTime.parse).toList()
+          ..sort();
+
+    await _processGrantedAnnualLeaveCancellation(dates);
+  }
+
+  Future<void> _processGrantedAnnualLeaveCancellation(
+    List<DateTime> dates,
+  ) async {
+    if (dates.isEmpty) {
+      return;
+    }
+
+    final SupabaseClient supabase = Supabase.instance.client;
+    final User? user = supabase.auth.currentUser;
+
+    String driverName = '';
+    String depot = '';
+    String payrollNumber = '';
+
+    if (user != null) {
+      final Map<String, dynamic>? profile = await supabase
+          .from('driver_profiles')
+          .select('display_name, depot, payroll_number')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      final Map<String, dynamic> metadata =
+          user.userMetadata ?? <String, dynamic>{};
+
+      driverName = (profile?['display_name'] ?? metadata['full_name'] ?? '')
+          .toString()
+          .trim();
+
+      depot = (profile?['depot'] ?? metadata['depot'] ?? '').toString().trim();
+
+      payrollNumber =
+          (profile?['payroll_number'] ?? metadata['payroll_number'] ?? '')
+              .toString()
+              .trim();
+    }
+
+    final List<String> signature = <String>[
+      if (driverName.isNotEmpty) driverName,
+      if (depot.isNotEmpty) depot,
+      if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
+    ];
+
+    final String cancelledDates = dates
+        .map((DateTime date) => '- ${_fullDate(date)}')
+        .join('\n');
+
+    final String cancellationBody =
+        'Please can I cancel my previously granted annual leave for '
+        'the following ${dates.length == 1 ? 'date' : 'dates'}:\n\n'
+        '$cancelledDates\n\n'
+        'Regards'
+        '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
+
+    final String cancellationSubject = dates.length == 1
+        ? 'Annual Leave Cancellation - ${_fullDate(dates.first)}'
+        : 'Annual Leave Cancellation - ${dates.length} Dates';
+
+    final Uri cancellationEmailUri = _rosterBuddyMailUri(
+      subject: cancellationSubject,
+      body: cancellationBody,
+    );
+
+    Future<bool>? cancellationEmailFuture;
+
+    if (!mounted) {
+      return;
+    }
+
+    final bool? alreadyConfirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return CupertinoAlertDialog(
+          title: const Text('Cancellation confirmed?'),
+          content: Text(
+            dates.length == 1
+                ? 'Has the cancellation of ${_fullDate(dates.first)} '
+                      'already been confirmed by Rosters / DTCM?'
+                : 'Have the cancellations for these ${dates.length} annual '
+                      'leave dates already been confirmed by Rosters / DTCM?',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () {
+                cancellationEmailFuture = launchUrl(
+                  cancellationEmailUri,
+                  mode: LaunchMode.platformDefault,
+                );
+
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('No'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Yes'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (alreadyConfirmed == null || !mounted) {
+      return;
+    }
+
+    try {
+      final List<AnnualLeaveRequest> requests = <AnnualLeaveRequest>[];
+
+      for (final DateTime date in dates) {
+        final AnnualLeaveRequest? request =
+            _leaveRequestsByDate[_dateKey(date)];
+
+        if (request == null ||
+            request.status != AnnualLeaveRequestStatus.granted) {
+          throw AnnualLeaveException(
+            'Annual leave for ${_fullDate(date)} is no longer shown as granted.',
+          );
+        }
+
+        requests.add(request);
+      }
+
+      if (alreadyConfirmed) {
+        for (final AnnualLeaveRequest request in requests) {
+          await _annualLeaveService.cancelRequest(requestId: request.id);
+        }
+
+        await _loadMonth();
+
+        if (!mounted) {
+          return;
+        }
+
+        widget.onRosterChanged();
+
+        setState(() {
+          _isSelectingAnnualLeaveCancellationDates = false;
+          _selectedAnnualLeaveCancellationDateKeys.clear();
+        });
+
+        _showCalendarMessage(
+          dates.length == 1
+              ? 'Annual leave cancelled for ${_fullDate(dates.first)}. '
+                    'Your allocated rostered duty now applies again.'
+              : '${dates.length} annual leave dates cancelled. '
+                    'The allocated rostered duties now apply again.',
+        );
+
+        return;
+      }
+
+      final bool opened = cancellationEmailFuture == null
+          ? false
+          : await cancellationEmailFuture!;
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isSelectingAnnualLeaveCancellationDates = false;
+        _selectedAnnualLeaveCancellationDateKeys.clear();
+      });
+
+      if (opened) {
+        _showCalendarMessage(
+          dates.length == 1
+              ? 'Cancellation email prepared. Annual leave will remain '
+                    'granted until Rosters confirms the cancellation.'
+              : 'Cancellation email prepared for ${dates.length} dates. '
+                    'They will remain granted until Rosters confirms cancellation.',
+        );
+      } else {
+        _showCalendarMessage(
+          'Roster Buddy could not open your email app. '
+          'The annual leave remains granted.',
+        );
+      }
+    } on AnnualLeaveException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage(error.message);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      _showCalendarMessage(
+        'Roster Buddy could not process the annual leave cancellation.',
+      );
+    }
+  }
+
   Future<void> _showManageAnnualLeaveDialog({
     required DateTime date,
     required AnnualLeaveRequest request,
@@ -5405,530 +8982,287 @@ class _CalendarPageState extends State<CalendarPage> {
       isScrollControlled: true,
       builder: (BuildContext sheetContext) {
         return StatefulBuilder(
-          builder: (BuildContext sheetContext, void Function(void Function()) setSheetState) {
-            Future<void> finishChange({
-              required Future<AnnualLeaveRequest> Function() action,
-              required String successMessage,
-            }) async {
-              if (isSaving) {
-                return;
-              }
+          builder:
+              (
+                BuildContext sheetContext,
+                void Function(void Function()) setSheetState,
+              ) {
+                Future<void> finishChange({
+                  required Future<AnnualLeaveRequest> Function() action,
+                  required String successMessage,
+                }) async {
+                  if (isSaving) {
+                    return;
+                  }
 
-              setSheetState(() {
-                isSaving = true;
-                errorMessage = null;
-              });
+                  setSheetState(() {
+                    isSaving = true;
+                    errorMessage = null;
+                  });
 
-              try {
-                await action();
+                  try {
+                    await action();
 
-                if (!sheetContext.mounted) {
-                  return;
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    Navigator.of(sheetContext).pop();
+
+                    await _loadMonth();
+
+                    if (!mounted) {
+                      return;
+                    }
+
+                    _showCalendarMessage(successMessage);
+                  } on AnnualLeaveException catch (error) {
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    setSheetState(() {
+                      isSaving = false;
+                      errorMessage = error.message;
+                    });
+                  } catch (_) {
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    setSheetState(() {
+                      isSaving = false;
+                      errorMessage =
+                          'Roster Buddy could not update this annual leave request.';
+                    });
+                  }
                 }
 
-                Navigator.of(sheetContext).pop();
-
-                await _loadMonth();
-
-                if (!mounted) {
-                  return;
-                }
-
-                _showCalendarMessage(successMessage);
-              } on AnnualLeaveException catch (error) {
-                if (!sheetContext.mounted) {
-                  return;
-                }
-
-                setSheetState(() {
-                  isSaving = false;
-                  errorMessage = error.message;
-                });
-              } catch (_) {
-                if (!sheetContext.mounted) {
-                  return;
-                }
-
-                setSheetState(() {
-                  isSaving = false;
-                  errorMessage =
-                      'Roster Buddy could not update this annual leave request.';
-                });
-              }
-            }
-
-            Future<void> moveToAbeyance() async {
-              final int? queuePosition = int.tryParse(
-                queueController.text.trim(),
-              );
-
-              if (queuePosition == null || queuePosition < 1) {
-                setSheetState(() {
-                  errorMessage = 'Enter the current abeyance queue position.';
-                });
-                return;
-              }
-
-              await finishChange(
-                action: () => _annualLeaveService.markAbeyance(
-                  requestId: request.id,
-                  queuePosition: queuePosition,
-                ),
-                successMessage:
-                    'Annual leave moved to abeyance at queue position #$queuePosition.',
-              );
-            }
-
-            Future<void> markGranted() async {
-              await finishChange(
-                action: () =>
-                    _annualLeaveService.markGranted(requestId: request.id),
-                successMessage: 'Annual leave granted for ${_fullDate(date)}.',
-              );
-            }
-
-            Future<void> cancelRequest() async {
-              final bool? confirmed = await showCupertinoDialog<bool>(
-                context: sheetContext,
-                builder: (BuildContext dialogContext) {
-                  return CupertinoAlertDialog(
-                    title: const Text('Cancel annual leave?'),
-                    content: Text(
-                      request.status == AnnualLeaveRequestStatus.granted
-                          ? 'This will cancel the annual leave and restore the allocated rostered duty for ${_fullDate(date)}.'
-                          : 'This will cancel the annual leave request for ${_fullDate(date)} and restore the allocated rostered duty.',
-                    ),
-                    actions: [
-                      CupertinoDialogAction(
-                        onPressed: () {
-                          Navigator.of(dialogContext).pop(false);
-                        },
-                        child: const Text('Keep leave'),
-                      ),
-                      CupertinoDialogAction(
-                        isDestructiveAction: true,
-                        onPressed: () {
-                          Navigator.of(dialogContext).pop(true);
-                        },
-                        child: const Text('Cancel leave'),
-                      ),
-                    ],
+                Future<void> moveToAbeyance() async {
+                  final int? queuePosition = int.tryParse(
+                    queueController.text.trim(),
                   );
-                },
-              );
 
-              if (confirmed != true || !sheetContext.mounted) {
-                return;
-              }
+                  if (queuePosition == null || queuePosition < 1) {
+                    setSheetState(() {
+                      errorMessage =
+                          'Enter the current abeyance queue position.';
+                    });
+                    return;
+                  }
 
-              await finishChange(
-                action: () =>
-                    _annualLeaveService.cancelRequest(requestId: request.id),
-                successMessage:
-                    'Annual leave cancelled. Your allocated shift for ${_fullDate(date)} now applies again.',
-              );
-            }
+                  await finishChange(
+                    action: () => _annualLeaveService.markAbeyance(
+                      requestId: request.id,
+                      queuePosition: queuePosition,
+                    ),
+                    successMessage:
+                        'Annual leave moved to abeyance at queue position #$queuePosition.',
+                  );
+                }
 
-            String statusTitle;
+                Future<void> markGranted() async {
+                  if (!sheetContext.mounted) {
+                    return;
+                  }
 
-            switch (request.status) {
-              case AnnualLeaveRequestStatus.requested:
-                statusTitle = 'Awaiting decision';
-              case AnnualLeaveRequestStatus.abeyance:
-                statusTitle = request.queuePosition == null
-                    ? 'Held in abeyance'
-                    : 'Abeyance – queue position #${request.queuePosition}';
-              case AnnualLeaveRequestStatus.granted:
-                statusTitle = 'Annual leave granted';
-              case AnnualLeaveRequestStatus.cancelled:
-                statusTitle = 'Annual leave cancelled';
-            }
+                  Navigator.of(sheetContext).pop();
 
-            return SafeArea(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  20,
-                  4,
-                  20,
-                  MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Manage annual leave',
-                        style: TextStyle(
-                          color: navy,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _fullDate(date),
-                        style: const TextStyle(color: textGrey),
-                      ),
-                      const SizedBox(height: 18),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color:
-                              request.status ==
-                                  AnnualLeaveRequestStatus.abeyance
-                              ? const Color(0xFFF59E0B).withValues(alpha: 0.10)
-                              : leaveRed.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          statusTitle,
-                          style: TextStyle(
-                            color:
-                                request.status ==
-                                    AnnualLeaveRequestStatus.abeyance
-                                ? const Color(0xFFB45309)
-                                : leaveRed,
-                            fontWeight: FontWeight.w900,
+                  await Future<void>.delayed(const Duration(milliseconds: 150));
+
+                  if (!mounted) {
+                    return;
+                  }
+
+                  await _recordRequestedAnnualLeaveDecision(
+                    date: date,
+                    request: request,
+                  );
+                }
+
+                Future<void> cancelRequest() async {
+                  if (!sheetContext.mounted) {
+                    return;
+                  }
+
+                  Navigator.of(sheetContext).pop();
+
+                  await Future<void>.delayed(const Duration(milliseconds: 150));
+
+                  if (!mounted) {
+                    return;
+                  }
+
+                  if (request.status == AnnualLeaveRequestStatus.granted) {
+                    await _chooseGrantedAnnualLeaveCancellationScope(
+                      date: date,
+                    );
+                    return;
+                  }
+
+                  await _cancelActiveAnnualLeaveRequest(
+                    date: date,
+                    request: request,
+                  );
+                }
+
+                String statusTitle;
+
+                switch (request.status) {
+                  case AnnualLeaveRequestStatus.requested:
+                    statusTitle = 'Awaiting decision';
+                  case AnnualLeaveRequestStatus.abeyance:
+                    statusTitle = request.queuePosition == null
+                        ? 'Held in abeyance'
+                        : 'Abeyance – queue position #${request.queuePosition}';
+                  case AnnualLeaveRequestStatus.granted:
+                    statusTitle = 'Annual leave granted';
+                  case AnnualLeaveRequestStatus.cancelled:
+                    statusTitle = 'Annual leave cancelled';
+                }
+
+                return SafeArea(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      4,
+                      20,
+                      MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Manage annual leave',
+                            style: TextStyle(
+                              color: navy,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
-                        ),
-                      ),
-                      if (request.status ==
-                              AnnualLeaveRequestStatus.requested ||
-                          request.status ==
-                              AnnualLeaveRequestStatus.abeyance) ...[
-                        const SizedBox(height: 18),
-                        TextField(
-                          controller: queueController,
-                          enabled: !isSaving,
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            labelText:
-                                request.status ==
-                                    AnnualLeaveRequestStatus.abeyance
-                                ? 'Abeyance queue position'
-                                : 'Queue position if placed in abeyance',
-                            hintText: 'For example 3',
-                            border: const OutlineInputBorder(),
+                          const SizedBox(height: 4),
+                          Text(
+                            _fullDate(date),
+                            style: const TextStyle(color: textGrey),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: isSaving ? null : moveToAbeyance,
-                            icon: const Icon(Icons.hourglass_top_outlined),
-                            label: Text(
-                              request.status ==
+                          const SizedBox(height: 18),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color:
+                                  request.status ==
                                       AnnualLeaveRequestStatus.abeyance
-                                  ? 'Update queue position'
-                                  : 'Move to abeyance',
+                                  ? const Color(
+                                      0xFFF59E0B,
+                                    ).withValues(alpha: 0.10)
+                                  : leaveRed.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              statusTitle,
+                              style: TextStyle(
+                                color:
+                                    request.status ==
+                                        AnnualLeaveRequestStatus.abeyance
+                                    ? const Color(0xFFB45309)
+                                    : leaveRed,
+                                fontWeight: FontWeight.w900,
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 10),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed: isSaving ? null : markGranted,
-                            icon: const Icon(Icons.event_available_outlined),
-                            label: const Text('Mark annual leave granted'),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: leaveRed,
+                          if (request.status ==
+                                  AnnualLeaveRequestStatus.requested ||
+                              request.status ==
+                                  AnnualLeaveRequestStatus.abeyance) ...[
+                            const SizedBox(height: 18),
+                            TextField(
+                              controller: queueController,
+                              enabled: !isSaving,
+                              keyboardType: TextInputType.number,
+                              decoration: InputDecoration(
+                                labelText:
+                                    request.status ==
+                                        AnnualLeaveRequestStatus.abeyance
+                                    ? 'Abeyance queue position'
+                                    : 'Queue position if placed in abeyance',
+                                hintText: 'For example 3',
+                                border: const OutlineInputBorder(),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: isSaving ? null : moveToAbeyance,
+                                icon: const Icon(Icons.hourglass_top_outlined),
+                                label: Text(
+                                  request.status ==
+                                          AnnualLeaveRequestStatus.abeyance
+                                      ? 'Update queue position'
+                                      : 'Move to abeyance',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                onPressed: isSaving ? null : markGranted,
+                                icon: const Icon(
+                                  Icons.event_available_outlined,
+                                ),
+                                label: const Text('Mark annual leave granted'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: leaveRed,
+                                ),
+                              ),
+                            ),
+                          ],
+                          if (errorMessage != null) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              errorMessage!,
+                              style: const TextStyle(
+                                color: leaveRed,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 18),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: isSaving ? null : cancelRequest,
+                              icon: const Icon(Icons.cancel_outlined),
+                              label: Text(
+                                request.status ==
+                                        AnnualLeaveRequestStatus.granted
+                                    ? 'Cancel annual leave'
+                                    : 'Cancel annual leave request',
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: leaveRed,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                      if (errorMessage != null) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          errorMessage!,
-                          style: const TextStyle(
-                            color: leaveRed,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 18),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: isSaving ? null : cancelRequest,
-                          icon: const Icon(Icons.cancel_outlined),
-                          label: Text(
-                            request.status == AnnualLeaveRequestStatus.granted
-                                ? 'Cancel annual leave'
-                                : 'Cancel annual leave request',
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: leaveRed,
-                          ),
-                        ),
+                          if (isSaving) ...[
+                            const SizedBox(height: 18),
+                            const Center(child: CircularProgressIndicator()),
+                          ],
+                        ],
                       ),
-                      if (isSaving) ...[
-                        const SizedBox(height: 18),
-                        const Center(child: CircularProgressIndicator()),
-                      ],
-                    ],
+                    ),
                   ),
-                ),
-              ),
-            );
-          },
+                );
+              },
         );
       },
     );
 
     queueController.dispose();
-  }
-
-  Future<void> _showAnnualLeaveRequestDialog({
-    required DateTime date,
-    required Duty duty,
-  }) async {
-    if (date.weekday == DateTime.sunday) {
-      _showCalendarMessage('Annual leave cannot be requested for a Sunday.');
-      return;
-    }
-
-    final TextEditingController notesController = TextEditingController();
-
-    int? remainingDays;
-    bool isLoadingBalance = true;
-    bool isSubmitting = false;
-    String? errorMessage;
-
-    try {
-      remainingDays = await _annualLeaveService.getRemainingFloatingDays(
-        date.year,
-      );
-    } on AnnualLeaveException catch (error) {
-      errorMessage = error.message;
-    } catch (_) {
-      errorMessage = 'Roster Buddy could not load your annual leave balance.';
-    } finally {
-      isLoadingBalance = false;
-    }
-
-    if (!mounted) {
-      notesController.dispose();
-      return;
-    }
-
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (BuildContext sheetContext) {
-        return StatefulBuilder(
-          builder: (BuildContext sheetContext, void Function(void Function()) setSheetState) {
-            Future<void> submitRequest() async {
-              if (isSubmitting || isLoadingBalance) {
-                return;
-              }
-
-              if ((remainingDays ?? 0) <= 0) {
-                setSheetState(() {
-                  errorMessage =
-                      'You do not have any floating annual leave days remaining.';
-                });
-                return;
-              }
-
-              setSheetState(() {
-                isSubmitting = true;
-                errorMessage = null;
-              });
-
-              try {
-                await _annualLeaveService.requestFloatingLeave(
-                  date: date,
-                  notes: notesController.text,
-                );
-
-                if (!sheetContext.mounted) {
-                  return;
-                }
-
-                Navigator.of(sheetContext).pop();
-
-                await _loadMonth();
-
-                if (!mounted) {
-                  return;
-                }
-
-                _showCalendarMessage(
-                  'Annual leave requested for ${_fullDate(date)}.',
-                );
-              } on AnnualLeaveException catch (error) {
-                if (!sheetContext.mounted) {
-                  return;
-                }
-
-                setSheetState(() {
-                  isSubmitting = false;
-                  errorMessage = error.message;
-                });
-              } catch (_) {
-                if (!sheetContext.mounted) {
-                  return;
-                }
-
-                setSheetState(() {
-                  isSubmitting = false;
-                  errorMessage =
-                      'Roster Buddy could not save this annual leave request.';
-                });
-              }
-            }
-
-            return SafeArea(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  20,
-                  4,
-                  20,
-                  MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Request annual leave',
-                        style: TextStyle(
-                          color: navy,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _fullDate(date),
-                        style: const TextStyle(color: textGrey),
-                      ),
-                      const SizedBox(height: 18),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: railwayBlue.withValues(alpha: 0.07),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.event_available_outlined,
-                              color: railwayBlue,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: isLoadingBalance
-                                  ? const Text(
-                                      'Loading floating-day balance…',
-                                      style: TextStyle(color: textGrey),
-                                    )
-                                  : Text(
-                                      remainingDays == null
-                                          ? 'Floating-day balance unavailable'
-                                          : '$remainingDays floating day${remainingDays == 1 ? '' : 's'} remaining',
-                                      style: const TextStyle(
-                                        color: navy,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        duty.turnNumber?.trim().isNotEmpty == true
-                            ? 'Current duty: Turn ${duty.turnNumber!.trim()}'
-                            : 'Current duty: ${_longDutyLabel(duty)}',
-                        style: const TextStyle(
-                          color: navy,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      if (duty.bookOn?.trim().isNotEmpty == true ||
-                          duty.bookOff?.trim().isNotEmpty == true) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          _timeDescription(duty),
-                          style: const TextStyle(color: textGrey),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: notesController,
-                        enabled: !isSubmitting,
-                        minLines: 2,
-                        maxLines: 4,
-                        decoration: const InputDecoration(
-                          labelText: 'Notes',
-                          hintText: 'Optional',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'Your rostered duty will remain in place until the annual leave is granted.',
-                        style: TextStyle(color: textGrey, height: 1.35),
-                      ),
-                      if (errorMessage != null) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          errorMessage!,
-                          style: const TextStyle(
-                            color: leaveRed,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          onPressed:
-                              isSubmitting ||
-                                  isLoadingBalance ||
-                                  (remainingDays ?? 0) <= 0
-                              ? null
-                              : submitRequest,
-                          icon: isSubmitting
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.send_outlined),
-                          label: Text(
-                            isSubmitting
-                                ? 'Requesting…'
-                                : 'Request annual leave',
-                          ),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: leaveRed,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-
-    notesController.dispose();
   }
 
   Future<void> _showEditDutyDialog({
@@ -6149,12 +9483,33 @@ class _CalendarPageState extends State<CalendarPage> {
     required DateTime date,
     required Duty originalDuty,
   }) async {
-    final List<String> validTurns = _validTurnsForDate(date);
+    const String manualSelection = '__MANUAL_RDW__';
 
-    String selectedTurn = validTurns.first;
+    List<JobCardChoice> choices = <JobCardChoice>[];
+
+    try {
+      choices = await _jobCardService.findValidJobCardsForDate(dutyDate: date);
+    } catch (_) {
+      // Manual entry remains available if Job Cards cannot be loaded.
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    String selectedTurn = choices.isNotEmpty
+        ? choices.first.jobCard.turnNumber
+        : manualSelection;
+
     final TextEditingController manualTurnController = TextEditingController();
-    final TextEditingController bookOnController = TextEditingController();
-    final TextEditingController bookOffController = TextEditingController();
+
+    final TextEditingController bookOnController = TextEditingController(
+      text: choices.isNotEmpty ? choices.first.jobCard.bookOn : '',
+    );
+
+    final TextEditingController bookOffController = TextEditingController(
+      text: choices.isNotEmpty ? choices.first.jobCard.bookOff : '',
+    );
 
     bool isSaving = false;
     String? formError;
@@ -6165,220 +9520,238 @@ class _CalendarPageState extends State<CalendarPage> {
       showDragHandle: true,
       builder: (BuildContext sheetContext) {
         return StatefulBuilder(
-          builder:
-              (
-                BuildContext context,
-                void Function(void Function()) setSheetState,
-              ) {
-                Future<void> save() async {
-                  final bool usesManualTurn =
-                      selectedTurn == 'MANUAL_OR_CROSS_DEPOT';
+          builder: (BuildContext context, void Function(void Function()) setSheetState) {
+            Future<void> save() async {
+              final bool manual = selectedTurn == manualSelection;
 
-                  final String turnNumber = usesManualTurn
-                      ? manualTurnController.text.trim()
-                      : selectedTurn;
+              final String turnNumber = manual
+                  ? manualTurnController.text.trim()
+                  : selectedTurn.trim();
 
-                  final String bookOn = _normaliseTimeInput(
-                    bookOnController.text,
-                  );
-                  final String bookOff = _normaliseTimeInput(
-                    bookOffController.text,
-                  );
+              final String bookOn = _normaliseTimeInput(bookOnController.text);
+              final String bookOff = _normaliseTimeInput(
+                bookOffController.text,
+              );
 
-                  if (turnNumber.isEmpty) {
-                    setSheetState(() {
-                      formError = 'Enter the turn or job-card number.';
-                    });
-                    return;
-                  }
+              if (turnNumber.isEmpty) {
+                setSheetState(() {
+                  formError = 'Enter or select a turn number.';
+                });
+                return;
+              }
 
-                  if (!_isValidTime(bookOn) || !_isValidTime(bookOff)) {
-                    setSheetState(() {
-                      formError =
-                          'Enter valid 24-hour times, for example 0800 or 08:00.';
-                    });
-                    return;
-                  }
+              if (!_isValidTime(bookOn) || !_isValidTime(bookOff)) {
+                setSheetState(() {
+                  formError =
+                      'Enter valid 24-hour times, for example 0800 or 08:00.';
+                });
+                return;
+              }
 
-                  setSheetState(() {
-                    isSaving = true;
-                    formError = null;
-                  });
+              setSheetState(() {
+                isSaving = true;
+                formError = null;
+              });
 
-                  try {
-                    await _manualDutyService.saveRestDayWorked(
-                      date: date,
-                      turnNumber: turnNumber,
-                      bookOn: bookOn,
-                      bookOff: bookOff,
-                      originalDuty: originalDuty,
-                    );
+              try {
+                await _manualDutyService.saveRestDayWorked(
+                  date: date,
+                  turnNumber: turnNumber,
+                  bookOn: bookOn,
+                  bookOff: bookOff,
+                  originalDuty: originalDuty,
+                );
 
-                    if (!sheetContext.mounted) {
-                      return;
-                    }
-
-                    Navigator.of(sheetContext).pop(true);
-                  } catch (error) {
-                    if (!sheetContext.mounted) {
-                      return;
-                    }
-
-                    setSheetState(() {
-                      isSaving = false;
-                      formError = error is ManualDutyException
-                          ? error.message
-                          : 'Roster Buddy could not save this RDW shift.';
-                    });
-                  }
+                if (!sheetContext.mounted) {
+                  return;
                 }
 
-                return SafeArea(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      20,
-                      4,
-                      20,
-                      MediaQuery.viewInsetsOf(context).bottom + 24,
-                    ),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Allocate shift – RDW',
-                            style: const TextStyle(
-                              color: navy,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _fullDate(date),
-                            style: const TextStyle(color: textGrey),
-                          ),
-                          const SizedBox(height: 18),
-                          DropdownButtonFormField<String>(
-                            initialValue: selectedTurn,
-                            decoration: const InputDecoration(
-                              labelText: 'Turn / job-card number',
-                              border: OutlineInputBorder(),
-                            ),
-                            items: <DropdownMenuItem<String>>[
-                              ...validTurns.map(
-                                (String turn) => DropdownMenuItem<String>(
-                                  value: turn,
-                                  child: Text(turn),
-                                ),
-                              ),
-                              const DropdownMenuItem<String>(
-                                value: 'MANUAL_OR_CROSS_DEPOT',
-                                child: Text('Manual / cross-depot duty'),
-                              ),
-                            ],
-                            onChanged: isSaving
-                                ? null
-                                : (String? value) {
-                                    if (value == null) {
-                                      return;
-                                    }
+                Navigator.of(sheetContext).pop(true);
+              } catch (error) {
+                if (!sheetContext.mounted) {
+                  return;
+                }
 
-                                    setSheetState(() {
-                                      selectedTurn = value;
-                                      formError = null;
-                                    });
-                                  },
+                setSheetState(() {
+                  isSaving = false;
+                  formError = error is ManualDutyException
+                      ? error.message
+                      : 'Roster Buddy could not save this RDW shift.';
+                });
+              }
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  4,
+                  20,
+                  MediaQuery.viewInsetsOf(context).bottom + 24,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Allocate shift – RDW',
+                        style: TextStyle(
+                          color: navy,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _fullDate(date),
+                        style: const TextStyle(color: textGrey),
+                      ),
+                      const SizedBox(height: 18),
+
+                      DropdownButtonFormField<String>(
+                        initialValue: selectedTurn,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Turn / Job Card',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: <DropdownMenuItem<String>>[
+                          ...choices.map(
+                            (JobCardChoice choice) => DropdownMenuItem<String>(
+                              value: choice.jobCard.turnNumber,
+                              child: Text(
+                                'Turn ${choice.jobCard.turnNumber}'
+                                '${choice.jobCard.bookOn.trim().isEmpty ? '' : ' • ${choice.jobCard.bookOn}–${choice.jobCard.bookOff}'}',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
                           ),
-                          if (selectedTurn == 'MANUAL_OR_CROSS_DEPOT') ...[
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: manualTurnController,
+                          const DropdownMenuItem<String>(
+                            value: manualSelection,
+                            child: Text('Manual / cross-depot duty'),
+                          ),
+                        ],
+                        onChanged: isSaving
+                            ? null
+                            : (String? value) {
+                                if (value == null) {
+                                  return;
+                                }
+
+                                setSheetState(() {
+                                  selectedTurn = value;
+                                  formError = null;
+
+                                  if (value != manualSelection) {
+                                    for (final JobCardChoice choice
+                                        in choices) {
+                                      if (choice.jobCard.turnNumber == value) {
+                                        bookOnController.text =
+                                            choice.jobCard.bookOn;
+                                        bookOffController.text =
+                                            choice.jobCard.bookOff;
+                                        break;
+                                      }
+                                    }
+                                  }
+                                });
+                              },
+                      ),
+
+                      if (selectedTurn == manualSelection) ...[
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: manualTurnController,
+                          enabled: !isSaving,
+                          textCapitalization: TextCapitalization.characters,
+                          decoration: const InputDecoration(
+                            labelText: 'Manual turn / duty reference',
+                            hintText: 'For example WO216 or cross-depot cover',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 12),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: bookOnController,
                               enabled: !isSaving,
-                              textCapitalization: TextCapitalization.characters,
+                              keyboardType: TextInputType.datetime,
                               decoration: const InputDecoration(
-                                labelText: 'Manual turn or duty reference',
-                                hintText:
-                                    'For example WO216 or cross-depot cover',
+                                labelText: 'Book on',
+                                hintText: '0800',
                                 border: OutlineInputBorder(),
                               ),
                             ),
-                          ],
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: bookOnController,
-                                  enabled: !isSaving,
-                                  keyboardType: TextInputType.datetime,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Book on',
-                                    hintText: '0800',
-                                    border: OutlineInputBorder(),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: TextField(
-                                  controller: bookOffController,
-                                  enabled: !isSaving,
-                                  keyboardType: TextInputType.datetime,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Book off',
-                                    hintText: '0800',
-                                    border: OutlineInputBorder(),
-                                  ),
-                                ),
-                              ),
-                            ],
                           ),
-                          const SizedBox(height: 10),
-                          const Text(
-                            'This creates a manual Rest Day Worked duty. '
-                            'The original Rest Day remains in the roster history.',
-                            style: TextStyle(color: textGrey, height: 1.35),
-                          ),
-                          if (formError != null) ...[
-                            const SizedBox(height: 12),
-                            Text(
-                              formError!,
-                              style: const TextStyle(
-                                color: leaveRed,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 18),
-                          SizedBox(
-                            width: double.infinity,
-                            child: FilledButton.icon(
-                              onPressed: isSaving ? null : save,
-                              icon: isSaving
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(Icons.add_circle_outline),
-                              label: Text(
-                                isSaving ? 'Saving RDW…' : 'Save RDW shift',
-                              ),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: workingGreen,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: bookOffController,
+                              enabled: !isSaving,
+                              keyboardType: TextInputType.datetime,
+                              decoration: const InputDecoration(
+                                labelText: 'Book off',
+                                hintText: '1630',
+                                border: OutlineInputBorder(),
                               ),
                             ),
                           ),
                         ],
                       ),
-                    ),
+
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Selecting a Job Card fills its booked times automatically. '
+                        'Manual or cross-depot duties can still be entered.',
+                        style: TextStyle(color: textGrey, height: 1.35),
+                      ),
+
+                      if (formError != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          formError!,
+                          style: const TextStyle(
+                            color: leaveRed,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 18),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: isSaving ? null : save,
+                          icon: isSaving
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.add_circle_outline),
+                          label: Text(
+                            isSaving ? 'Saving RDW…' : 'Save Rest Day Worked',
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: workingGreen,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                );
-              },
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -6398,30 +9771,6 @@ class _CalendarPageState extends State<CalendarPage> {
     }
 
     _showCalendarMessage('Rest Day Worked saved for ${_fullDate(date)}.');
-  }
-
-  List<String> _validTurnsForDate(DateTime date) {
-    if (date.weekday == DateTime.sunday) {
-      return List<String>.generate(
-        15,
-        (int index) => 'SUN${index + 1}',
-        growable: false,
-      );
-    }
-
-    if (date.weekday == DateTime.saturday) {
-      return List<String>.generate(
-        15,
-        (int index) => 'SO${index + 1}',
-        growable: false,
-      );
-    }
-
-    return List<String>.generate(
-      15,
-      (int index) => 'WO${201 + index}SX',
-      growable: false,
-    );
   }
 
   static String _normaliseTimeInput(String value) {
