@@ -189,6 +189,76 @@ class AnnualLeaveService {
         .eq('status', 'scheduled');
   }
 
+  Future<List<Map<String, dynamic>>> getScheduledFloatingRequestsForYear(
+    int leaveYear,
+  ) async {
+    final User? user = _supabase.auth.currentUser;
+
+    if (user == null) {
+      throw const AnnualLeaveException(
+        'You must be signed in before loading annual leave.',
+      );
+    }
+
+    final List<dynamic> response = await _supabase
+        .from('annual_leave_scheduled_requests')
+        .select(
+          'id, leave_date, scheduled_for, notes, status, '
+          'recipient_email, email_subject, created_at',
+        )
+        .eq('user_id', user.id)
+        .eq('status', 'scheduled')
+        .gte('leave_date', '$leaveYear-01-01')
+        .lte('leave_date', '$leaveYear-12-31')
+        .order('leave_date');
+
+    return response
+        .whereType<Map<String, dynamic>>()
+        .map(Map<String, dynamic>.from)
+        .toList(growable: false);
+  }
+
+  Future<String> confirmScheduledFloatingLeaveGranted({
+    required DateTime date,
+  }) async {
+    final User? user = _supabase.auth.currentUser;
+
+    if (user == null) {
+      throw const AnnualLeaveException(
+        'You must be signed in before changing annual leave.',
+      );
+    }
+
+    try {
+      final dynamic requestId = await _supabase.rpc(
+        'confirm_scheduled_annual_leave_granted',
+        params: <String, dynamic>{
+          'p_leave_date': _databaseDate(
+            DateTime(date.year, date.month, date.day),
+          ),
+        },
+      );
+
+      final String value = requestId?.toString().trim() ?? '';
+
+      if (value.isEmpty) {
+        throw const AnnualLeaveException(
+          'Roster Buddy could not confirm this annual leave.',
+        );
+      }
+
+      return value;
+    } on PostgrestException catch (error) {
+      final String message = error.message.trim();
+
+      throw AnnualLeaveException(
+        message.isEmpty
+            ? 'Roster Buddy could not confirm this annual leave.'
+            : message,
+      );
+    }
+  }
+
   Future<AnnualLeaveRequest> requestFloatingLeave({
     required DateTime date,
     String? notes,

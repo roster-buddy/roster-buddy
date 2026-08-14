@@ -358,6 +358,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
   int _remainingDays = 14;
 
   List<AnnualLeaveRequest> _requests = <AnnualLeaveRequest>[];
+  List<Map<String, dynamic>> _scheduledRequests = <Map<String, dynamic>>[];
   List<_AnnualLeaveBlockPeriod> _blockPeriods = <_AnnualLeaveBlockPeriod>[];
 
   AnnualLeaveBlockCycle? _blockCycle;
@@ -395,6 +396,11 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
 
       final Map<String, AnnualLeaveRequest> requestMap =
           await _annualLeaveService.getRequestsForRange(yearStart, yearEnd);
+
+      final List<Map<String, dynamic>> scheduledRequests =
+          await _annualLeaveService.getScheduledFloatingRequestsForYear(
+            _leaveYear,
+          );
 
       final AnnualLeaveBlockCycle? blockCycle = await _annualLeaveBlockService
           .getCycleForYear(_leaveYear);
@@ -471,6 +477,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
         _lieuDays = balance.lieuDays;
         _remainingDays = balance.remainingDays;
         _requests = requests;
+        _scheduledRequests = scheduledRequests;
         _blockPeriods = blockPeriods;
         _blockCycle = blockCycle;
         _blockOverrides = blockOverrides;
@@ -548,6 +555,8 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                           _buildBlockLeaveCard(),
                           const SizedBox(height: 18),
                           _buildRequestsCard(),
+                          const SizedBox(height: 18),
+                          _buildScheduledRequestsCard(),
                         ],
                         const SizedBox(height: 30),
                       ],
@@ -1859,21 +1868,32 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
       return request.requestType == AnnualLeaveRequestType.floating;
     }).toList();
 
+    final int abeyanceCount = floatingRequests.where((
+      AnnualLeaveRequest request,
+    ) {
+      return request.status == AnnualLeaveRequestStatus.abeyance;
+    }).length;
+
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const ListTile(
-            leading: CircleAvatar(
+          ListTile(
+            leading: const CircleAvatar(
               backgroundColor: Color(0x1A1769AA),
               child: Icon(Icons.list_alt_outlined, color: railwayBlue),
             ),
-            title: Text(
+            title: const Text(
               'Floating leave requests',
               style: TextStyle(color: navy, fontWeight: FontWeight.w900),
             ),
-            subtitle: Text('Requested, abeyance and granted days'),
+            subtitle: Text(
+              abeyanceCount == 0
+                  ? 'Requested, abeyance and granted days'
+                  : '$abeyanceCount day${abeyanceCount == 1 ? '' : 's'} '
+                        'currently in abeyance',
+            ),
           ),
           const Divider(height: 1),
           if (floatingRequests.isEmpty)
@@ -1901,36 +1921,668 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    subtitle: request.notes?.trim().isNotEmpty == true
-                        ? Text(request.notes!.trim())
-                        : null,
-                    trailing: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 9,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _requestColour(request).withValues(alpha: 0.11),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        _requestStatusLabel(request),
-                        style: TextStyle(
-                          color: _requestColour(request),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (request.notes?.trim().isNotEmpty == true)
+                          Text(request.notes!.trim()),
+                        if (request.status ==
+                                AnnualLeaveRequestStatus.abeyance &&
+                            request.queuePosition != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 3),
+                            child: Text(
+                              'Queue position ${request.queuePosition}',
+                              style: const TextStyle(
+                                color: abeyanceAmber,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _requestColour(
+                              request,
+                            ).withValues(alpha: 0.11),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            _requestStatusLabel(request),
+                            style: TextStyle(
+                              color: _requestColour(request),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        if (request.status !=
+                            AnnualLeaveRequestStatus.granted) ...[
+                          const SizedBox(width: 4),
+                          const Icon(Icons.chevron_right, color: textGrey),
+                        ],
+                      ],
+                    ),
+                    onTap: request.status == AnnualLeaveRequestStatus.granted
+                        ? null
+                        : () => _showRequestActions(request),
                   ),
                   if (request != floatingRequests.last)
                     const Divider(height: 1),
                 ],
               ),
             ),
+          if (floatingRequests.isNotEmpty) ...[
+            const Divider(height: 1),
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Tap a requested or abeyance day to record the response '
+                'from Rosters, change its abeyance queue position or cancel '
+                'the request.',
+                style: TextStyle(color: textGrey, fontSize: 12, height: 1.4),
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  Future<void> _showRequestActions(AnnualLeaveRequest request) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (BuildContext sheetContext) {
+        final bool inAbeyance =
+            request.status == AnnualLeaveRequestStatus.abeyance;
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  title: Text(
+                    _displayDate(request.leaveDate),
+                    style: const TextStyle(
+                      color: navy,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  subtitle: Text(_requestStatusLabel(request)),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(
+                    Icons.event_available_outlined,
+                    color: leaveRed,
+                  ),
+                  title: const Text('Mark granted'),
+                  subtitle: const Text(
+                    'Confirm that Rosters has granted this leave.',
+                  ),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _markRequestGranted(request);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.hourglass_top_outlined,
+                    color: abeyanceAmber,
+                  ),
+                  title: Text(
+                    inAbeyance
+                        ? 'Change abeyance position'
+                        : 'Move to abeyance',
+                  ),
+                  subtitle: const Text(
+                    'Record your current position in the waiting list.',
+                  ),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _showAbeyanceDialog(request);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.cancel_outlined, color: leaveRed),
+                  title: const Text('Cancel request'),
+                  subtitle: const Text(
+                    'Return this floating day to your available balance.',
+                  ),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _cancelFloatingRequest(request);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showAbeyanceDialog(AnnualLeaveRequest request) async {
+    final TextEditingController controller = TextEditingController(
+      text: request.queuePosition?.toString() ?? '',
+    );
+
+    String? errorMessage;
+    bool saving = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (BuildContext sheetContext) {
+        return StatefulBuilder(
+          builder:
+              (
+                BuildContext sheetContext,
+                void Function(void Function()) setSheetState,
+              ) {
+                Future<void> save() async {
+                  final int? position = int.tryParse(controller.text.trim());
+
+                  if (position == null || position < 1) {
+                    setSheetState(() {
+                      errorMessage =
+                          'Enter an abeyance queue position of 1 or greater.';
+                    });
+                    return;
+                  }
+
+                  setSheetState(() {
+                    saving = true;
+                    errorMessage = null;
+                  });
+
+                  try {
+                    await _annualLeaveService.markAbeyance(
+                      requestId: request.id,
+                      queuePosition: position,
+                    );
+
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    Navigator.of(sheetContext).pop();
+
+                    await _load();
+
+                    if (!mounted) {
+                      return;
+                    }
+
+                    _showAnnualLeaveMessage(
+                      '${_displayDate(request.leaveDate)} moved to '
+                      'abeyance position $position.',
+                    );
+                  } on AnnualLeaveException catch (error) {
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    setSheetState(() {
+                      saving = false;
+                      errorMessage = error.message;
+                    });
+                  } catch (_) {
+                    if (!sheetContext.mounted) {
+                      return;
+                    }
+
+                    setSheetState(() {
+                      saving = false;
+                      errorMessage =
+                          'Roster Buddy could not update this request.';
+                    });
+                  }
+                }
+
+                return SafeArea(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      4,
+                      20,
+                      MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Annual leave abeyance',
+                          style: TextStyle(
+                            color: navy,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          _displayDate(request.leaveDate),
+                          style: const TextStyle(color: textGrey),
+                        ),
+                        const SizedBox(height: 18),
+                        TextField(
+                          controller: controller,
+                          enabled: !saving,
+                          autofocus: true,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Queue position',
+                            hintText: 'For example 2',
+                            prefixIcon: Icon(
+                              Icons.format_list_numbered_outlined,
+                            ),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        if (errorMessage != null) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            errorMessage!,
+                            style: const TextStyle(
+                              color: leaveRed,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 20),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: saving ? null : save,
+                            icon: saving
+                                ? const SizedBox(
+                                    width: 17,
+                                    height: 17,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.save_outlined),
+                            label: Text(
+                              saving ? 'Saving…' : 'Save abeyance position',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+        );
+      },
+    );
+
+    controller.dispose();
+  }
+
+  Future<void> _markRequestGranted(AnnualLeaveRequest request) async {
+    final bool confirmed = await _confirmAnnualLeaveAction(
+      title: 'Mark annual leave granted?',
+      message:
+          'Confirm that annual leave for '
+          '${_displayDate(request.leaveDate)} has been granted.',
+      confirmLabel: 'Mark granted',
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await _annualLeaveService.markGranted(requestId: request.id);
+      await _load();
+
+      if (!mounted) {
+        return;
+      }
+
+      _showAnnualLeaveMessage(
+        '${_displayDate(request.leaveDate)} marked as granted.',
+      );
+    } on AnnualLeaveException catch (error) {
+      _showAnnualLeaveMessage(error.message);
+    } catch (_) {
+      _showAnnualLeaveMessage(
+        'Roster Buddy could not mark this annual leave as granted.',
+      );
+    }
+  }
+
+  Future<void> _cancelFloatingRequest(AnnualLeaveRequest request) async {
+    final bool confirmed = await _confirmAnnualLeaveAction(
+      title: 'Cancel annual leave request?',
+      message:
+          'Cancel the annual leave request for '
+          '${_displayDate(request.leaveDate)}? The day will return to '
+          'your available floating balance.',
+      confirmLabel: 'Cancel request',
+      destructive: true,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await _annualLeaveService.cancelRequest(requestId: request.id);
+      await _load();
+
+      if (!mounted) {
+        return;
+      }
+
+      _showAnnualLeaveMessage(
+        '${_displayDate(request.leaveDate)} request cancelled.',
+      );
+    } on AnnualLeaveException catch (error) {
+      _showAnnualLeaveMessage(error.message);
+    } catch (_) {
+      _showAnnualLeaveMessage(
+        'Roster Buddy could not cancel this annual leave request.',
+      );
+    }
+  }
+
+  Widget _buildScheduledRequestsCard() {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const ListTile(
+            leading: CircleAvatar(
+              backgroundColor: Color(0x1AF59E0B),
+              child: Icon(Icons.schedule_send_outlined, color: abeyanceAmber),
+            ),
+            title: Text(
+              'Scheduled annual leave',
+              style: TextStyle(color: navy, fontWeight: FontWeight.w900),
+            ),
+            subtitle: Text('Requests more than 365 days ahead'),
+          ),
+          const Divider(height: 1),
+          if (_scheduledRequests.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(18),
+              child: Text(
+                'You have no annual leave requests waiting for the '
+                '365-day send window in this leave year.',
+                style: TextStyle(color: textGrey, height: 1.4),
+              ),
+            )
+          else
+            ..._scheduledRequests.map((Map<String, dynamic> scheduled) {
+              final DateTime? leaveDate = _scheduledLeaveDate(scheduled);
+              final DateTime? scheduledFor = _scheduledLeaveSendDate(scheduled);
+
+              if (leaveDate == null) {
+                return const SizedBox.shrink();
+              }
+
+              final String notes = (scheduled['notes'] ?? '').toString().trim();
+
+              return Column(
+                children: [
+                  ListTile(
+                    leading: const Icon(
+                      Icons.schedule_send_outlined,
+                      color: abeyanceAmber,
+                    ),
+                    title: Text(
+                      _displayDate(leaveDate),
+                      style: const TextStyle(
+                        color: navy,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    subtitle: Text(
+                      [
+                        if (scheduledFor != null)
+                          'Scheduled to send '
+                              '${_displayDate(scheduledFor.toLocal())}',
+                        if (notes.isNotEmpty) notes,
+                      ].join('\n'),
+                    ),
+                    trailing: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'QUEUED',
+                          style: TextStyle(
+                            color: abeyanceAmber,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        SizedBox(width: 4),
+                        Icon(Icons.chevron_right, color: textGrey),
+                      ],
+                    ),
+                    onTap: () =>
+                        _showScheduledRequestActions(scheduled, leaveDate),
+                  ),
+                  if (scheduled != _scheduledRequests.last)
+                    const Divider(height: 1),
+                ],
+              );
+            }),
+          if (_scheduledRequests.isNotEmpty) ...[
+            const Divider(height: 1),
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Queued requests do not use a floating day until they are '
+                'actually sent. If Rosters grants a queued date before then, '
+                'use Confirm granted to record it immediately and remove the '
+                'email from the send queue.',
+                style: TextStyle(color: textGrey, fontSize: 12, height: 1.4),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showScheduledRequestActions(
+    Map<String, dynamic> scheduled,
+    DateTime leaveDate,
+  ) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (BuildContext sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  title: Text(
+                    _displayDate(leaveDate),
+                    style: const TextStyle(
+                      color: navy,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  subtitle: const Text('Scheduled annual leave request'),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(
+                    Icons.event_available_outlined,
+                    color: leaveRed,
+                  ),
+                  title: const Text('Confirm granted'),
+                  subtitle: const Text(
+                    'Record the leave as granted and remove the queued email.',
+                  ),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _confirmScheduledLeaveGranted(leaveDate);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.cancel_outlined, color: leaveRed),
+                  title: const Text('Cancel queued request'),
+                  subtitle: const Text(
+                    'Remove this email from the future send queue.',
+                  ),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _cancelScheduledLeave(leaveDate);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmScheduledLeaveGranted(DateTime leaveDate) async {
+    final bool confirmed = await _confirmAnnualLeaveAction(
+      title: 'Confirm annual leave granted?',
+      message:
+          'This will mark ${_displayDate(leaveDate)} as granted and remove '
+          'its scheduled email from the send queue.',
+      confirmLabel: 'Confirm granted',
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await _annualLeaveService.confirmScheduledFloatingLeaveGranted(
+        date: leaveDate,
+      );
+
+      await _load();
+
+      if (!mounted) {
+        return;
+      }
+
+      _showAnnualLeaveMessage(
+        '${_displayDate(leaveDate)} confirmed as granted.',
+      );
+    } on AnnualLeaveException catch (error) {
+      _showAnnualLeaveMessage(error.message);
+    } catch (_) {
+      _showAnnualLeaveMessage(
+        'Roster Buddy could not confirm this annual leave.',
+      );
+    }
+  }
+
+  Future<void> _cancelScheduledLeave(DateTime leaveDate) async {
+    final bool confirmed = await _confirmAnnualLeaveAction(
+      title: 'Cancel queued annual leave?',
+      message:
+          'The scheduled annual leave request for '
+          '${_displayDate(leaveDate)} will be removed from the send queue.',
+      confirmLabel: 'Cancel request',
+      destructive: true,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await _annualLeaveService.cancelScheduledFloatingLeaveRequest(
+        date: leaveDate,
+      );
+
+      await _load();
+
+      if (!mounted) {
+        return;
+      }
+
+      _showAnnualLeaveMessage(
+        '${_displayDate(leaveDate)} removed from the send queue.',
+      );
+    } on AnnualLeaveException catch (error) {
+      _showAnnualLeaveMessage(error.message);
+    } catch (_) {
+      _showAnnualLeaveMessage(
+        'Roster Buddy could not cancel this queued request.',
+      );
+    }
+  }
+
+  DateTime? _scheduledLeaveDate(Map<String, dynamic> row) {
+    return DateTime.tryParse((row['leave_date'] ?? '').toString());
+  }
+
+  DateTime? _scheduledLeaveSendDate(Map<String, dynamic> row) {
+    return DateTime.tryParse((row['scheduled_for'] ?? '').toString());
+  }
+
+  Future<bool> _confirmAnnualLeaveAction({
+    required String title,
+    required String message,
+    required String confirmLabel,
+    bool destructive = false,
+  }) async {
+    final bool? result = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Back'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: destructive
+                  ? TextButton.styleFrom(foregroundColor: leaveRed)
+                  : null,
+              child: Text(confirmLabel),
+            ),
+          ],
+        );
+      },
+    );
+
+    return result == true;
+  }
+
+  void _showAnnualLeaveMessage(String message) {
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+      );
   }
 
   Widget _buildErrorCard() {
