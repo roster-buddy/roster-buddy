@@ -32,6 +32,7 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _depotController = TextEditingController();
   final TextEditingController _driverNumberController = TextEditingController();
+  final TextEditingController _rosterNumberController = TextEditingController();
   final TextEditingController _payrollNumberController =
       TextEditingController();
   final TextEditingController _swapPartnerController = TextEditingController();
@@ -63,6 +64,7 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
     _nameController.dispose();
     _depotController.dispose();
     _driverNumberController.dispose();
+    _rosterNumberController.dispose();
     _payrollNumberController.dispose();
     _swapPartnerController.dispose();
     _floatingBalanceController.dispose();
@@ -77,11 +79,18 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
     _nameController.text = (metadata['full_name'] ?? '').toString();
     _depotController.text = (metadata['depot'] ?? '').toString();
     _driverNumberController.text = (metadata['driver_number'] ?? '').toString();
+    _rosterNumberController.text =
+        (metadata['roster_number'] ?? metadata['driver_number'] ?? '')
+            .toString();
     _payrollNumberController.text = (metadata['payroll_number'] ?? '')
         .toString();
 
     final String existingPartner =
-        (metadata['swap_partner_driver_number'] ?? '').toString().trim();
+        (metadata['swap_partner_roster_number'] ??
+                metadata['swap_partner_driver_number'] ??
+                '')
+            .toString()
+            .trim();
 
     if (existingPartner.isNotEmpty) {
       _hasMutualRosterSwap = true;
@@ -350,6 +359,7 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
     final String displayName = _nameController.text.trim();
     final String depot = _depotController.text.trim();
     final String driverNumber = _driverNumberController.text.trim();
+    final String rosterNumber = _rosterNumberController.text.trim();
     final String payrollNumber = _payrollNumberController.text.trim();
 
     setState(() {
@@ -368,13 +378,14 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
         'display_name': displayName,
         'depot': depot,
         'driver_number': driverNumber,
+        'roster_number': rosterNumber,
         'payroll_number': payrollNumber,
         'permanently_unavailable_sundays': _permanentlyUnavailableSundays,
         'base_roster_commencement_date': _baseRosterCommencementDate == null
             ? null
             : _databaseDate(_baseRosterCommencementDate!),
         'has_mutual_roster_swap': _hasMutualRosterSwap,
-        'swap_partner_driver_number': _hasMutualRosterSwap
+        'swap_partner_roster_number': _hasMutualRosterSwap
             ? _swapPartnerController.text.trim()
             : null,
         'base_roster_starts_with_line': _hasMutualRosterSwap
@@ -393,8 +404,9 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
             'full_name': displayName,
             'depot': depot,
             'driver_number': driverNumber,
+            'roster_number': rosterNumber,
             'payroll_number': payrollNumber,
-            'swap_partner_driver_number': _hasMutualRosterSwap
+            'swap_partner_roster_number': _hasMutualRosterSwap
                 ? _swapPartnerController.text.trim()
                 : null,
           },
@@ -481,7 +493,7 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
 
       if (error.code == '23505') {
         _showMessage(
-          'That driver number or payroll number is already linked to another '
+          'One of those work identifiers is already linked to another '
           'Roster Buddy account.',
           isError: true,
         );
@@ -606,8 +618,8 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
         children: [
           _pageHeading(
             'Driver details',
-            'These details allow Smart Scan to match you to the correct '
-                'Base Roster and amendment rows.',
+            'These identifiers allow Smart Scan to match you correctly '
+                'across Base Rosters, amendments and Annual Leave Rosters.',
           ),
           const SizedBox(height: 26),
           TextFormField(
@@ -642,13 +654,28 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
             keyboardType: TextInputType.number,
             textInputAction: TextInputAction.next,
             decoration: const InputDecoration(
-              labelText: 'Driver / roster code',
-              helperText: 'Used to find your position on the Base Roster.',
+              labelText: 'Driver number',
+              helperText: 'Used to match you on Annual Leave Rosters.',
               prefixIcon: Icon(Icons.badge_outlined),
               border: OutlineInputBorder(),
             ),
             validator: (String? value) =>
                 _requiredNumber(value, 'driver / roster code'),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _rosterNumberController,
+            enabled: !_saving,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.next,
+            decoration: const InputDecoration(
+              labelText: 'Roster number',
+              helperText: 'Used to find your line on the Base Roster.',
+              prefixIcon: Icon(Icons.badge_outlined),
+              border: OutlineInputBorder(),
+            ),
+            validator: (String? value) =>
+                _requiredNumber(value, 'roster number'),
           ),
           const SizedBox(height: 16),
           TextFormField(
@@ -658,7 +685,8 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
             textInputAction: TextInputAction.done,
             decoration: const InputDecoration(
               labelText: 'Payroll number',
-              helperText: 'Used to find your row on daily amendment sheets.',
+              helperText:
+                  'Used for 10-Day, 7-Day and 48-Hour amendment sheets.',
               prefixIcon: Icon(Icons.numbers_outlined),
               border: OutlineInputBorder(),
             ),
@@ -1026,12 +1054,16 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
                 _reviewRow('Name', _nameController.text.trim()),
                 _reviewRow('Depot', _depotController.text.trim()),
                 _reviewRow(
-                  'Driver / roster code',
-                  _driverNumberController.text.trim(),
-                ),
-                _reviewRow(
                   'Payroll number',
                   _payrollNumberController.text.trim(),
+                ),
+                _reviewRow(
+                  'Roster number',
+                  _rosterNumberController.text.trim(),
+                ),
+                _reviewRow(
+                  'Driver number – Annual Leave',
+                  _driverNumberController.text.trim(),
                 ),
                 const Divider(height: 24),
                 _reviewRow(

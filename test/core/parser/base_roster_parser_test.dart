@@ -45,7 +45,7 @@ void main() {
       () async {
         final BaseRosterParser parser = BaseRosterParser(
           commencementDate: DateTime(2026, 5, 3),
-          driverNumber: '1234',
+          rosterNumber: '1234',
         );
 
         final result = await parser.parse(
@@ -93,10 +93,10 @@ void main() {
       },
     );
 
-    test('blocks import when the driver number is not found', () async {
+    test('blocks import when the roster number is not found', () async {
       final BaseRosterParser parser = BaseRosterParser(
         commencementDate: DateTime(2026, 5, 3),
-        driverNumber: '9999',
+        rosterNumber: '9999',
       );
 
       final result = await parser.parse(
@@ -117,7 +117,7 @@ void main() {
     test('blocks import when commencement date is not Sunday', () async {
       final BaseRosterParser parser = BaseRosterParser(
         commencementDate: DateTime(2026, 5, 4),
-        driverNumber: '1234',
+        rosterNumber: '1234',
       );
 
       final result = await parser.parse(

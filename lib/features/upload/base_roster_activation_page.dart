@@ -50,7 +50,7 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
           .select(
             'base_roster_commencement_date, '
             'has_mutual_roster_swap, '
-            'swap_partner_driver_number, '
+            'swap_partner_roster_number, swap_partner_driver_number, '
             'base_roster_starts_with_line',
           )
           .eq('user_id', user.id)
@@ -75,7 +75,9 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
         metadata['has_mutual_swap'] == true;
 
     final String swapPartner =
-        (profile?['swap_partner_driver_number'] ??
+        (profile?['swap_partner_roster_number'] ??
+                profile?['swap_partner_driver_number'] ??
+                metadata['swap_partner_roster_number'] ??
                 metadata['swap_partner_driver_number'] ??
                 '')
             .toString()
@@ -215,7 +217,7 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
       BaseRosterActivation(
         commencementDate: _commencementDate!,
         hasMutualSwap: _hasMutualSwap,
-        swapPartnerDriverNumber: _hasMutualSwap
+        swapPartnerRosterNumber: _hasMutualSwap
             ? _swapPartnerController.text.trim()
             : null,
         startingLine: _hasMutualSwap

@@ -13,8 +13,8 @@ enum BaseRosterInitialLine { driver, swapPartner }
 class BaseRosterParser implements BaseParser {
   const BaseRosterParser({
     this.commencementDate,
-    this.driverNumber,
-    this.swapPartnerDriverNumber,
+    this.rosterNumber,
+    this.swapPartnerRosterNumber,
     this.initialLine = BaseRosterInitialLine.driver,
     this.tableExtractor = const TableExtractor(),
   });
@@ -22,11 +22,11 @@ class BaseRosterParser implements BaseParser {
   /// The Sunday on which this Base Roster becomes active.
   final DateTime? commencementDate;
 
-  /// The signed-in user's Base Roster driver number.
-  final String? driverNumber;
+  /// The signed-in user's Base Roster number.
+  final String? rosterNumber;
 
-  /// Optional permanent mutual-swap partner driver number.
-  final String? swapPartnerDriverNumber;
+  /// Optional permanent mutual-swap partner roster number.
+  final String? swapPartnerRosterNumber;
 
   /// Determines which line supplies the first active calendar week.
   final BaseRosterInitialLine initialLine;
@@ -102,14 +102,14 @@ class BaseRosterParser implements BaseParser {
       );
     }
 
-    final String requestedDriver =
-        ParserUtils.normaliseDriverNumber(driverNumber) ?? '';
+    final String requestedRosterNumber =
+        ParserUtils.normaliseDriverNumber(rosterNumber) ?? '';
 
-    if (requestedDriver.isEmpty) {
+    if (requestedRosterNumber.isEmpty) {
       warnings.add(
         const ParseWarning(
           message:
-              'A driver number is required to locate the correct Base Roster line.',
+              'A roster number is required to locate the correct Base Roster line.',
           severity: ParseWarningSeverity.blocking,
         ),
       );
@@ -135,34 +135,34 @@ class BaseRosterParser implements BaseParser {
       );
     }
 
-    final int driverStartIndex = weeks.indexWhere(
-      (_BaseRosterWeek week) => week.driverNumber == requestedDriver,
+    final int rosterStartIndex = weeks.indexWhere(
+      (_BaseRosterWeek week) => week.driverNumber == requestedRosterNumber,
     );
 
-    if (requestedDriver.isNotEmpty && driverStartIndex < 0) {
+    if (requestedRosterNumber.isNotEmpty && rosterStartIndex < 0) {
       warnings.add(
         ParseWarning(
           message:
-              'Driver number $requestedDriver was not found on the Base Roster.',
+              'Roster number $requestedRosterNumber was not found on the Base Roster.',
           severity: ParseWarningSeverity.blocking,
         ),
       );
     }
 
-    final String swapDriver =
-        ParserUtils.normaliseDriverNumber(swapPartnerDriverNumber) ?? '';
+    final String swapRosterNumber =
+        ParserUtils.normaliseDriverNumber(swapPartnerRosterNumber) ?? '';
 
-    final int swapStartIndex = swapDriver.isEmpty
+    final int swapStartIndex = swapRosterNumber.isEmpty
         ? -1
         : weeks.indexWhere(
-            (_BaseRosterWeek week) => week.driverNumber == swapDriver,
+            (_BaseRosterWeek week) => week.driverNumber == swapRosterNumber,
           );
 
-    if (swapDriver.isNotEmpty && swapStartIndex < 0) {
+    if (swapRosterNumber.isNotEmpty && swapStartIndex < 0) {
       warnings.add(
         ParseWarning(
           message:
-              'Mutual-swap partner driver number $swapDriver was not found on the Base Roster.',
+              'Mutual-swap partner roster number $swapRosterNumber was not found on the Base Roster.',
           severity: ParseWarningSeverity.blocking,
         ),
       );
@@ -171,8 +171,10 @@ class BaseRosterParser implements BaseParser {
     if (warnings.any((ParseWarning warning) => warning.preventsImport)) {
       return ParseResult(
         documentType: DocumentType.baseRoster,
-        driverFound: driverStartIndex >= 0,
-        driverNumber: requestedDriver.isEmpty ? null : requestedDriver,
+        driverFound: rosterStartIndex >= 0,
+        driverNumber: requestedRosterNumber.isEmpty
+            ? null
+            : requestedRosterNumber,
         pagesProcessed: pageText.length,
         weeksDetected: weeks.length,
         warnings: warnings,
@@ -186,7 +188,7 @@ class BaseRosterParser implements BaseParser {
       final int selectedIndex = _selectedRosterIndex(
         calendarWeek: calendarWeek,
         rosterLength: weeks.length,
-        driverStartIndex: driverStartIndex,
+        driverStartIndex: rosterStartIndex,
         swapStartIndex: swapStartIndex,
       );
 
@@ -203,7 +205,7 @@ class BaseRosterParser implements BaseParser {
         final _BaseRosterDayCell cell = selectedWeek.dayCells[dayIndex];
         final Duty? duty = _buildDuty(
           date: weekSunday.add(Duration(days: dayIndex)),
-          driverNumber: requestedDriver,
+          driverNumber: requestedRosterNumber,
           pageNumber: selectedWeek.pageNumber,
           cell: cell,
         );
@@ -227,8 +229,8 @@ class BaseRosterParser implements BaseParser {
     return ParseResult(
       documentType: DocumentType.baseRoster,
       duties: duties,
-      driverFound: driverStartIndex >= 0,
-      driverNumber: requestedDriver,
+      driverFound: rosterStartIndex >= 0,
+      driverNumber: requestedRosterNumber,
       pagesProcessed: pageText.length,
       weeksDetected: weeks.length,
       recordsDetected: duties.length,

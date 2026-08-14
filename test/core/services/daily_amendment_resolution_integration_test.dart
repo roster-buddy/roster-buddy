@@ -93,11 +93,16 @@ MOORE | 123456 | BHM | DI | 204 | 07:00 | 15:00
             .where((Duty duty) {
               return DutyResolver.matchesProfile(
                 row: <String, dynamic>{
+                  'source': duty.source.name == 'tenDay'
+                      ? '10_day'
+                      : duty.source.name == 'sevenDay'
+                      ? '7_day'
+                      : '48_hour',
                   'payroll_number': duty.payrollNumber,
                   'driver_number': duty.driverNumber,
                 },
                 payrollNumber: payrollNumber,
-                driverNumber: driverNumber,
+                rosterNumber: driverNumber,
               );
             })
             .toList(growable: false);
@@ -143,11 +148,12 @@ JONES | 654321 | BHM | 205 | 08:00 | 16:00
           .where((Duty duty) {
             return DutyResolver.matchesProfile(
               row: <String, dynamic>{
+                'source': '48_hour',
                 'payroll_number': duty.payrollNumber,
                 'driver_number': duty.driverNumber,
               },
               payrollNumber: payrollNumber,
-              driverNumber: driverNumber,
+              rosterNumber: driverNumber,
             );
           })
           .toList(growable: false);

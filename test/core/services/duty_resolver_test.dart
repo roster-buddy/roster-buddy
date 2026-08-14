@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:roster_buddy/core/models/annual_leave_block_override.dart';
 import 'package:roster_buddy/core/models/duty.dart';
 import 'package:roster_buddy/core/models/duty_type.dart';
 import 'package:roster_buddy/core/models/roster_source.dart';
@@ -7,6 +8,7 @@ import 'package:roster_buddy/core/services/duty_resolver.dart';
 void main() {
   profileMatchingTests();
   rangeResolutionTests();
+  blockAnnualLeaveTests();
   group('DutyResolver.resolve', () {
     final date = DateTime(2026, 8, 13);
 
@@ -108,33 +110,245 @@ void main() {
   });
 }
 
+void blockAnnualLeaveTests() {
+  group('DutyResolver block annual leave', () {
+    AnnualLeaveBlockOverride override({
+      required AnnualLeaveBlockChangeType changeType,
+      DateTime? originalStart,
+      DateTime? originalEnd,
+      DateTime? overrideStart,
+      DateTime? overrideEnd,
+    }) {
+      return AnnualLeaveBlockOverride(
+        id: 'test-override',
+        leaveYear: 2026,
+        periodType: AnnualLeaveBlockPeriodType.spring,
+        originalStartDate: originalStart,
+        originalEndDate: originalEnd,
+        overrideStartDate: overrideStart ?? DateTime(2026, 4, 6),
+        overrideEndDate: overrideEnd ?? DateTime(2026, 4, 11),
+        changeType: changeType,
+      );
+    }
+
+    test('manual block allocation creates block annual leave duty', () {
+      final AnnualLeaveBlockOverride manual = override(
+        changeType: AnnualLeaveBlockChangeType.manual,
+      );
+
+      final Duty duty = DutyResolver.blockOverrideDutyForTest(
+        override: manual,
+        date: DateTime(2026, 4, 8),
+      );
+
+      expect(duty.source, RosterSource.annualLeave);
+      expect(duty.dutyType, DutyType.annualLeave);
+      expect(duty.date, DateTime(2026, 4, 8));
+      expect(duty.remarks, contains('Spring block annual leave'));
+      expect(duty.remarks, contains('Manual block leave'));
+    });
+
+    test('official allocation suppresses stale manual baseline', () {
+      final AnnualLeaveBlockOverride manual = override(
+        changeType: AnnualLeaveBlockChangeType.manual,
+      );
+
+      final List<AnnualLeaveBlockOverride> effective =
+          DutyResolver.effectiveBlockOverridesForTest(
+            overrides: <AnnualLeaveBlockOverride>[manual],
+            officialPeriodKeys: <String>{
+              '2026:${AnnualLeaveBlockPeriodType.spring.name}',
+            },
+          );
+
+      expect(effective, isEmpty);
+    });
+
+    test(
+      'manual baseline remains active when no official allocation exists',
+      () {
+        final AnnualLeaveBlockOverride manual = override(
+          changeType: AnnualLeaveBlockChangeType.manual,
+        );
+
+        final List<AnnualLeaveBlockOverride> effective =
+            DutyResolver.effectiveBlockOverridesForTest(
+              overrides: <AnnualLeaveBlockOverride>[manual],
+              officialPeriodKeys: const <String>{},
+            );
+
+        expect(effective, hasLength(1));
+        expect(effective.single.changeType, AnnualLeaveBlockChangeType.manual);
+      },
+    );
+
+    test('agreed move still overrides an official allocation', () {
+      final AnnualLeaveBlockOverride moved = override(
+        changeType: AnnualLeaveBlockChangeType.agreedMove,
+        originalStart: DateTime(2026, 4, 6),
+        originalEnd: DateTime(2026, 4, 11),
+        overrideStart: DateTime(2026, 5, 4),
+        overrideEnd: DateTime(2026, 5, 9),
+      );
+
+      final List<AnnualLeaveBlockOverride> effective =
+          DutyResolver.effectiveBlockOverridesForTest(
+            overrides: <AnnualLeaveBlockOverride>[moved],
+            officialPeriodKeys: <String>{
+              '2026:${AnnualLeaveBlockPeriodType.spring.name}',
+            },
+          );
+
+      expect(effective, hasLength(1));
+      expect(
+        effective.single.changeType,
+        AnnualLeaveBlockChangeType.agreedMove,
+      );
+
+      final Duty duty = DutyResolver.blockOverrideDutyForTest(
+        override: effective.single,
+        date: DateTime(2026, 5, 6),
+      );
+
+      expect(duty.source, RosterSource.annualLeave);
+      expect(duty.dutyType, DutyType.annualLeave);
+      expect(duty.remarks, contains('Moved block annual leave'));
+    });
+
+    test('mutual swap still overrides an official allocation', () {
+      final AnnualLeaveBlockOverride swapped = AnnualLeaveBlockOverride(
+        id: 'test-swap',
+        leaveYear: 2026,
+        periodType: AnnualLeaveBlockPeriodType.summerFirstWeek,
+        originalStartDate: DateTime(2026, 6, 8),
+        originalEndDate: DateTime(2026, 6, 13),
+        overrideStartDate: DateTime(2026, 7, 6),
+        overrideEndDate: DateTime(2026, 7, 11),
+        changeType: AnnualLeaveBlockChangeType.mutualSwap,
+        swapDriverNumber: '999',
+      );
+
+      final List<AnnualLeaveBlockOverride> effective =
+          DutyResolver.effectiveBlockOverridesForTest(
+            overrides: <AnnualLeaveBlockOverride>[swapped],
+            officialPeriodKeys: <String>{
+              '2026:${AnnualLeaveBlockPeriodType.summerFirstWeek.name}',
+            },
+          );
+
+      expect(effective, hasLength(1));
+      expect(
+        effective.single.changeType,
+        AnnualLeaveBlockChangeType.mutualSwap,
+      );
+
+      final Duty duty = DutyResolver.blockOverrideDutyForTest(
+        override: effective.single,
+        date: DateTime(2026, 7, 8),
+      );
+
+      expect(duty.source, RosterSource.annualLeave);
+      expect(duty.dutyType, DutyType.annualLeave);
+      expect(duty.remarks, contains('Mutual swap block annual leave'));
+    });
+  });
+}
+
 void profileMatchingTests() {
   group('DutyResolver.matchesProfile', () {
     test('matches a daily amendment by payroll number', () {
       final matches = DutyResolver.matchesProfile(
-        row: {'payroll_number': '123456', 'driver_number': null},
+        row: {
+          'source': '10_day',
+          'payroll_number': '123456',
+          'driver_number': null,
+        },
         payrollNumber: '123456',
-        driverNumber: '999',
+        rosterNumber: '999',
       );
 
       expect(matches, isTrue);
     });
 
-    test('matches a Base Roster duty by driver number', () {
+    test('matches a 7-Day amendment by payroll number', () {
       final matches = DutyResolver.matchesProfile(
-        row: {'payroll_number': null, 'driver_number': '999'},
+        row: {
+          'source': '7_day',
+          'payroll_number': '123456',
+          'driver_number': null,
+        },
         payrollNumber: '123456',
-        driverNumber: '999',
+        rosterNumber: '999',
       );
 
       expect(matches, isTrue);
+    });
+
+    test('matches a 48-Hour amendment by payroll number', () {
+      final matches = DutyResolver.matchesProfile(
+        row: {
+          'source': '48_hour',
+          'payroll_number': '123456',
+          'driver_number': null,
+        },
+        payrollNumber: '123456',
+        rosterNumber: '999',
+      );
+
+      expect(matches, isTrue);
+    });
+
+    test('matches a Base Roster duty by roster number', () {
+      final matches = DutyResolver.matchesProfile(
+        row: {
+          'source': 'base_roster',
+          'payroll_number': null,
+          'driver_number': '999',
+        },
+        payrollNumber: '123456',
+        rosterNumber: '999',
+      );
+
+      expect(matches, isTrue);
+    });
+
+    test('does not use roster number to match an amendment', () {
+      final matches = DutyResolver.matchesProfile(
+        row: {
+          'source': '10_day',
+          'payroll_number': '999',
+          'driver_number': '999',
+        },
+        payrollNumber: '123456',
+        rosterNumber: '999',
+      );
+
+      expect(matches, isFalse);
+    });
+
+    test('does not use payroll number to match a Base Roster duty', () {
+      final matches = DutyResolver.matchesProfile(
+        row: {
+          'source': 'base_roster',
+          'payroll_number': '123456',
+          'driver_number': '123456',
+        },
+        payrollNumber: '123456',
+        rosterNumber: '999',
+      );
+
+      expect(matches, isFalse);
     });
 
     test('does not match another drivers amendment row', () {
       final matches = DutyResolver.matchesProfile(
-        row: {'payroll_number': '654321', 'driver_number': null},
+        row: {
+          'source': '10_day',
+          'payroll_number': '654321',
+          'driver_number': null,
+        },
         payrollNumber: '123456',
-        driverNumber: '999',
+        rosterNumber: '999',
       );
 
       expect(matches, isFalse);
@@ -142,19 +356,41 @@ void profileMatchingTests() {
 
     test('does not match another drivers Base Roster row', () {
       final matches = DutyResolver.matchesProfile(
-        row: {'payroll_number': null, 'driver_number': '888'},
+        row: {
+          'source': 'base_roster',
+          'payroll_number': null,
+          'driver_number': '888',
+        },
         payrollNumber: '123456',
-        driverNumber: '999',
+        rosterNumber: '999',
       );
 
       expect(matches, isFalse);
     });
 
-    test('normalises surrounding spaces before matching', () {
+    test('normalises surrounding spaces before payroll matching', () {
       final matches = DutyResolver.matchesProfile(
-        row: {'payroll_number': ' 123456 ', 'driver_number': null},
+        row: {
+          'source': '48_hour',
+          'payroll_number': ' 123456 ',
+          'driver_number': null,
+        },
         payrollNumber: '123456',
-        driverNumber: '999',
+        rosterNumber: '999',
+      );
+
+      expect(matches, isTrue);
+    });
+
+    test('normalises surrounding spaces before roster matching', () {
+      final matches = DutyResolver.matchesProfile(
+        row: {
+          'source': 'base_roster',
+          'payroll_number': null,
+          'driver_number': ' 999 ',
+        },
+        payrollNumber: '123456',
+        rosterNumber: '999',
       );
 
       expect(matches, isTrue);

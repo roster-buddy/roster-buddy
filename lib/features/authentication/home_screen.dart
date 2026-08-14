@@ -3,10 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/models/annual_leave_block_override.dart';
+import '../../core/models/annual_leave_block_pending_action.dart';
 import '../../core/models/annual_leave_request.dart';
 import '../../core/models/duty.dart';
 import '../../core/models/duty_type.dart';
 import '../../core/models/roster_source.dart';
+import '../../core/services/annual_leave_block_pending_action_service.dart';
+import '../../core/services/annual_leave_block_service.dart';
 import '../../core/services/annual_leave_service.dart';
 import '../../core/services/duty_resolver.dart';
 import '../../core/services/hidden_18_service.dart';
@@ -94,6 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   int _selectedIndex = 0;
   int _dashboardRefreshVersion = 0;
+  int _pendingActionCount = 0;
 
   final GlobalKey<_CalendarPageState> _calendarKey =
       GlobalKey<_CalendarPageState>();
@@ -101,6 +106,96 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime? _calendarRequestedDate;
   _CalendarDayAction? _calendarRequestedAction;
   int _calendarRequestVersion = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshPendingActionCount();
+  }
+
+  Future<void> _refreshPendingActionCount() async {
+    try {
+      final SupabaseClient supabase = Supabase.instance.client;
+      final User? user = supabase.auth.currentUser;
+
+      if (user == null) {
+        return;
+      }
+
+      final Map<String, dynamic>? profile = await supabase
+          .from('driver_profiles')
+          .select('pending_actions_last_seen_at')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      final DateTime? lastSeen = DateTime.tryParse(
+        (profile?['pending_actions_last_seen_at'] ?? '').toString(),
+      );
+
+      dynamic floatingQuery = supabase
+          .from('annual_leave_requests')
+          .select('id, requested_at')
+          .eq('user_id', user.id)
+          .eq('request_type', 'floating')
+          .inFilter('status', <String>['requested', 'abeyance']);
+
+      dynamic blockQuery = supabase
+          .from('annual_leave_block_pending_actions')
+          .select('id, updated_at')
+          .eq('user_id', user.id)
+          .inFilter('status', <String>['awaiting_union', 'scheduled']);
+
+      if (lastSeen != null) {
+        final String cutoff = lastSeen.toUtc().toIso8601String();
+
+        floatingQuery = floatingQuery.gt('requested_at', cutoff);
+        blockQuery = blockQuery.gt('updated_at', cutoff);
+      }
+
+      final List<dynamic> floatingRows = await floatingQuery;
+      final List<dynamic> blockRows = await blockQuery;
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _pendingActionCount = floatingRows.length + blockRows.length;
+      });
+    } catch (_) {
+      // Badge loading must never prevent the main app from loading.
+    }
+  }
+
+  Future<void> _markPendingActionsSeen() async {
+    try {
+      final SupabaseClient supabase = Supabase.instance.client;
+      final User? user = supabase.auth.currentUser;
+
+      if (user == null) {
+        return;
+      }
+
+      final DateTime seenAt = DateTime.now().toUtc();
+
+      await supabase
+          .from('driver_profiles')
+          .update(<String, dynamic>{
+            'pending_actions_last_seen_at': seenAt.toIso8601String(),
+          })
+          .eq('user_id', user.id);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _pendingActionCount = 0;
+      });
+    } catch (_) {
+      // Failure to update seen state must not stop Pending Actions opening.
+    }
+  }
 
   void _openCalendarAction(DateTime date, _CalendarDayAction action) {
     final _CalendarPageState? calendarState = _calendarKey.currentState;
@@ -350,12 +445,20 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _dashboardRefreshVersion++;
     });
+
+    _refreshPendingActionCount();
   }
 
   final AnnualLeaveService _pendingActionsAnnualLeaveService =
       AnnualLeaveService();
 
   Future<void> _openPendingActions() async {
+    await _markPendingActionsSeen();
+
+    if (!mounted) {
+      return;
+    }
+
     final int? destination = await Navigator.of(context).push<int>(
       MaterialPageRoute<int>(
         builder: (BuildContext context) {
@@ -460,9 +563,48 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Pending Actions',
+            tooltip: _pendingActionCount == 0
+                ? 'Pending Actions'
+                : 'Pending Actions ($_pendingActionCount)',
             onPressed: _openPendingActions,
-            icon: const Icon(Icons.notifications_outlined),
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.notifications_outlined),
+                if (_pendingActionCount > 0)
+                  Positioned(
+                    right: -7,
+                    top: -7,
+                    child: Container(
+                      constraints: const BoxConstraints(
+                        minWidth: 18,
+                        minHeight: 18,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Color(0xFFD64545),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: Colors.white, width: 1.5),
+                      ),
+                      child: Text(
+                        _pendingActionCount > 99
+                            ? '99+'
+                            : '$_pendingActionCount',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          height: 1.1,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ),
@@ -538,9 +680,15 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   static const Color leaveRed = Color(0xFFD64545);
   static const Color textGrey = Color(0xFF52667A);
 
+  final AnnualLeaveBlockPendingActionService _blockPendingService =
+      AnnualLeaveBlockPendingActionService();
+  final AnnualLeaveBlockService _blockService = AnnualLeaveBlockService();
+
   bool _isLoading = true;
   String? _errorMessage;
   List<AnnualLeaveRequest> _requests = <AnnualLeaveRequest>[];
+  List<AnnualLeaveBlockPendingAction> _blockActions =
+      <AnnualLeaveBlockPendingAction>[];
 
   @override
   void initState() {
@@ -588,6 +736,9 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
       final List<AnnualLeaveRequest> requests = await widget.annualLeaveService
           .getPendingFloatingRequests();
 
+      final List<AnnualLeaveBlockPendingAction> blockActions =
+          await _blockPendingService.getPendingActions();
+
       if (!mounted) {
         return;
       }
@@ -598,11 +749,29 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                 a.leaveDate.compareTo(b.leaveDate),
           );
 
+      final List<AnnualLeaveBlockPendingAction> orderedBlockActions =
+          List<AnnualLeaveBlockPendingAction>.of(blockActions)..sort(
+            (
+              AnnualLeaveBlockPendingAction a,
+              AnnualLeaveBlockPendingAction b,
+            ) => a.proposedStartDate.compareTo(b.proposedStartDate),
+          );
+
       setState(() {
         _requests = orderedRequests;
+        _blockActions = orderedBlockActions;
         _isLoading = false;
       });
     } on AnnualLeaveException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isLoading = false;
+        _errorMessage = error.message;
+      });
+    } on AnnualLeaveBlockPendingActionException catch (error) {
       if (!mounted) {
         return;
       }
@@ -813,6 +982,415 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
     }
   }
 
+  String _blockPeriodLabel(AnnualLeaveBlockPendingAction action) {
+    switch (action.periodType) {
+      case AnnualLeaveBlockPeriodType.spring:
+        return 'Spring block leave';
+      case AnnualLeaveBlockPeriodType.summerFirstWeek:
+        return 'Summer block leave – Week 1';
+      case AnnualLeaveBlockPeriodType.summerSecondWeek:
+        return 'Summer block leave – Week 2';
+      case AnnualLeaveBlockPeriodType.winter:
+        return 'Winter block leave';
+    }
+  }
+
+  String _blockScheduledTimeLabel(AnnualLeaveBlockPendingAction action) {
+    final DateTime? scheduledFor = action.scheduledFor;
+
+    if (scheduledFor == null) {
+      return 'Send time unavailable';
+    }
+
+    /*
+     * The current scheduled block dates are stored as UTC timestamps
+     * representing the required UK send time.
+     */
+    final DateTime local = scheduledFor.toLocal();
+
+    final String minute = local.minute.toString().padLeft(2, '0');
+
+    const List<String> months = <String>[
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    return '${local.hour.toString().padLeft(2, '0')}:$minute '
+        'on ${local.day} ${months[local.month - 1]} ${local.year}';
+  }
+
+  String _blockChangeTypeLabel(AnnualLeaveBlockPendingAction action) {
+    switch (action.changeType) {
+      case AnnualLeaveBlockChangeType.manual:
+        return 'Manual';
+      case AnnualLeaveBlockChangeType.agreedMove:
+        return 'Block move';
+      case AnnualLeaveBlockChangeType.mutualSwap:
+        return 'Mutual swap';
+    }
+  }
+
+  Future<void> _confirmBlockAction(AnnualLeaveBlockPendingAction action) async {
+    final bool? confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return CupertinoAlertDialog(
+          title: const Text('Union confirmed?'),
+          content: Text(
+            'Has the Union confirmed this ${_blockChangeTypeLabel(action).toLowerCase()} '
+            'for ${_blockPeriodLabel(action)}?',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('Not yet'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Yes, confirmed'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    try {
+      await _blockService.saveOverride(
+        leaveYear: action.leaveYear,
+        periodType: action.periodType,
+        originalStartDate: action.originalStartDate,
+        originalEndDate: action.originalEndDate,
+        overrideStartDate: action.proposedStartDate,
+        overrideEndDate: action.proposedEndDate,
+        changeType: action.changeType,
+        swapDriverNumber: action.swapDriverNumber,
+        swapReference: action.swapReference,
+        notes: action.notes,
+      );
+
+      await _blockPendingService.markConfirmed(actionId: action.id);
+
+      widget.onChanged();
+      await _load();
+
+      _showMessage('${_blockPeriodLabel(action)} confirmed and updated.');
+    } on AnnualLeaveBlockException catch (error) {
+      _showMessage(error.message);
+    } on AnnualLeaveBlockPendingActionException catch (error) {
+      _showMessage(error.message);
+    } catch (_) {
+      _showMessage('Roster Buddy could not confirm this block leave change.');
+    }
+  }
+
+  Future<void> _cancelScheduledBlockAction(
+    AnnualLeaveBlockPendingAction action,
+  ) async {
+    final bool? confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return CupertinoAlertDialog(
+          title: const Text('Cancel queued request?'),
+          content: Text(
+            'Remove the queued ${_blockChangeTypeLabel(action).toLowerCase()} '
+            'for ${_blockPeriodLabel(action)}?',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('Keep'),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Cancel request'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    try {
+      await _blockPendingService.cancelScheduledAction(actionId: action.id);
+
+      await _load();
+
+      _showMessage('${_blockPeriodLabel(action)} removed from the send queue.');
+    } on AnnualLeaveBlockPendingActionException catch (error) {
+      _showMessage(error.message);
+    } catch (_) {
+      _showMessage(
+        'Roster Buddy could not cancel this queued block leave request.',
+      );
+    }
+  }
+
+  Future<void> _cancelBlockAction(AnnualLeaveBlockPendingAction action) async {
+    final bool? confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return CupertinoAlertDialog(
+          title: const Text('Cancel pending change?'),
+          content: Text(
+            'Cancel the pending ${_blockChangeTypeLabel(action).toLowerCase()} '
+            'for ${_blockPeriodLabel(action)}?',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('Keep'),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Cancel change'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    try {
+      await _blockPendingService.cancelPendingAction(actionId: action.id);
+
+      await _load();
+
+      _showMessage('${_blockPeriodLabel(action)} pending change cancelled.');
+    } on AnnualLeaveBlockPendingActionException catch (error) {
+      _showMessage(error.message);
+    } catch (_) {
+      _showMessage(
+        'Roster Buddy could not cancel this pending block leave change.',
+      );
+    }
+  }
+
+  Widget _buildBlockActionCard(AnnualLeaveBlockPendingAction action) {
+    final bool mutualSwap =
+        action.changeType == AnnualLeaveBlockChangeType.mutualSwap;
+
+    final bool scheduled =
+        action.status == AnnualLeaveBlockPendingStatus.scheduled;
+
+    final Color statusColour = scheduled ? const Color(0xFFF59E0B) : leaveRed;
+
+    final String statusLabel = scheduled ? 'SEND QUEUE' : 'UNION';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  scheduled
+                      ? Icons.schedule_send_outlined
+                      : Icons.swap_horiz_outlined,
+                  color: statusColour,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _blockPeriodLabel(action),
+                    style: const TextStyle(
+                      color: navy,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusColour.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    statusLabel,
+                    style: TextStyle(
+                      color: scheduled ? const Color(0xFFB45309) : leaveRed,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${_blockChangeTypeLabel(action)} • ${action.leaveYear}',
+              style: const TextStyle(color: navy, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Current: ${_dateLabel(action.originalStartDate)} – '
+              '${_dateLabel(action.originalEndDate)}',
+              style: const TextStyle(color: textGrey),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Requested: ${_dateLabel(action.proposedStartDate)} – '
+              '${_dateLabel(action.proposedEndDate)}',
+              style: const TextStyle(color: navy, fontWeight: FontWeight.w700),
+            ),
+            if (mutualSwap && action.swapDriverNumber != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Other driver: ${action.swapDriverNumber}',
+                style: const TextStyle(color: textGrey),
+              ),
+            ],
+            if (action.swapReference != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Reference: ${action.swapReference}',
+                style: const TextStyle(color: textGrey),
+              ),
+            ],
+            if (action.notes != null) ...[
+              const SizedBox(height: 4),
+              Text(action.notes!, style: const TextStyle(color: textGrey)),
+            ],
+
+            if (scheduled) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF59E0B).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: const Color(0xFFF59E0B).withValues(alpha: 0.25),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Saved to send queue',
+                      style: TextStyle(
+                        color: Color(0xFFB45309),
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Due to send ${_blockScheduledTimeLabel(action)}',
+                      style: const TextStyle(
+                        color: navy,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (action.recipientEmail != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'To: ${action.recipientEmail}',
+                        style: const TextStyle(color: textGrey),
+                      ),
+                    ],
+                    const SizedBox(height: 7),
+                    const Text(
+                      'Automatic email sending is not yet active. '
+                      'The email details and send time are safely stored, '
+                      'but the server-side sender still needs to be connected.',
+                      style: TextStyle(
+                        color: textGrey,
+                        fontSize: 12,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _cancelScheduledBlockAction(action),
+                  icon: const Icon(Icons.cancel_outlined),
+                  label: const Text('Cancel queued request'),
+                  style: OutlinedButton.styleFrom(foregroundColor: leaveRed),
+                ),
+              ),
+            ] else ...[
+              const SizedBox(height: 10),
+              const Text(
+                'Awaiting Union confirmation. Your current block allocation '
+                'has not been changed.',
+                style: TextStyle(
+                  color: Color(0xFFB45309),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => _confirmBlockAction(action),
+                  icon: const Icon(Icons.verified_outlined),
+                  label: const Text('Union confirmed'),
+                  style: FilledButton.styleFrom(backgroundColor: leaveRed),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _cancelBlockAction(action),
+                  icon: const Icon(Icons.cancel_outlined),
+                  label: const Text('Cancel pending change'),
+                  style: OutlinedButton.styleFrom(foregroundColor: leaveRed),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildRequestCard(AnnualLeaveRequest request) {
     final bool isAbeyance = request.status == AnnualLeaveRequestStatus.abeyance;
 
@@ -911,6 +1489,9 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final bool hasPendingActions =
+        _requests.isNotEmpty || _blockActions.isNotEmpty;
+
     return Scaffold(
       backgroundColor: background,
       appBar: AppBar(
@@ -946,7 +1527,8 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
               ),
               const SizedBox(height: 4),
               const Text(
-                'Record the decision received from Rosters.',
+                'Record decisions from Rosters or confirm outstanding '
+                'block leave changes with the Union.',
                 style: TextStyle(color: textGrey),
               ),
               const SizedBox(height: 16),
@@ -981,7 +1563,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                     ),
                   ),
                 )
-              else if (_requests.isEmpty)
+              else if (!hasPendingActions)
                 const Card(
                   child: Padding(
                     padding: EdgeInsets.all(22),
@@ -998,7 +1580,8 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                         ),
                         SizedBox(height: 5),
                         Text(
-                          'Annual leave requests awaiting a decision will appear here.',
+                          'Floating leave decisions and block leave changes '
+                          'awaiting action will appear here.',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: textGrey),
                         ),
@@ -1006,8 +1589,92 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                     ),
                   ),
                 )
-              else
-                ..._requests.map(_buildRequestCard),
+              else ...[
+                const Row(
+                  children: [
+                    Icon(Icons.beach_access_outlined, color: leaveRed),
+                    SizedBox(width: 8),
+                    Text(
+                      'Floating annual leave',
+                      style: TextStyle(
+                        color: navy,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Individual ALD requests awaiting a decision from Rosters.',
+                  style: TextStyle(color: textGrey),
+                ),
+                const SizedBox(height: 12),
+                if (_requests.isEmpty)
+                  const Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Icon(Icons.check_circle_outline, color: textGrey),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'No floating annual leave actions.',
+                              style: TextStyle(color: textGrey),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  ..._requests.map(_buildRequestCard),
+
+                const SizedBox(height: 22),
+
+                const Row(
+                  children: [
+                    Icon(Icons.swap_horiz_outlined, color: leaveRed),
+                    SizedBox(width: 8),
+                    Text(
+                      'Block annual leave',
+                      style: TextStyle(
+                        color: navy,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Block moves, mutual swaps and future requests waiting '
+                  'in the Union send queue.',
+                  style: TextStyle(color: textGrey),
+                ),
+                const SizedBox(height: 12),
+                if (_blockActions.isEmpty)
+                  const Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Icon(Icons.check_circle_outline, color: textGrey),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'No block annual leave actions.',
+                              style: TextStyle(color: textGrey),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  ..._blockActions.map(_buildBlockActionCard),
+              ],
             ],
           ),
         ),

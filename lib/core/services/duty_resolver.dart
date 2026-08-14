@@ -53,7 +53,8 @@ class DutyResolver {
     final Map<String, dynamic>? profile = await _supabase
         .from(_profileTableName)
         .select(
-          'payroll_number, driver_number, permanently_unavailable_sundays',
+          'payroll_number, roster_number, driver_number, '
+          'permanently_unavailable_sundays',
         )
         .eq('user_id', user.id)
         .maybeSingle();
@@ -65,11 +66,16 @@ class DutyResolver {
     final String? payrollNumber = _normaliseIdentifier(
       profile['payroll_number'],
     );
+
+    final String? rosterNumber = _normaliseIdentifier(
+      profile['roster_number'] ?? profile['driver_number'],
+    );
+
     final String? driverNumber = _normaliseIdentifier(profile['driver_number']);
     final bool permanentlyUnavailableSundays =
         profile['permanently_unavailable_sundays'] == true;
 
-    if (payrollNumber == null && driverNumber == null) {
+    if (payrollNumber == null && rosterNumber == null && driverNumber == null) {
       return const [];
     }
 
@@ -88,7 +94,7 @@ class DutyResolver {
           (row) => matchesProfile(
             row: row,
             payrollNumber: payrollNumber,
-            driverNumber: driverNumber,
+            rosterNumber: rosterNumber,
           ),
         )
         .map(_dutyFromRow)
@@ -150,10 +156,23 @@ class DutyResolver {
         .map(AnnualLeaveBlockOverride.fromMap)
         .toList(growable: false);
 
+    final Set<String> officialBlockPeriodKeys =
+        await _getOfficialBlockPeriodKeys(
+          driverNumber: driverNumber,
+          startYear: date.year,
+          endYear: date.year,
+        );
+
+    final List<AnnualLeaveBlockOverride> effectiveBlockOverrides =
+        _effectiveBlockOverrides(
+          overrides: blockOverrides,
+          officialPeriodKeys: officialBlockPeriodKeys,
+        );
+
     _applyBlockOverridesForDate(
       duties: duties,
       date: date,
-      overrides: blockOverrides,
+      overrides: effectiveBlockOverrides,
     );
 
     if (date.weekday == DateTime.sunday) {
@@ -176,7 +195,7 @@ class DutyResolver {
           startDate: date,
           endDate: date,
           driverNumber: driverNumber,
-          overrides: blockOverrides,
+          overrides: effectiveBlockOverrides,
         );
 
         if (postBlockSundayDates.contains(_databaseDate(date))) {
@@ -246,7 +265,8 @@ class DutyResolver {
     final Map<String, dynamic>? profile = await _supabase
         .from(_profileTableName)
         .select(
-          'payroll_number, driver_number, permanently_unavailable_sundays',
+          'payroll_number, roster_number, driver_number, '
+          'permanently_unavailable_sundays',
         )
         .eq('user_id', user.id)
         .maybeSingle();
@@ -258,11 +278,16 @@ class DutyResolver {
     final String? payrollNumber = _normaliseIdentifier(
       profile['payroll_number'],
     );
+
+    final String? rosterNumber = _normaliseIdentifier(
+      profile['roster_number'] ?? profile['driver_number'],
+    );
+
     final String? driverNumber = _normaliseIdentifier(profile['driver_number']);
     final bool permanentlyUnavailableSundays =
         profile['permanently_unavailable_sundays'] == true;
 
-    if (payrollNumber == null && driverNumber == null) {
+    if (payrollNumber == null && rosterNumber == null && driverNumber == null) {
       return const <String, Duty>{};
     }
 
@@ -288,7 +313,7 @@ class DutyResolver {
             (row) => matchesProfile(
               row: row,
               payrollNumber: payrollNumber,
-              driverNumber: driverNumber,
+              rosterNumber: rosterNumber,
             ),
           )
           .map(_dutyFromRow),
@@ -370,12 +395,25 @@ class DutyResolver {
         .map(AnnualLeaveBlockOverride.fromMap)
         .toList(growable: false);
 
-    if (blockOverrides.isNotEmpty) {
+    final Set<String> officialBlockPeriodKeys =
+        await _getOfficialBlockPeriodKeys(
+          driverNumber: driverNumber,
+          startYear: start.year,
+          endYear: end.year,
+        );
+
+    final List<AnnualLeaveBlockOverride> effectiveBlockOverrides =
+        _effectiveBlockOverrides(
+          overrides: blockOverrides,
+          officialPeriodKeys: officialBlockPeriodKeys,
+        );
+
+    if (effectiveBlockOverrides.isNotEmpty) {
       _applyBlockOverridesForRange(
         duties: duties,
         start: start,
         end: end,
-        overrides: blockOverrides,
+        overrides: effectiveBlockOverrides,
       );
     }
 
@@ -401,7 +439,7 @@ class DutyResolver {
         startDate: start,
         endDate: end,
         driverNumber: driverNumber,
-        overrides: blockOverrides,
+        overrides: effectiveBlockOverrides,
       );
 
       if (postBlockSundayDates.isNotEmpty) {
@@ -436,6 +474,90 @@ class DutyResolver {
   /// The official Annual Leave Roster remains the baseline. If that block has
   /// a user-specific move or mutual swap, the override dates replace the
   /// original dates for this rule as well.
+  Future<Set<String>> _getOfficialBlockPeriodKeys({
+    required String? driverNumber,
+    required int startYear,
+    required int endYear,
+  }) async {
+    if (driverNumber == null || driverNumber.trim().isEmpty) {
+      return const <String>{};
+    }
+
+    final DateTime firstDate = DateTime(startYear, 1, 1);
+    final DateTime lastDate = DateTime(endYear, 12, 31);
+
+    final List<dynamic> response = await _supabase
+        .from(_annualLeavePeriodTableName)
+        .select(
+          'period_type, start_date, end_date, '
+          'annual_leave_allocations!inner('
+          'driver_number, is_confirmed'
+          ')',
+        )
+        .lte('start_date', _databaseDate(lastDate))
+        .gte('end_date', _databaseDate(firstDate))
+        .eq('annual_leave_allocations.driver_number', driverNumber)
+        .eq('annual_leave_allocations.is_confirmed', true);
+
+    final Set<String> result = <String>{};
+
+    for (final Map<String, dynamic> row
+        in response.whereType<Map<String, dynamic>>()) {
+      final DateTime? start = DateTime.tryParse(
+        (row['start_date'] ?? '').toString(),
+      );
+
+      final AnnualLeaveBlockPeriodType? type = _blockPeriodTypeFromDatabase(
+        row['period_type'],
+      );
+
+      if (start == null || type == null) {
+        continue;
+      }
+
+      result.add('${start.year}:${type.name}');
+    }
+
+    return Set<String>.unmodifiable(result);
+  }
+
+  static List<AnnualLeaveBlockOverride> _effectiveBlockOverrides({
+    required List<AnnualLeaveBlockOverride> overrides,
+    required Set<String> officialPeriodKeys,
+  }) {
+    return overrides
+        .where((AnnualLeaveBlockOverride override) {
+          if (override.changeType != AnnualLeaveBlockChangeType.manual) {
+            return true;
+          }
+
+          final String key =
+              '${override.leaveYear}:${override.periodType.name}';
+
+          return !officialPeriodKeys.contains(key);
+        })
+        .toList(growable: false);
+  }
+
+  /// Exposes block-override filtering for focused unit tests.
+  static List<AnnualLeaveBlockOverride> effectiveBlockOverridesForTest({
+    required List<AnnualLeaveBlockOverride> overrides,
+    required Set<String> officialPeriodKeys,
+  }) {
+    return _effectiveBlockOverrides(
+      overrides: overrides,
+      officialPeriodKeys: officialPeriodKeys,
+    );
+  }
+
+  /// Exposes block-leave duty creation for focused unit tests.
+  static Duty blockOverrideDutyForTest({
+    required AnnualLeaveBlockOverride override,
+    required DateTime date,
+  }) {
+    return _blockOverrideDuty(override: override, date: date);
+  }
+
   Future<Set<String>> _getPostBlockSundayDates({
     required DateTime startDate,
     required DateTime endDate,
@@ -889,20 +1011,27 @@ class DutyResolver {
   static bool matchesProfile({
     required Map<String, dynamic> row,
     required String? payrollNumber,
-    required String? driverNumber,
+    required String? rosterNumber,
   }) {
-    final String? rowPayroll = _normaliseIdentifier(row['payroll_number']);
-    final String? rowDriver = _normaliseIdentifier(row['driver_number']);
+    final RosterSource source = _rosterSource(row['source']);
 
-    final bool payrollMatches =
-        payrollNumber != null &&
-        rowPayroll != null &&
-        payrollNumber == rowPayroll;
+    if (source == RosterSource.baseRoster) {
+      final String? rowRosterNumber = _normaliseIdentifier(
+        row['driver_number'],
+      );
 
-    final bool driverMatches =
-        driverNumber != null && rowDriver != null && driverNumber == rowDriver;
+      return rosterNumber != null &&
+          rowRosterNumber != null &&
+          rosterNumber == rowRosterNumber;
+    }
 
-    return payrollMatches || driverMatches;
+    final String? rowPayrollNumber = _normaliseIdentifier(
+      row['payroll_number'],
+    );
+
+    return payrollNumber != null &&
+        rowPayrollNumber != null &&
+        payrollNumber == rowPayrollNumber;
   }
 
   static Duty _floatingAnnualLeaveDutyFromRow(Map<String, dynamic> row) {

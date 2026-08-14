@@ -36,7 +36,7 @@ class DocumentProcessingService {
     required String originalFilename,
     required DocumentType documentType,
     DateTime? baseRosterCommencementDate,
-    String? baseRosterSwapPartnerDriverNumber,
+    String? baseRosterSwapPartnerRosterNumber,
     bool baseRosterStartsWithPartner = false,
   }) async {
     final bool isBaseRoster = documentType == DocumentType.baseRoster;
@@ -102,11 +102,11 @@ class DocumentProcessingService {
       final ParseResult parseResult;
 
       if (isBaseRoster) {
-        final String? driverNumber = await _currentDriverNumber();
+        final String? rosterNumber = await _currentRosterNumber();
 
-        if (driverNumber == null || driverNumber.trim().isEmpty) {
+        if (rosterNumber == null || rosterNumber.trim().isEmpty) {
           throw const DocumentProcessingException(
-            'Add your Base Roster driver number in Settings before processing this document.',
+            'Add your Roster Number in Settings before processing this Base Roster.',
           );
         }
 
@@ -118,8 +118,8 @@ class DocumentProcessingService {
 
         final BaseRosterParser parser = BaseRosterParser(
           commencementDate: baseRosterCommencementDate,
-          driverNumber: driverNumber,
-          swapPartnerDriverNumber: baseRosterSwapPartnerDriverNumber,
+          rosterNumber: rosterNumber,
+          swapPartnerRosterNumber: baseRosterSwapPartnerRosterNumber,
           initialLine: baseRosterStartsWithPartner
               ? BaseRosterInitialLine.swapPartner
               : BaseRosterInitialLine.driver,
@@ -244,7 +244,7 @@ class DocumentProcessingService {
     }
   }
 
-  static Future<String?> _currentDriverNumber() async {
+  static Future<String?> _currentRosterNumber() async {
     final User? user = _supabase.auth.currentUser;
 
     if (user == null) {
@@ -255,22 +255,29 @@ class DocumentProcessingService {
 
     final Map<String, dynamic>? profile = await _supabase
         .from('driver_profiles')
-        .select('driver_number')
+        .select('roster_number, driver_number')
         .eq('user_id', user.id)
         .maybeSingle();
 
-    final String tableDriverNumber = (profile?['driver_number'] ?? '')
-        .toString()
-        .trim();
+    // Prefer the dedicated Roster Number. The driver_number fallback keeps
+    // older profiles working until their profile has been reviewed.
+    final String tableRosterNumber =
+        (profile?['roster_number'] ?? profile?['driver_number'] ?? '')
+            .toString()
+            .trim();
 
-    if (tableDriverNumber.isNotEmpty) {
-      return tableDriverNumber;
+    if (tableRosterNumber.isNotEmpty) {
+      return tableRosterNumber;
     }
 
-    final String metadataDriverNumber =
-        (user.userMetadata?['driver_number'] ?? '').toString().trim();
+    final String metadataRosterNumber =
+        (user.userMetadata?['roster_number'] ??
+                user.userMetadata?['driver_number'] ??
+                '')
+            .toString()
+            .trim();
 
-    return metadataDriverNumber.isEmpty ? null : metadataDriverNumber;
+    return metadataRosterNumber.isEmpty ? null : metadataRosterNumber;
   }
 
   static Future<void> _replaceAnnualLeaveAllocations({

@@ -12,12 +12,12 @@ class BaseRosterActivation {
     required this.commencementDate,
     required this.hasMutualSwap,
     required this.startingLine,
-    this.swapPartnerDriverNumber,
+    this.swapPartnerRosterNumber,
   });
 
   final DateTime commencementDate;
   final bool hasMutualSwap;
-  final String? swapPartnerDriverNumber;
+  final String? swapPartnerRosterNumber;
   final BaseRosterStartingLine startingLine;
 }
 
@@ -55,7 +55,7 @@ class StorageService {
   static Future<DocumentProcessingResult?> reprocessActiveBaseRoster({
     required DateTime commencementDate,
     required bool hasMutualSwap,
-    String? swapPartnerDriverNumber,
+    String? swapPartnerRosterNumber,
     required bool startsWithPartner,
   }) async {
     final User? user = _supabase.auth.currentUser;
@@ -113,7 +113,7 @@ class StorageService {
         .download(storagePath);
 
     final String? swapPartner = hasMutualSwap
-        ? swapPartnerDriverNumber?.trim()
+        ? swapPartnerRosterNumber?.trim()
         : null;
 
     await _supabase
@@ -121,7 +121,7 @@ class StorageService {
         .update({
           'commencement_date': _databaseDate(commencementDate),
           'has_mutual_swap': hasMutualSwap,
-          'swap_partner_driver_number': swapPartner,
+          'swap_partner_roster_number': swapPartner,
           'starts_with_line': startsWithPartner ? 'partner' : 'mine',
         })
         .eq('document_id', documentId)
@@ -133,7 +133,7 @@ class StorageService {
       originalFilename: originalFilename,
       documentType: DocumentType.baseRoster,
       baseRosterCommencementDate: commencementDate,
-      baseRosterSwapPartnerDriverNumber: swapPartner,
+      baseRosterSwapPartnerRosterNumber: swapPartner,
       baseRosterStartsWithPartner: startsWithPartner,
     );
   }
@@ -227,9 +227,9 @@ class StorageService {
             originalFilename: originalFilename,
             documentType: documentType,
             baseRosterCommencementDate: baseRosterActivation?.commencementDate,
-            baseRosterSwapPartnerDriverNumber:
+            baseRosterSwapPartnerRosterNumber:
                 baseRosterActivation?.hasMutualSwap == true
-                ? baseRosterActivation?.swapPartnerDriverNumber
+                ? baseRosterActivation?.swapPartnerRosterNumber
                 : null,
             baseRosterStartsWithPartner:
                 baseRosterActivation?.startingLine ==
@@ -296,8 +296,8 @@ class StorageService {
 
     if (activation != null &&
         activation.hasMutualSwap &&
-        (activation.swapPartnerDriverNumber == null ||
-            activation.swapPartnerDriverNumber!.trim().isEmpty)) {
+        (activation.swapPartnerRosterNumber == null ||
+            activation.swapPartnerRosterNumber!.trim().isEmpty)) {
       throw const StorageServiceException(
         'Enter the mutual swap partner roster code.',
       );
@@ -314,8 +314,8 @@ class StorageService {
       'document_id': documentId,
       'commencement_date': _databaseDate(activation.commencementDate),
       'has_mutual_swap': activation.hasMutualSwap,
-      'swap_partner_driver_number': activation.hasMutualSwap
-          ? activation.swapPartnerDriverNumber?.trim()
+      'swap_partner_roster_number': activation.hasMutualSwap
+          ? activation.swapPartnerRosterNumber?.trim()
           : null,
       'starts_with_line':
           activation.startingLine == BaseRosterStartingLine.partner
