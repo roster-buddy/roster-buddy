@@ -61,6 +61,7 @@ class ShiftSwapService {
     final List<String> metadata = <String>[
       'TYPE=$type',
       'CONFIRMED_WITH_ROSTERS=$confirmedWithRosters',
+      'CREATED_AT=${DateTime.now().toUtc().toIso8601String()}',
       if (otherDriverName != null && otherDriverName.trim().isNotEmpty)
         'OTHER_DRIVER=${otherDriverName.trim()}',
       if (otherPayrollNumber != null && otherPayrollNumber.trim().isNotEmpty)
@@ -111,6 +112,44 @@ class ShiftSwapService {
     return rows
         .map((dynamic row) => _fromRow(Map<String, dynamic>.from(row as Map)))
         .toList(growable: false);
+  }
+
+  Future<void> markApproved({
+    required String requestId,
+    required String requestedBookOn,
+    required String requestedBookOff,
+  }) async {
+    final String? userId = _client.auth.currentUser?.id;
+
+    if (userId == null) {
+      throw StateError('You must be signed in before approving a shift swap.');
+    }
+
+    await _client
+        .from('shift_swaps')
+        .update(<String, dynamic>{
+          'status': 'approved',
+          'requested_book_on': requestedBookOn.trim(),
+          'requested_book_off': requestedBookOff.trim(),
+        })
+        .eq('id', requestId)
+        .eq('user_id', userId)
+        .eq('status', 'pending');
+  }
+
+  Future<void> cancelRequest({required String requestId}) async {
+    final String? userId = _client.auth.currentUser?.id;
+
+    if (userId == null) {
+      throw StateError('You must be signed in before cancelling a shift swap.');
+    }
+
+    await _client
+        .from('shift_swaps')
+        .update(<String, dynamic>{'status': 'cancelled'})
+        .eq('id', requestId)
+        .eq('user_id', userId)
+        .eq('status', 'pending');
   }
 
   ShiftSwap _fromRow(Map<String, dynamic> row) {

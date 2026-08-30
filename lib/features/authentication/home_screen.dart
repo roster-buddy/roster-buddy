@@ -155,12 +155,45 @@ class _HomeScreenState extends State<HomeScreen> {
       final List<dynamic> floatingRows = await floatingQuery;
       final List<dynamic> blockRows = await blockQuery;
 
+      final List<dynamic> shiftSwapRows = await supabase
+          .from('shift_swaps')
+          .select('id, notes')
+          .eq('user_id', user.id)
+          .eq('status', 'pending');
+
+      int newShiftSwapCount = 0;
+
+      for (final dynamic value in shiftSwapRows) {
+        if (value is! Map) {
+          continue;
+        }
+
+        final String notes = (value['notes'] ?? '').toString();
+        DateTime? createdAt;
+
+        for (final String line in notes.split('\n')) {
+          if (line.startsWith('CREATED_AT=')) {
+            createdAt = DateTime.tryParse(
+              line.substring('CREATED_AT='.length).trim(),
+            );
+            break;
+          }
+        }
+
+        if (lastSeen == null) {
+          newShiftSwapCount++;
+        } else if (createdAt != null && createdAt.isAfter(lastSeen)) {
+          newShiftSwapCount++;
+        }
+      }
+
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _pendingActionCount = floatingRows.length + blockRows.length;
+        _pendingActionCount =
+            floatingRows.length + blockRows.length + newShiftSwapCount;
       });
     } catch (_) {
       // Badge loading must never prevent the main app from loading.
@@ -683,12 +716,17 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   final AnnualLeaveBlockPendingActionService _blockPendingService =
       AnnualLeaveBlockPendingActionService();
   final AnnualLeaveBlockService _blockService = AnnualLeaveBlockService();
+  final ShiftSwapService _shiftSwapService = ShiftSwapService();
+  final DutyResolver _shiftSwapDutyResolver = DutyResolver();
+  final ManualDutyService _shiftSwapManualDutyService = ManualDutyService();
+  final JobCardService _shiftSwapJobCardService = JobCardService();
 
   bool _isLoading = true;
   String? _errorMessage;
   List<AnnualLeaveRequest> _requests = <AnnualLeaveRequest>[];
   List<AnnualLeaveBlockPendingAction> _blockActions =
       <AnnualLeaveBlockPendingAction>[];
+  List<ShiftSwap> _shiftSwaps = <ShiftSwap>[];
 
   @override
   void initState() {
@@ -739,6 +777,8 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
       final List<AnnualLeaveBlockPendingAction> blockActions =
           await _blockPendingService.getPendingActions();
 
+      final List<ShiftSwap> shiftSwaps = await _shiftSwapService.getRequests();
+
       if (!mounted) {
         return;
       }
@@ -757,9 +797,19 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
             ) => a.proposedStartDate.compareTo(b.proposedStartDate),
           );
 
+      final List<ShiftSwap> orderedShiftSwaps =
+          shiftSwaps
+              .where((ShiftSwap swap) => swap.status == ShiftSwapStatus.pending)
+              .toList()
+            ..sort(
+              (ShiftSwap a, ShiftSwap b) =>
+                  a.originalDate.compareTo(b.originalDate),
+            );
+
       setState(() {
         _requests = orderedRequests;
         _blockActions = orderedBlockActions;
+        _shiftSwaps = orderedShiftSwaps;
         _isLoading = false;
       });
     } on AnnualLeaveException catch (error) {
@@ -980,6 +1030,350 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
         'Roster Buddy could not process this annual leave cancellation.',
       );
     }
+  }
+
+  String? _shiftSwapMetadata(ShiftSwap swap, String key) {
+    final String? notes = swap.notes;
+
+    if (notes == null || notes.trim().isEmpty) {
+      return null;
+    }
+
+    final String prefix = '$key=';
+
+    for (final String line in notes.split('\n')) {
+      if (line.startsWith(prefix)) {
+        final String value = line.substring(prefix.length).trim();
+        return value.isEmpty ? null : value;
+      }
+    }
+
+    return null;
+  }
+
+  bool _sameCalendarDate(DateTime first, DateTime second) {
+    return first.year == second.year &&
+        first.month == second.month &&
+        first.day == second.day;
+  }
+
+  Future<void> _approveShiftSwap(ShiftSwap swap) async {
+    final bool? confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return CupertinoAlertDialog(
+          title: const Text('Swap confirmed?'),
+          content: Text(
+            'Has Rosters / DTCM confirmed this mutual swap?\n\n'
+            '${_dateLabel(swap.originalDate)}'
+            '${swap.originalTurnNumber == null ? '' : ' • Turn ${swap.originalTurnNumber}'}'
+            '\n→\n'
+            '${_dateLabel(swap.requestedDate)}'
+            '${swap.requestedTurnNumber == null ? '' : ' • Turn ${swap.requestedTurnNumber}'}',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('Not yet'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Yes, confirmed'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    try {
+      final String? requestedTurn = swap.requestedTurnNumber?.trim();
+
+      if (requestedTurn == null || requestedTurn.isEmpty) {
+        _showMessage(
+          'This swap does not contain the other driver’s turn number.',
+        );
+        return;
+      }
+
+      final Duty? originalDuty = await _shiftSwapDutyResolver.getDutyForDate(
+        swap.originalDate,
+      );
+
+      if (originalDuty == null || !originalDuty.dutyType.countsAsWorking) {
+        _showMessage(
+          'Your original date no longer contains a working duty. '
+          'Roster Buddy has not applied the swap.',
+        );
+        return;
+      }
+
+      final String? storedOriginalTurn = swap.originalTurnNumber?.trim();
+      final String? currentOriginalTurn = originalDuty.turnNumber?.trim();
+
+      if (storedOriginalTurn != null &&
+          storedOriginalTurn.isNotEmpty &&
+          currentOriginalTurn != storedOriginalTurn) {
+        _showMessage(
+          'Your duty on ${_dateLabel(swap.originalDate)} has changed since '
+          'this swap was requested. Review the new duty before applying it.',
+        );
+        return;
+      }
+
+      final JobCardMatch? jobCardMatch = await _shiftSwapJobCardService
+          .findMatchingJobCard(
+            turnNumber: requestedTurn,
+            dutyDate: swap.requestedDate,
+          );
+
+      if (jobCardMatch == null ||
+          jobCardMatch.jobCard.bookOn.trim().isEmpty ||
+          jobCardMatch.jobCard.bookOff.trim().isEmpty) {
+        _showMessage(
+          'Roster Buddy could not find a valid Job Card for Turn '
+          '$requestedTurn on ${_dateLabel(swap.requestedDate)}.',
+        );
+        return;
+      }
+
+      final bool sameDate = _sameCalendarDate(
+        swap.originalDate,
+        swap.requestedDate,
+      );
+
+      Duty? targetOriginalDuty;
+
+      if (!sameDate) {
+        targetOriginalDuty = await _shiftSwapDutyResolver.getDutyForDate(
+          swap.requestedDate,
+        );
+
+        if (targetOriginalDuty?.dutyType.countsAsWorking == true) {
+          _showMessage(
+            'You already have a working duty on '
+            '${_dateLabel(swap.requestedDate)}. '
+            'Roster Buddy will not apply this swap automatically.',
+          );
+          return;
+        }
+      }
+
+      final String otherDriver = _shiftSwapMetadata(swap, 'OTHER_DRIVER') ?? '';
+      final String otherPayroll =
+          _shiftSwapMetadata(swap, 'OTHER_PAYROLL') ?? '';
+
+      if (sameDate) {
+        await _shiftSwapManualDutyService.saveMutualSwapWorkingDuty(
+          date: swap.originalDate,
+          turnNumber: jobCardMatch.jobCard.turnNumber,
+          bookOn: jobCardMatch.jobCard.bookOn,
+          bookOff: jobCardMatch.jobCard.bookOff,
+          otherDriverName: otherDriver,
+          otherPayrollNumber: otherPayroll,
+          originalDuty: originalDuty,
+        );
+      } else {
+        await _shiftSwapManualDutyService.saveMutualSwapRestDay(
+          date: swap.originalDate,
+          originalDuty: originalDuty,
+          otherDriverName: otherDriver,
+          otherPayrollNumber: otherPayroll,
+        );
+
+        await _shiftSwapManualDutyService.saveMutualSwapWorkingDuty(
+          date: swap.requestedDate,
+          turnNumber: jobCardMatch.jobCard.turnNumber,
+          bookOn: jobCardMatch.jobCard.bookOn,
+          bookOff: jobCardMatch.jobCard.bookOff,
+          otherDriverName: otherDriver,
+          otherPayrollNumber: otherPayroll,
+          originalDuty: targetOriginalDuty,
+        );
+      }
+
+      // Mark approved only after the diary changes succeed.
+      // If this status update fails, retrying is safe because the manual-duty
+      // writes are upserts.
+      await _shiftSwapService.markApproved(
+        requestId: swap.id,
+        requestedBookOn: jobCardMatch.jobCard.bookOn,
+        requestedBookOff: jobCardMatch.jobCard.bookOff,
+      );
+
+      widget.onChanged();
+      await _load();
+
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(
+        sameDate
+            ? 'Mutual swap confirmed. Turn ${jobCardMatch.jobCard.turnNumber} '
+                  'is now shown on ${_dateLabel(swap.originalDate)}.'
+            : 'Mutual swap confirmed. '
+                  '${_dateLabel(swap.originalDate)} is now a Rest Day and '
+                  'Turn ${jobCardMatch.jobCard.turnNumber} is shown on '
+                  '${_dateLabel(swap.requestedDate)}.',
+      );
+    } catch (_) {
+      _showMessage('Roster Buddy could not apply this mutual shift swap.');
+    }
+  }
+
+  Future<void> _cancelShiftSwap(ShiftSwap swap) async {
+    final bool? confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return CupertinoAlertDialog(
+          title: const Text('Cancel swap request?'),
+          content: Text(
+            'Cancel the pending mutual swap from '
+            '${_dateLabel(swap.originalDate)} to '
+            '${_dateLabel(swap.requestedDate)}?',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('Keep'),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Cancel request'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    try {
+      await _shiftSwapService.cancelRequest(requestId: swap.id);
+
+      widget.onChanged();
+      await _load();
+
+      _showMessage('Mutual shift swap request cancelled.');
+    } catch (_) {
+      _showMessage(
+        'Roster Buddy could not cancel this mutual shift swap request.',
+      );
+    }
+  }
+
+  Widget _buildShiftSwapCard(ShiftSwap swap) {
+    final String? otherDriver = _shiftSwapMetadata(swap, 'OTHER_DRIVER');
+    final String? otherPayroll = _shiftSwapMetadata(swap, 'OTHER_PAYROLL');
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.swap_horiz_outlined, color: Color(0xFF1769AA)),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Mutual shift swap',
+                    style: TextStyle(
+                      color: navy,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'ROSTERS',
+                    style: TextStyle(
+                      color: Color(0xFFB45309),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Your duty: ${_dateLabel(swap.originalDate)}'
+              '${swap.originalTurnNumber == null ? '' : ' • Turn ${swap.originalTurnNumber}'}',
+              style: const TextStyle(color: navy, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Requested duty: ${_dateLabel(swap.requestedDate)}'
+              '${swap.requestedTurnNumber == null ? '' : ' • Turn ${swap.requestedTurnNumber}'}',
+              style: const TextStyle(color: navy, fontWeight: FontWeight.w700),
+            ),
+            if (otherDriver != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Other driver: $otherDriver'
+                '${otherPayroll == null ? '' : ' • Payroll $otherPayroll'}',
+                style: const TextStyle(color: textGrey),
+              ),
+            ],
+            const SizedBox(height: 8),
+            const Text(
+              'Awaiting confirmation from Rosters / DTCM.',
+              style: TextStyle(color: textGrey),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => _approveShiftSwap(swap),
+                icon: const Icon(Icons.check_circle_outline),
+                label: const Text('Confirm approved'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Color(0xFF1769AA),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _cancelShiftSwap(swap),
+                icon: const Icon(Icons.cancel_outlined),
+                label: const Text('Cancel request'),
+                style: OutlinedButton.styleFrom(foregroundColor: leaveRed),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   String _blockPeriodLabel(AnnualLeaveBlockPendingAction action) {
@@ -1490,7 +1884,9 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   @override
   Widget build(BuildContext context) {
     final bool hasPendingActions =
-        _requests.isNotEmpty || _blockActions.isNotEmpty;
+        _requests.isNotEmpty ||
+        _blockActions.isNotEmpty ||
+        _shiftSwaps.isNotEmpty;
 
     return Scaffold(
       backgroundColor: background,
@@ -1572,7 +1968,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                         Icon(Icons.inbox_outlined, color: textGrey, size: 34),
                         SizedBox(height: 10),
                         Text(
-                          'No pending annual leave actions',
+                          'No pending actions',
                           style: TextStyle(
                             color: navy,
                             fontWeight: FontWeight.w900,
@@ -1580,8 +1976,8 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                         ),
                         SizedBox(height: 5),
                         Text(
-                          'Floating leave decisions and block leave changes '
-                          'awaiting action will appear here.',
+                          'Annual leave decisions, block leave changes and mutual '
+                          'shift swaps awaiting action will appear here.',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: textGrey),
                         ),
@@ -1630,6 +2026,49 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                   )
                 else
                   ..._requests.map(_buildRequestCard),
+
+                const SizedBox(height: 22),
+
+                const Row(
+                  children: [
+                    Icon(Icons.swap_horiz_outlined, color: Color(0xFF1769AA)),
+                    SizedBox(width: 8),
+                    Text(
+                      'Mutual shift swaps',
+                      style: TextStyle(
+                        color: navy,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Shift swaps waiting for a decision from Rosters / DTCM.',
+                  style: TextStyle(color: textGrey),
+                ),
+                const SizedBox(height: 12),
+                if (_shiftSwaps.isEmpty)
+                  const Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Icon(Icons.check_circle_outline, color: textGrey),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'No pending mutual shift swaps.',
+                              style: TextStyle(color: textGrey),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  ..._shiftSwaps.map(_buildShiftSwapCard),
 
                 const SizedBox(height: 22),
 
