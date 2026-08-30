@@ -1818,6 +1818,30 @@ class _DashboardPageState extends State<_DashboardPage> {
         fatigueRangeDuties.values,
       );
 
+      // Calculate today's consecutive-day figure separately so the Home
+      // screen does not accidentally show the streak at the end of the
+      // seven-day future look-ahead period.
+      final Hidden18Result currentConsecutiveResult = _hidden18Service.evaluate(
+        fatigueRangeDuties.values.where(
+          (Duty duty) => !duty.date.isAfter(today),
+        ),
+      );
+
+      // The current rolling total is the actual seven calendar days ending
+      // today. Hidden18Service sees this seven-day slice in chronological
+      // order, so its greatest rolling value is the total for that slice.
+      final DateTime currentRollingStart = today.subtract(
+        const Duration(days: 6),
+      );
+
+      final Hidden18Result currentRollingResult = _hidden18Service.evaluate(
+        fatigueRangeDuties.values.where(
+          (Duty duty) =>
+              !duty.date.isBefore(currentRollingStart) &&
+              !duty.date.isAfter(today),
+        ),
+      );
+
       final Hidden18Result hidden18Result = Hidden18Result(
         warnings: evaluatedHidden18.warnings
             .where(
@@ -1826,8 +1850,8 @@ class _DashboardPageState extends State<_DashboardPage> {
                   !warning.date.isAfter(fatigueRangeEnd),
             )
             .toList(growable: false),
-        consecutiveDaysWorked: evaluatedHidden18.consecutiveDaysWorked,
-        rollingSevenDayMinutes: evaluatedHidden18.rollingSevenDayMinutes,
+        consecutiveDaysWorked: currentConsecutiveResult.consecutiveDaysWorked,
+        rollingSevenDayMinutes: currentRollingResult.rollingSevenDayMinutes,
       );
 
       final Duty? todayDuty = fatigueRangeDuties[_dashboardDateKey(today)];
@@ -1989,7 +2013,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    'Highest rolling 7-day total: '
+                    'Current rolling 7-day total: '
                     '${_formatHidden18Minutes(result.rollingSevenDayMinutes)}',
                     style: const TextStyle(
                       color: navy,
