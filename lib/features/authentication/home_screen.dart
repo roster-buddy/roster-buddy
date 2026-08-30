@@ -8795,6 +8795,75 @@ class _CalendarPageState extends State<_CalendarPage> {
                                             }
 
                                             try {
+                                              DateTime? requestedSwapDate;
+                                              JobCardMatch? requestedJobCard;
+                                              Duty? requestedDateOriginalDuty;
+
+                                              if (confirmedWithRosters) {
+                                                requestedSwapDate =
+                                                    _shiftSwapService
+                                                        .parseRequestedDate(
+                                                          requestedDateController
+                                                              .text
+                                                              .trim(),
+                                                        );
+
+                                                requestedJobCard =
+                                                    await _jobCardService
+                                                        .findMatchingJobCard(
+                                                          turnNumber:
+                                                              requestedTurnController
+                                                                  .text
+                                                                  .trim(),
+                                                          dutyDate:
+                                                              requestedSwapDate,
+                                                        );
+
+                                                if (requestedJobCard == null ||
+                                                    requestedJobCard
+                                                        .jobCard
+                                                        .bookOn
+                                                        .trim()
+                                                        .isEmpty ||
+                                                    requestedJobCard
+                                                        .jobCard
+                                                        .bookOff
+                                                        .trim()
+                                                        .isEmpty) {
+                                                  _showCalendarMessage(
+                                                    'Roster Buddy could not find a valid Job Card '
+                                                    'for that turn on the proposed date.',
+                                                  );
+                                                  return;
+                                                }
+
+                                                final bool sameDate =
+                                                    _dateKey(
+                                                      requestedSwapDate,
+                                                    ) ==
+                                                    _dateKey(date);
+
+                                                if (!sameDate) {
+                                                  requestedDateOriginalDuty =
+                                                      await _dutyResolver
+                                                          .getDutyForDate(
+                                                            requestedSwapDate,
+                                                          );
+
+                                                  if (requestedDateOriginalDuty
+                                                          ?.dutyType
+                                                          .countsAsWorking ==
+                                                      true) {
+                                                    _showCalendarMessage(
+                                                      'You already have a working duty on '
+                                                      '${_fullDate(requestedSwapDate)}. '
+                                                      'Roster Buddy will not apply this swap automatically.',
+                                                    );
+                                                    return;
+                                                  }
+                                                }
+                                              }
+
                                               await _shiftSwapService
                                                   .createRequest(
                                                     originalDuty: originalDuty,
@@ -8813,6 +8882,14 @@ class _CalendarPageState extends State<_CalendarPage> {
                                                     otherPayrollNumber:
                                                         payrollController.text
                                                             .trim(),
+                                                    requestedBookOn:
+                                                        requestedJobCard
+                                                            ?.jobCard
+                                                            .bookOn,
+                                                    requestedBookOff:
+                                                        requestedJobCard
+                                                            ?.jobCard
+                                                            .bookOff,
                                                     type: 'Mutual swap',
                                                     confirmedWithRosters:
                                                         confirmedWithRosters,
@@ -8821,6 +8898,98 @@ class _CalendarPageState extends State<_CalendarPage> {
                                                   );
 
                                               if (!mounted) {
+                                                return;
+                                              }
+
+                                              if (confirmedWithRosters) {
+                                                final DateTime swapDate =
+                                                    requestedSwapDate!;
+                                                final JobCardMatch jobCard =
+                                                    requestedJobCard!;
+                                                final bool sameDate =
+                                                    _dateKey(swapDate) ==
+                                                    _dateKey(date);
+
+                                                final String otherDriver =
+                                                    driverNameController.text
+                                                        .trim();
+                                                final String otherPayroll =
+                                                    payrollController.text
+                                                        .trim();
+
+                                                if (sameDate) {
+                                                  await _manualDutyService
+                                                      .saveMutualSwapWorkingDuty(
+                                                        date: date,
+                                                        turnNumber: jobCard
+                                                            .jobCard
+                                                            .turnNumber,
+                                                        bookOn: jobCard
+                                                            .jobCard
+                                                            .bookOn,
+                                                        bookOff: jobCard
+                                                            .jobCard
+                                                            .bookOff,
+                                                        otherDriverName:
+                                                            otherDriver,
+                                                        otherPayrollNumber:
+                                                            otherPayroll,
+                                                        originalDuty:
+                                                            originalDuty,
+                                                      );
+                                                } else {
+                                                  await _manualDutyService
+                                                      .saveMutualSwapRestDay(
+                                                        date: date,
+                                                        originalDuty:
+                                                            originalDuty,
+                                                        otherDriverName:
+                                                            otherDriver,
+                                                        otherPayrollNumber:
+                                                            otherPayroll,
+                                                      );
+
+                                                  await _manualDutyService
+                                                      .saveMutualSwapWorkingDuty(
+                                                        date: swapDate,
+                                                        turnNumber: jobCard
+                                                            .jobCard
+                                                            .turnNumber,
+                                                        bookOn: jobCard
+                                                            .jobCard
+                                                            .bookOn,
+                                                        bookOff: jobCard
+                                                            .jobCard
+                                                            .bookOff,
+                                                        otherDriverName:
+                                                            otherDriver,
+                                                        otherPayrollNumber:
+                                                            otherPayroll,
+                                                        originalDuty:
+                                                            requestedDateOriginalDuty,
+                                                      );
+                                                }
+
+                                                await _loadMonth();
+
+                                                if (!mounted) {
+                                                  return;
+                                                }
+
+                                                if (dialogContext.mounted) {
+                                                  Navigator.of(
+                                                    dialogContext,
+                                                  ).pop();
+                                                }
+
+                                                _showCalendarMessage(
+                                                  sameDate
+                                                      ? 'Mutual swap applied. '
+                                                            'Turn ${jobCard.jobCard.turnNumber} is now shown for ${_fullDate(date)}.'
+                                                      : 'Mutual swap applied. '
+                                                            '${_fullDate(date)} is now a Rest Day and '
+                                                            'Turn ${jobCard.jobCard.turnNumber} is shown on ${_fullDate(swapDate)}.',
+                                                );
                                                 return;
                                               }
 

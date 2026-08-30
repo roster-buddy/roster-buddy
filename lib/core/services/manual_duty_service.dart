@@ -50,6 +50,106 @@ class ManualDutyService {
     }, onConflict: 'user_id,duty_date,manual_change_type');
   }
 
+  Future<void> saveMutualSwapWorkingDuty({
+    required DateTime date,
+    required String turnNumber,
+    required String bookOn,
+    required String bookOff,
+    required String otherDriverName,
+    required String otherPayrollNumber,
+    Duty? originalDuty,
+  }) async {
+    final User? user = _supabase.auth.currentUser;
+
+    if (user == null) {
+      throw const ManualDutyException(
+        'You must be signed in before recording a mutual swap.',
+      );
+    }
+
+    if (turnNumber.trim().isEmpty ||
+        bookOn.trim().isEmpty ||
+        bookOff.trim().isEmpty) {
+      throw const ManualDutyException(
+        'The swapped duty does not contain valid turn and time information.',
+      );
+    }
+
+    final int rosteredMinutes = _minutesBetween(
+      bookOn: bookOn,
+      bookOff: bookOff,
+    );
+
+    final String driver = otherDriverName.trim();
+
+    await _supabase.from(_tableName).upsert(<String, dynamic>{
+      'user_id': user.id,
+      'duty_date': _databaseDate(date),
+      'duty_type': 'working',
+      'manual_change_type': 'mutual_swap_working',
+      'turn_number': turnNumber.trim(),
+      'book_on': bookOn.trim(),
+      'book_off': bookOff.trim(),
+      'rostered_minutes': rosteredMinutes,
+      'remarks': driver.isEmpty
+          ? 'Mutual swap'
+          : 'Mutual swap – duty from $driver',
+      'original_source': originalDuty == null
+          ? null
+          : _sourceName(originalDuty),
+      'original_duty_type': originalDuty == null
+          ? null
+          : _dutyTypeName(originalDuty),
+      'original_turn_number': originalDuty == null
+          ? null
+          : _clean(originalDuty.turnNumber),
+      'original_book_on': originalDuty == null
+          ? null
+          : _clean(originalDuty.bookOn),
+      'original_book_off': originalDuty == null
+          ? null
+          : _clean(originalDuty.bookOff),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'user_id,duty_date,manual_change_type');
+  }
+
+  Future<void> saveMutualSwapRestDay({
+    required DateTime date,
+    required Duty originalDuty,
+    required String otherDriverName,
+    required String otherPayrollNumber,
+  }) async {
+    final User? user = _supabase.auth.currentUser;
+
+    if (user == null) {
+      throw const ManualDutyException(
+        'You must be signed in before recording a mutual swap.',
+      );
+    }
+
+    final String driver = otherDriverName.trim();
+
+    await _supabase.from(_tableName).upsert(<String, dynamic>{
+      'user_id': user.id,
+      'duty_date': _databaseDate(date),
+      'duty_type': 'rest_day',
+      'manual_change_type': 'mutual_swap_rest_day',
+      'turn_number': null,
+      'book_on': null,
+      'book_off': null,
+      'rostered_minutes': null,
+      'remarks': driver.isEmpty
+          ? 'Mutual swap – duty swapped away'
+          : 'Mutual swap – duty swapped with $driver',
+      'original_source': _sourceName(originalDuty),
+      'original_duty_type': _dutyTypeName(originalDuty),
+      'original_turn_number': _clean(originalDuty.turnNumber),
+      'original_book_on': _clean(originalDuty.bookOn),
+      'original_book_off': _clean(originalDuty.bookOff),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'user_id,duty_date,manual_change_type');
+  }
+
   Future<void> saveSelectedTurn({
     required DateTime date,
     required String turnNumber,

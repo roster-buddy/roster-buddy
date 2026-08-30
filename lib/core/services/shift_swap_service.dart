@@ -46,6 +46,8 @@ class ShiftSwapService {
     required String requestedTurnNumber,
     String? otherDriverName,
     String? otherPayrollNumber,
+    String? requestedBookOn,
+    String? requestedBookOff,
     String type = 'Mutual swap',
     bool confirmedWithRosters = false,
     String? notes,
@@ -78,8 +80,12 @@ class ShiftSwapService {
           'requested_turn_number': requestedTurnNumber.trim().isEmpty
               ? null
               : requestedTurnNumber.trim(),
-          'requested_book_on': null,
-          'requested_book_off': null,
+          'requested_book_on': requestedBookOn?.trim().isEmpty == false
+              ? requestedBookOn!.trim()
+              : null,
+          'requested_book_off': requestedBookOff?.trim().isEmpty == false
+              ? requestedBookOff!.trim()
+              : null,
           'status': confirmedWithRosters ? 'approved' : 'pending',
           'notes': metadata.join('\n'),
         })
@@ -135,7 +141,7 @@ class ShiftSwapService {
     }
   }
 
-  String _normaliseRequestedDate(String value) {
+  DateTime parseRequestedDate(String value) {
     final String trimmed = value.trim();
 
     final RegExp ukDate = RegExp(r'^(\d{1,2})/(\d{1,2})/(\d{4})$');
@@ -152,7 +158,7 @@ class ShiftSwapService {
         throw StateError('Enter a valid proposed duty date.');
       }
 
-      return _dateKey(parsed);
+      return parsed;
     }
 
     final DateTime? parsed = DateTime.tryParse(trimmed);
@@ -161,7 +167,11 @@ class ShiftSwapService {
       throw StateError('Enter the proposed duty date as DD/MM/YYYY.');
     }
 
-    return _dateKey(parsed);
+    return DateTime(parsed.year, parsed.month, parsed.day);
+  }
+
+  String _normaliseRequestedDate(String value) {
+    return _dateKey(parseRequestedDate(value));
   }
 
   String _dateKey(DateTime value) {
