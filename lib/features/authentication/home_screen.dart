@@ -1135,14 +1135,154 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
             dutyDate: swap.requestedDate,
           );
 
-      if (jobCardMatch == null ||
-          jobCardMatch.jobCard.bookOn.trim().isEmpty ||
-          jobCardMatch.jobCard.bookOff.trim().isEmpty) {
-        _showMessage(
-          'Roster Buddy could not find a valid Job Card for Turn '
-          '$requestedTurn on ${_dateLabel(swap.requestedDate)}.',
+      String incomingTurnNumber = requestedTurn;
+      String incomingBookOn = '';
+      String incomingBookOff = '';
+
+      if (jobCardMatch != null &&
+          incomingBookOn.trim().isNotEmpty &&
+          incomingBookOff.trim().isNotEmpty) {
+        incomingTurnNumber = jobCardMatch.jobCard.turnNumber;
+        incomingBookOn = jobCardMatch.jobCard.bookOn.trim();
+        incomingBookOff = jobCardMatch.jobCard.bookOff.trim();
+      } else {
+        if (!mounted) {
+          return;
+        }
+
+        final TextEditingController bookOnController = TextEditingController();
+        final TextEditingController bookOffController = TextEditingController();
+
+        final List<String>? manualTimes = await showDialog<List<String>>(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext dialogContext) {
+            String? errorText;
+
+            bool validTime(String value) {
+              final String cleaned = value.trim().replaceAll(':', '');
+
+              if (cleaned.length != 4) {
+                return false;
+              }
+
+              final int? hour = int.tryParse(cleaned.substring(0, 2));
+              final int? minute = int.tryParse(cleaned.substring(2, 4));
+
+              if (hour == null || minute == null) {
+                return false;
+              }
+
+              return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+            }
+
+            return StatefulBuilder(
+              builder:
+                  (
+                    BuildContext context,
+                    void Function(void Function()) setDialogState,
+                  ) {
+                    return AlertDialog(
+                      title: const Text('No valid Job Card'),
+                      content: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 420),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'No valid Job Card was found for Turn '
+                              '$requestedTurn on '
+                              '${_dateLabel(swap.requestedDate)}. '
+                              'Please input the times manually.',
+                            ),
+                            const SizedBox(height: 18),
+                            TextField(
+                              controller: bookOnController,
+                              autofocus: true,
+                              keyboardType: TextInputType.datetime,
+                              decoration: const InputDecoration(
+                                labelText: 'Book on',
+                                hintText: '0800',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: bookOffController,
+                              keyboardType: TextInputType.datetime,
+                              decoration: const InputDecoration(
+                                labelText: 'Book off',
+                                hintText: '1600',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                            if (errorText != null) ...[
+                              const SizedBox(height: 10),
+                              Text(
+                                errorText!,
+                                style: const TextStyle(
+                                  color: Color(0xFFD64545),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 10),
+                            const Text(
+                              'Enter times as 4 digits, for example 0800 or 1630.',
+                              style: TextStyle(color: textGrey, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(dialogContext).pop();
+                          },
+                          child: const Text('Cancel'),
+                        ),
+                        FilledButton(
+                          onPressed: () {
+                            final String bookOn = bookOnController.text.trim();
+                            final String bookOff = bookOffController.text
+                                .trim();
+
+                            if (!validTime(bookOn) || !validTime(bookOff)) {
+                              setDialogState(() {
+                                errorText =
+                                    'Enter times as 4 digits, for example 0800 or 1630.';
+                              });
+                              return;
+                            }
+
+                            Navigator.of(
+                              dialogContext,
+                            ).pop(<String>[bookOn, bookOff]);
+                          },
+                          child: const Text('Use times'),
+                        ),
+                      ],
+                    );
+                  },
+            );
+          },
         );
-        return;
+
+        bookOnController.dispose();
+        bookOffController.dispose();
+
+        if (manualTimes == null || !mounted) {
+          return;
+        }
+
+        final String rawBookOn = manualTimes[0].trim().replaceAll(':', '');
+        final String rawBookOff = manualTimes[1].trim().replaceAll(':', '');
+
+        incomingBookOn =
+            '${rawBookOn.substring(0, 2)}:${rawBookOn.substring(2, 4)}';
+        incomingBookOff =
+            '${rawBookOff.substring(0, 2)}:${rawBookOff.substring(2, 4)}';
       }
 
       final bool sameDate = _sameCalendarDate(
@@ -1174,9 +1314,9 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
       if (sameDate) {
         await _shiftSwapManualDutyService.saveMutualSwapWorkingDuty(
           date: swap.originalDate,
-          turnNumber: jobCardMatch.jobCard.turnNumber,
-          bookOn: jobCardMatch.jobCard.bookOn,
-          bookOff: jobCardMatch.jobCard.bookOff,
+          turnNumber: incomingTurnNumber,
+          bookOn: incomingBookOn,
+          bookOff: incomingBookOff,
           otherDriverName: otherDriver,
           otherPayrollNumber: otherPayroll,
           originalDuty: originalDuty,
@@ -1191,9 +1331,9 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
 
         await _shiftSwapManualDutyService.saveMutualSwapWorkingDuty(
           date: swap.requestedDate,
-          turnNumber: jobCardMatch.jobCard.turnNumber,
-          bookOn: jobCardMatch.jobCard.bookOn,
-          bookOff: jobCardMatch.jobCard.bookOff,
+          turnNumber: incomingTurnNumber,
+          bookOn: incomingBookOn,
+          bookOff: incomingBookOff,
           otherDriverName: otherDriver,
           otherPayrollNumber: otherPayroll,
           originalDuty: targetOriginalDuty,
@@ -1205,8 +1345,8 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
       // writes are upserts.
       await _shiftSwapService.markApproved(
         requestId: swap.id,
-        requestedBookOn: jobCardMatch.jobCard.bookOn,
-        requestedBookOff: jobCardMatch.jobCard.bookOff,
+        requestedBookOn: incomingBookOn,
+        requestedBookOff: incomingBookOff,
       );
 
       widget.onChanged();
@@ -1218,15 +1358,24 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
 
       _showMessage(
         sameDate
-            ? 'Mutual swap confirmed. Turn ${jobCardMatch.jobCard.turnNumber} '
+            ? 'Mutual swap confirmed. Turn $incomingTurnNumber '
                   'is now shown on ${_dateLabel(swap.originalDate)}.'
             : 'Mutual swap confirmed. '
                   '${_dateLabel(swap.originalDate)} is now a Rest Day and '
-                  'Turn ${jobCardMatch.jobCard.turnNumber} is shown on '
+                  'Turn $incomingTurnNumber is shown on '
                   '${_dateLabel(swap.requestedDate)}.',
       );
-    } catch (_) {
-      _showMessage('Roster Buddy could not apply this mutual shift swap.');
+    } catch (error) {
+      debugPrint('Mutual shift swap apply failed: $error');
+
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(
+        'Roster Buddy could not apply this mutual shift swap. '
+        'Error: $error',
+      );
     }
   }
 
