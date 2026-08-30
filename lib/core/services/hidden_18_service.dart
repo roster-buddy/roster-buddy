@@ -302,18 +302,18 @@ class Hidden18Service {
       return null;
     }
 
+    final DateTime? start = _dutyStart(duty);
+    final DateTime? end = _dutyEnd(duty);
+
+    if (start != null && end != null) {
+      return end.difference(start).inMinutes;
+    }
+
     if (duty.rosteredMinutes != null && duty.rosteredMinutes! >= 0) {
       return duty.rosteredMinutes;
     }
 
-    final DateTime? start = _dutyStart(duty);
-    final DateTime? end = _dutyEnd(duty);
-
-    if (start == null || end == null) {
-      return null;
-    }
-
-    return end.difference(start).inMinutes;
+    return null;
   }
 
   static DateTime? _dutyStart(Duty duty) {

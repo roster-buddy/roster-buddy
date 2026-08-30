@@ -35,7 +35,12 @@ void main() {
   group('Hidden18Service', () {
     test('warns when a duty exceeds 12 hours', () {
       final Hidden18Result result = service.evaluate(<Duty>[
-        workingDuty(date: DateTime(2026, 8, 1), rosteredMinutes: 12 * 60 + 1),
+        workingDuty(
+          date: DateTime(2026, 8, 1),
+          bookOn: '06:00',
+          bookOff: '18:01',
+          rosteredMinutes: 8 * 60,
+        ),
       ]);
 
       expect(
@@ -49,7 +54,12 @@ void main() {
 
     test('does not warn for a duty exactly 12 hours', () {
       final Hidden18Result result = service.evaluate(<Duty>[
-        workingDuty(date: DateTime(2026, 8, 1), rosteredMinutes: 12 * 60),
+        workingDuty(
+          date: DateTime(2026, 8, 1),
+          bookOn: '06:00',
+          bookOff: '18:00',
+          rosteredMinutes: 8 * 60,
+        ),
       ]);
 
       expect(
@@ -128,6 +138,19 @@ void main() {
       expect(warning.minutes, 10 * 60);
     });
 
+    test('uses full book-on to book-off time instead of rostered minutes', () {
+      final Hidden18Result result = service.evaluate(<Duty>[
+        workingDuty(
+          date: DateTime(2026, 8, 1),
+          bookOn: '06:00',
+          bookOff: '14:30',
+          rosteredMinutes: 8 * 60,
+        ),
+      ]);
+
+      expect(result.rollingSevenDayMinutes, 8 * 60 + 30);
+    });
+
     test('warns when more than 72 hours are worked in seven days', () {
       final DateTime start = DateTime(2026, 8, 2);
 
@@ -135,7 +158,9 @@ void main() {
         7,
         (int index) => workingDuty(
           date: start.add(Duration(days: index)),
-          rosteredMinutes: 10 * 60 + 30,
+          bookOn: '08:00',
+          bookOff: '18:30',
+          rosteredMinutes: 8 * 60,
         ),
       );
 
@@ -159,7 +184,9 @@ void main() {
         for (int index = 0; index < 6; index++)
           workingDuty(
             date: start.add(Duration(days: index)),
-            rosteredMinutes: 12 * 60,
+            bookOn: '06:00',
+            bookOff: '18:00',
+            rosteredMinutes: 8 * 60,
           ),
       ];
 
