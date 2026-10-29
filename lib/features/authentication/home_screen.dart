@@ -5439,10 +5439,10 @@ class _CalendarPageState extends State<_CalendarPage> {
     super.dispose();
   }
 
-  Future<void> _actionCalendarRestMove(ShiftSwap move) async {
+  Future<void> _actionCalendarRestMove(ShiftSwap move, DateTime date) async {
     try {
       final changed = await actionRestDayMove(context, restDayMovePairs(move.notes!), id: move.id,
-        awaitingAllocation: move.notes!.contains('ALLOCATION_REQUIRED=true'));
+        awaitingAllocation: move.notes!.contains('ALLOCATION_REQUIRED=true'), selectedDate: date);
       if (changed && mounted) {
         widget.onRosterChanged();
         await _loadMonth();
@@ -8068,7 +8068,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                   FilledButton(
                     onPressed: () {
                       Navigator.pop(sheetContext);
-                      _actionCalendarRestMove(pendingMove);
+                      _actionCalendarRestMove(pendingMove, date);
                     },
                     child: Text(pendingMove.notes!.contains('ALLOCATION_REQUIRED=true')
                       ? 'Allocate new working day' : 'Action pending rest day move'),

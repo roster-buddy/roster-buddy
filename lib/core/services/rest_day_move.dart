@@ -17,7 +17,7 @@ typedef RestDayDatePicker = Future<List<Duty>?> Function(
 );
 
 /// Each pair is committed together with its queue status by one database transaction.
-Future<bool> actionRestDayMove(BuildContext context, List<Map<String, dynamic>> pairs, {String? id, bool awaitingAllocation = false}) async {
+Future<bool> actionRestDayMove(BuildContext context, List<Map<String, dynamic>> pairs, {String? id, bool awaitingAllocation = false, DateTime? selectedDate}) async {
   final client = Supabase.instance.client;
   final user = client.auth.currentUser;
   final profile = user == null ? null : await client.from('driver_profiles').select('display_name,depot,payroll_number').eq('user_id', user.id).maybeSingle();
@@ -43,15 +43,32 @@ Future<bool> actionRestDayMove(BuildContext context, List<Map<String, dynamic>> 
     'p_action': approved ? 'confirm' : 'request', 'p_pairs': pairs, 'p_id': id,
   });
   if (!approved || !context.mounted) return true;
-  final allocated = <Map<String, dynamic>>[];
-  for (final pair in pairs) {
-    if (!context.mounted) return true;
-    final allocation = await _allocateMovedDuty(context, pair);
-    if (allocation == null) return true; // Keep it in notifications to finish later.
-    allocated.add({...pair, ...allocation});
-  }
-  await client.rpc('allocate_rest_day_move', params: {
-    'p_id': queueId, 'p_pairs': allocated,
+  final latest = await client.from('shift_swaps').select('notes').eq('id', queueId).single();
+  final remaining = restDayMovePairs(latest['notes'] as String).where((pair) => pair['allocated'] != true).toList();
+  if (!context.mounted || remaining.isEmpty) return true;
+  Map<String, dynamic>? chosen = selectedDate == null ? null : remaining.where(
+    (pair) => pair['rest'] == _key(selectedDate) || pair['work'] == _key(selectedDate),
+  ).firstOrNull;
+  if (chosen == null && remaining.length == 1) chosen = remaining.first;
+  chosen ??= await showRosterDecisionSheet<Map<String, dynamic>>(
+    context: context,
+    builder: (sheetContext) => RosterDecisionSheet(
+      title: const Text('Select a date to allocate'),
+      actions: [
+        for (final pair in remaining) CupertinoDialogAction(
+          onPressed: () => Navigator.pop(sheetContext, pair),
+          child: Text(pair['rest'] as String),
+        ),
+        CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext), child: const Text('Finish later')),
+      ],
+    ),
+  );
+  if (chosen == null || !context.mounted) return true;
+  final pair = chosen;
+  await _allocateMovedDuty(context, pair, onSave: (allocation) async {
+    await client.rpc('allocate_rest_day_move', params: {
+      'p_id': queueId, 'p_pairs': [{...pair, ...allocation}],
+    });
   });
   return true;
 }
@@ -98,7 +115,7 @@ Future<bool> moveRestDays(BuildContext context, DateTime date, {required RestDay
   return actionRestDayMove(context, pairs);
 }
 
-Future<Map<String, dynamic>?> _allocateMovedDuty(BuildContext context, Map<String, dynamic> pair) async {
+Future<Map<String, dynamic>?> _allocateMovedDuty(BuildContext context, Map<String, dynamic> pair, {required Future<void> Function(Map<String, dynamic>) onSave}) async {
   final date = DateTime.parse(pair['rest'] as String);
   List<JobCardChoice> choices = <JobCardChoice>[];
   try {
@@ -112,6 +129,8 @@ Future<Map<String, dynamic>?> _allocateMovedDuty(BuildContext context, Map<Strin
   final off = TextEditingController();
   final form = GlobalKey<FormState>();
   var selection = -1;
+  var saving = false;
+  String? saveError;
   const border = OutlineInputBorder();
   String? validTime(String? value) {
     return RegExp(r'^(?:[01]\d|2[0-3]):[0-5]\d$').hasMatch(RosterTimeInputFormatter.normalise(value ?? ''))
@@ -174,16 +193,28 @@ Future<Map<String, dynamic>?> _allocateMovedDuty(BuildContext context, Map<Strin
                 FilledButton.icon(
                   style: FilledButton.styleFrom(backgroundColor: const Color(0xFF2E7D32)),
                   icon: const Icon(Icons.add_circle_outline),
-                  label: const Text('Save allocated shift'),
-                  onPressed: () {
+                  label: Text(saving ? 'Saving…' : 'Save allocated shift'),
+                  onPressed: saving ? null : () async {
                     if (form.currentState!.validate()) {
-                      Navigator.pop(sheetContext, <String, dynamic>{
-                        'turn': turn.text.trim(), 'on': RosterTimeInputFormatter.normalise(on.text), 'off': RosterTimeInputFormatter.normalise(off.text), 'type': 'working',
-                      });
+                      setState(() { saving = true; saveError = null; });
+                      final allocation = <String, dynamic>{
+                        'turn': turn.text.trim(), 'on': RosterTimeInputFormatter.normalise(on.text),
+                        'off': RosterTimeInputFormatter.normalise(off.text), 'type': 'working',
+                      };
+                      try {
+                        await onSave(allocation);
+                        if (sheetContext.mounted) Navigator.pop(sheetContext, allocation);
+                      } catch (_) {
+                        if (sheetContext.mounted) setState(() {
+                          saving = false;
+                          saveError = 'Could not save this date. Please try again.';
+                        });
+                      }
                     }
                   },
                 ),
-                TextButton(onPressed: () => Navigator.pop(sheetContext), child: const Text('Finish later')),
+                if (saveError != null) Text(saveError!, style: const TextStyle(color: Colors.red)),
+                TextButton(onPressed: saving ? null : () => Navigator.pop(sheetContext), child: const Text('Finish later')),
               ],
             )),
           ),
