@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'sign_up_screen.dart';
 import 'home_screen.dart';
@@ -42,6 +43,8 @@ class _SignInScreenState extends State<SignInScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
+
+      TextInput.finishAutofillContext();
 
       final User? user = Supabase.instance.client.auth.currentUser;
 
@@ -109,7 +112,9 @@ class _SignInScreenState extends State<SignInScreen> {
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 460),
-              child: Form(
+              child: AutofillGroup(
+                onDisposeAction: AutofillContextAction.cancel,
+                child: Form(
                 key: _formKey,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -151,6 +156,7 @@ class _SignInScreenState extends State<SignInScreen> {
                     const SizedBox(height: 32),
                     TextFormField(
                       controller: _emailController,
+                      autofillHints: const [AutofillHints.username, AutofillHints.email],
                       keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.next,
                       autocorrect: false,
@@ -180,6 +186,9 @@ class _SignInScreenState extends State<SignInScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _passwordController,
+                      autofillHints: const [AutofillHints.password],
+                      autocorrect: false,
+                      enableSuggestions: false,
                       obscureText: _hidePassword,
                       textInputAction: TextInputAction.done,
                       onFieldSubmitted: (_) => _signIn(),
@@ -282,6 +291,7 @@ class _SignInScreenState extends State<SignInScreen> {
                     ),
                   ],
                 ),
+              ),
               ),
             ),
           ),

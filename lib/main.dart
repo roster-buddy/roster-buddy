@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'features/authentication/welcome_screen.dart';
+import 'features/authentication/session_startup.dart';
 import 'supabase_config.dart';
 
 Future<void> main() async {
@@ -28,7 +28,7 @@ class RosterBuddyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1769AA)),
         scaffoldBackgroundColor: const Color(0xFFF4F7FA),
       ),
-      home: const WelcomeScreen(),
+      home: const SessionStartup(),
     );
   }
 }
