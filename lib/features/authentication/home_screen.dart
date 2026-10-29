@@ -8020,8 +8020,14 @@ class _CalendarPageState extends State<_CalendarPage> {
         leaveRequest != null &&
         leaveRequest.status != AnnualLeaveRequestStatus.cancelled;
 
-    if (duty.dutyType == DutyType.annualLeave && hasActiveLeaveRequest) {
-      return const <_CalendarDayAction>[_CalendarDayAction.manageAnnualLeave];
+    if (duty.dutyType == DutyType.annualLeave) {
+      if (hasActiveLeaveRequest) {
+        return const <_CalendarDayAction>[_CalendarDayAction.manageAnnualLeave];
+      }
+      // Imported leave has no request to manage; allow its roster entry to be corrected.
+      if (duty.source == RosterSource.manual) {
+        return const <_CalendarDayAction>[_CalendarDayAction.manualChange];
+      }
     }
 
     if (duty.dutyType == DutyType.working) {
@@ -8205,7 +8211,9 @@ class _CalendarPageState extends State<_CalendarPage> {
     final TextEditingController bookOffController = TextEditingController(
       text: originalDuty.bookOff?.trim() ?? '',
     );
-    final TextEditingController remarksController = TextEditingController();
+    final TextEditingController remarksController = TextEditingController(
+      text: originalDuty.remarks ?? '',
+    );
 
     DutyType selectedDutyType = originalDuty.dutyType;
     bool isSaving = false;
@@ -8234,7 +8242,8 @@ class _CalendarPageState extends State<_CalendarPage> {
       }
     }
 
-    const List<DutyType> selectableTypes = <DutyType>[
+    final List<DutyType> selectableTypes = <DutyType>[
+      if (originalDuty.dutyType == DutyType.annualLeave) DutyType.annualLeave,
       DutyType.working,
       DutyType.training,
       DutyType.medical,
