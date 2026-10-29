@@ -105,31 +105,51 @@ Future<Map<String, dynamic>?> _allocateMovedDuty(BuildContext context, Map<Strin
     // Manual allocation remains available when Job Cards are unavailable.
   }
   if (!context.mounted) return null;
+  final mode = await showRosterDecisionSheet<String>(
+    context: context,
+    builder: (sheetContext) => RosterDecisionSheet(
+      title: Text("Allocate work — ${pair['rest']}"),
+      actions: [
+        CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext, 'card'), child: const Text('Job Card turn')),
+        CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext, 'manual'), child: const Text('Manual / cross-depot cover')),
+        CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext), child: const Text('Finish later')),
+      ],
+    ),
+  );
+  if (mode == null || !context.mounted) return null;
+  if (mode == 'card') {
+    return showRosterDecisionSheet<Map<String, dynamic>>(
+      context: context,
+      builder: (sheetContext) => RosterDecisionSheet(
+        title: const Text('Select Job Card turn'),
+        content: choices.isEmpty ? const Text('No valid Job Cards for this date. Go back and choose Manual / cross-depot cover.') : null,
+        actions: [
+          for (final choice in choices) CupertinoDialogAction(
+            onPressed: () => Navigator.pop(sheetContext, <String, dynamic>{
+              'turn': choice.jobCard.turnNumber, 'on': choice.jobCard.bookOn,
+              'off': choice.jobCard.bookOff, 'type': 'working',
+            }),
+            child: Text('Turn ${choice.jobCard.turnNumber} · ${choice.jobCard.bookOn}–${choice.jobCard.bookOff}'),
+          ),
+          CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext), child: const Text('Back')),
+        ],
+      ),
+    );
+  }
   final turn = TextEditingController();
   final on = TextEditingController();
   final off = TextEditingController();
   final form = GlobalKey<FormState>();
   String? validTime(String? value) {
-    return RegExp(r'^(?:[01]\\d|2[0-3]):[0-5]\\d$').hasMatch(value?.trim() ?? '')
+    return RegExp(r'^(?:[01]\d|2[0-3]):[0-5]\d$').hasMatch(value?.trim() ?? '')
         ? null : 'Enter HH:mm';
   }
   try {
     return await showRosterDecisionSheet<Map<String, dynamic>>(
       context: context,
       builder: (sheetContext) => RosterDecisionSheet(
-        title: Text("Allocate duty — ${pair['rest']}"),
+        title: Text("Manual / cross-depot cover — ${pair['rest']}"),
         content: Form(key: form, child: Column(mainAxisSize: MainAxisSize.min, children: [
-          if (choices.isNotEmpty) DropdownButtonFormField<JobCardChoice>(
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Select a Job Card turn'),
-            items: choices.map((choice) => DropdownMenuItem(value: choice, child: Text('Turn ${choice.jobCard.turnNumber} · ${choice.jobCard.bookOn}–${choice.jobCard.bookOff}'))).toList(),
-            onChanged: (choice) {
-              if (choice == null) return;
-              turn.text = choice.jobCard.turnNumber;
-              on.text = choice.jobCard.bookOn;
-              off.text = choice.jobCard.bookOff;
-            },
-          ),
           TextFormField(controller: turn, decoration: const InputDecoration(labelText: 'Turn number (optional)')),
           TextFormField(controller: on, keyboardType: TextInputType.datetime, validator: validTime, decoration: const InputDecoration(labelText: 'Book on (HH:mm)')),
           TextFormField(controller: off, keyboardType: TextInputType.datetime, validator: validTime, decoration: const InputDecoration(labelText: 'Book off (HH:mm)')),
