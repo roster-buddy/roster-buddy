@@ -5046,6 +5046,38 @@ class _DutyHistorySection extends StatelessWidget {
     );
     if (selected == null || !context.mounted) return;
     try {
+      // Leave is a separate record from the underlying roster history.
+      // Use the same cancellation workflow before restoring booked work.
+      if (selected.dutyType.countsAsWorking) {
+        final requests = await AnnualLeaveService().getRequestsForRange(
+          selected.date, selected.date,
+        );
+        final request = requests.values.where((request) =>
+          request.requestType == AnnualLeaveRequestType.floating &&
+          request.status == AnnualLeaveRequestStatus.granted,
+        ).firstOrNull;
+        if (request != null) {
+          if (!context.mounted) return;
+          final changed = await manageFloatingLeaveCancellation(
+            context: context, requests: [request],
+          );
+          if (!changed || !context.mounted) return;
+          final updated = await AnnualLeaveService().getRequestsForRange(
+            selected.date, selected.date,
+          );
+          final stillGranted = updated.values.any((request) =>
+            request.requestType == AnnualLeaveRequestType.floating &&
+            request.status == AnnualLeaveRequestStatus.granted,
+          );
+          if (stillGranted) {
+            // A cancellation email is pending: leave remains granted.
+            if (!context.mounted) return;
+            Navigator.pop(context);
+            onChanged();
+            return;
+          }
+        }
+      }
       await DutyHistoryService().revert(selected, duties.first);
       if (!context.mounted) return;
       Navigator.pop(context);
