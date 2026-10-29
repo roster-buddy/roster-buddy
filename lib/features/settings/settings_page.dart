@@ -626,7 +626,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
   int get _committedDays {
     return _requests.where((AnnualLeaveRequest request) {
       return request.requestType == AnnualLeaveRequestType.floating &&
-          request.status != AnnualLeaveRequestStatus.cancelled;
+          request.status == AnnualLeaveRequestStatus.granted;
     }).length;
   }
 
@@ -909,7 +909,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                       ),
                       const SizedBox(height: 8),
                       _AnnualLeaveSummaryRow(
-                        label: 'Committed',
+                        label: 'Granted floating leave',
                         value: '-$_committedDays days',
                       ),
                       const Divider(height: 22),

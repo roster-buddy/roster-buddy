@@ -31,7 +31,8 @@ class AnnualLeaveBalance {
   /// Additional days in lieu available during this leave year.
   final int lieuDays;
 
-  /// Requested, abeyance or granted floating days already committed.
+  /// Granted floating days deducted from the allowance.
+  /// Requested and abeyance days do not reduce the balance.
   final int committedDays;
 
   int get totalAvailableDays =>

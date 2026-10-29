@@ -701,7 +701,7 @@ class AnnualLeaveService {
         .eq('request_type', 'floating')
         .gte('leave_date', start)
         .lte('leave_date', end)
-        .inFilter('status', <String>['requested', 'abeyance', 'granted']);
+        .eq('status', 'granted');
 
     return requests.length;
   }
