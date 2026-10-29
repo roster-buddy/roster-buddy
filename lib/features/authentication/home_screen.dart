@@ -666,6 +666,10 @@ class _HomeScreenState extends State<HomeScreen> {
             return;
           }
 
+          if (index == 1) {
+            _calendarKey.currentState?.showCurrentMonth();
+          }
+
           setState(() {
             if (index == 0 || index == 1) {
               _dashboardRefreshVersion++;
@@ -5394,6 +5398,18 @@ class _CalendarPageState extends State<_CalendarPage> {
     }
 
     await _handleDayAction(date: date, duty: null, action: action);
+  }
+
+  void showCurrentMonth() {
+    final DateTime now = DateTime.now();
+    setState(() {
+      _displayedMonth = DateTime(now.year, now.month);
+      _isSelectingAnnualLeaveDates = false;
+      _selectedAnnualLeaveDateKeys.clear();
+      _isSelectingAnnualLeaveCancellationDates = false;
+      _selectedAnnualLeaveCancellationDateKeys.clear();
+    });
+    _loadMonth();
   }
 
   static const Color railwayBlue = Color(0xFF1769AA);
@@ -11818,3 +11834,4 @@ class PlaceholderPage extends StatelessWidget {
     );
   }
 }
+

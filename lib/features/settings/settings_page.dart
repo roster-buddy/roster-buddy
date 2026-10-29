@@ -2006,30 +2006,26 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               });
 
               try {
-                final bool? unionConfirmed = await showDialog<bool>(
+                final bool? unionConfirmed = await showCupertinoModalPopup<bool>(
                   context: sheetContext,
-                  builder: (BuildContext dialogContext) {
-                    return AlertDialog(
-                      title: const Text('Union confirmation'),
-                      content: const Text(
-                        'Is this block leave change confirmed with the Union?',
+                  builder: (BuildContext dialogContext) => CupertinoActionSheet(
+                    title: const Text('Has this been actioned by the Union?'),
+                    actions: <Widget>[
+                      CupertinoActionSheetAction(
+                        onPressed: () => Navigator.of(dialogContext).pop(true),
+                        child: Text(changeType == AnnualLeaveBlockChangeType.mutualSwap
+                            ? 'Yes – action swap' : 'Yes – action change'),
                       ),
-                      actions: [
-                        TextButton(
-                          onPressed: () {
-                            Navigator.of(dialogContext).pop(false);
-                          },
-                          child: const Text('No'),
-                        ),
-                        FilledButton(
-                          onPressed: () {
-                            Navigator.of(dialogContext).pop(true);
-                          },
-                          child: const Text('Yes'),
-                        ),
-                      ],
-                    );
-                  },
+                      CupertinoActionSheetAction(
+                        onPressed: () => Navigator.of(dialogContext).pop(false),
+                        child: const Text('No – email the Union'),
+                      ),
+                    ],
+                    cancelButton: CupertinoActionSheetAction(
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
                 );
 
                 if (unionConfirmed == null) {
@@ -2058,136 +2054,47 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                     notes: notesController.text,
                   );
                 } else {
-                  final DateTime now = DateTime.now();
-                  final bool futureLeaveYear = _leaveYear > now.year;
-
-                  if (!futureLeaveYear) {
-                    await _annualLeaveBlockPendingActionService
-                        .savePendingAction(
-                          leaveYear: _leaveYear,
-                          periodType: periodType,
-                          changeType: changeType,
-                          originalStartDate: period.start,
-                          originalEndDate: period.end,
-                          proposedStartDate: selectedStart,
-                          proposedEndDate: selectedEnd,
-                          swapDriverNumber:
-                              changeType ==
-                                  AnnualLeaveBlockChangeType.mutualSwap
-                              ? driverController.text
-                              : null,
-                          swapReference: referenceController.text,
-                          notes: notesController.text,
-                        );
-                  } else {
-                    final int? blockNumber = _blockCycle?.weekIndex;
-
-                    if (blockNumber == null) {
-                      if (sheetContext.mounted) {
-                        setSheetState(() {
-                          saving = false;
-                          errorMessage =
-                              'Set your block number for $_leaveYear before '
-                              'requesting a block leave change.';
-                        });
-                      }
-                      return;
+                  final email = await _buildBlockUnionEmail(
+                    leaveYear: _leaveYear,
+                    blockNumber: _blockCycle?.weekIndex,
+                    periodType: periodType,
+                    changeType: changeType,
+                    originalStart: period.start,
+                    originalEnd: period.end,
+                    proposedStart: selectedStart,
+                    proposedEnd: selectedEnd,
+                    swapDriverNumber: changeType == AnnualLeaveBlockChangeType.mutualSwap
+                        ? driverController.text : null,
+                    swapReference: referenceController.text,
+                    notes: notesController.text,
+                  );
+                  final bool opened = await _openBlockUnionEmail(
+                    subject: email.subject,
+                    body: email.body,
+                  );
+                  if (!opened) {
+                    if (sheetContext.mounted) {
+                      setSheetState(() {
+                        saving = false;
+                        errorMessage = 'Roster Buddy could not open your email app. '
+                            'Your block allocation has not changed. Please try again.';
+                      });
                     }
-
-                    final email = await _buildBlockUnionEmail(
-                      leaveYear: _leaveYear,
-                      blockNumber: blockNumber,
-                      periodType: periodType,
-                      changeType: changeType,
-                      originalStart: period.start,
-                      originalEnd: period.end,
-                      proposedStart: selectedStart,
-                      proposedEnd: selectedEnd,
-                      swapDriverNumber:
-                          changeType == AnnualLeaveBlockChangeType.mutualSwap
-                          ? driverController.text
-                          : null,
-                      swapReference: referenceController.text,
-                      notes: notesController.text,
-                    );
-
-                    if (changeType == AnnualLeaveBlockChangeType.mutualSwap) {
-                      final DateTime firstAugust = DateTime(
-                        _leaveYear - 1,
-                        8,
-                        1,
-                      );
-
-                      if (!now.isBefore(firstAugust)) {
-                        final bool opened = await _openBlockUnionEmail(
-                          subject: email.subject,
-                          body: email.body,
-                        );
-
-                        if (!opened) {
-                          if (sheetContext.mounted) {
-                            setSheetState(() {
-                              saving = false;
-                              errorMessage =
-                                  'Roster Buddy could not open your email app. '
-                                  'The mutual swap has not been recorded.';
-                            });
-                          }
-                          return;
-                        }
-
-                        await _annualLeaveBlockPendingActionService
-                            .savePendingAction(
-                              leaveYear: _leaveYear,
-                              periodType: periodType,
-                              changeType: changeType,
-                              originalStartDate: period.start,
-                              originalEndDate: period.end,
-                              proposedStartDate: selectedStart,
-                              proposedEndDate: selectedEnd,
-                              swapDriverNumber: driverController.text,
-                              swapReference: referenceController.text,
-                              notes: notesController.text,
-                            );
-                      } else {
-                        await _annualLeaveBlockPendingActionService
-                            .scheduleFutureRequest(
-                              leaveYear: _leaveYear,
-                              periodType: periodType,
-                              changeType: changeType,
-                              originalStartDate: period.start,
-                              originalEndDate: period.end,
-                              proposedStartDate: selectedStart,
-                              proposedEndDate: selectedEnd,
-                              swapDriverNumber: driverController.text,
-                              swapReference: referenceController.text,
-                              notes: notesController.text,
-                              recipientEmail:
-                                  'wolves.driversllc@wmtrains.co.uk',
-                              emailSubject: email.subject,
-                              emailBody: email.body,
-                              scheduledFor: _firstAugustSendTimeUtc(_leaveYear),
-                            );
-                      }
-                    } else {
-                      await _annualLeaveBlockPendingActionService
-                          .scheduleFutureRequest(
-                            leaveYear: _leaveYear,
-                            periodType: periodType,
-                            changeType: changeType,
-                            originalStartDate: period.start,
-                            originalEndDate: period.end,
-                            proposedStartDate: selectedStart,
-                            proposedEndDate: selectedEnd,
-                            swapReference: referenceController.text,
-                            notes: notesController.text,
-                            recipientEmail: 'wolves.driversllc@wmtrains.co.uk',
-                            emailSubject: email.subject,
-                            emailBody: email.body,
-                            scheduledFor: _firstOctoberSendTimeUtc(_leaveYear),
-                          );
-                    }
+                    return;
                   }
+                  await _annualLeaveBlockPendingActionService.savePendingAction(
+                    leaveYear: _leaveYear,
+                    periodType: periodType,
+                    changeType: changeType,
+                    originalStartDate: period.start,
+                    originalEndDate: period.end,
+                    proposedStartDate: selectedStart,
+                    proposedEndDate: selectedEnd,
+                    swapDriverNumber: changeType == AnnualLeaveBlockChangeType.mutualSwap
+                        ? driverController.text : null,
+                    swapReference: referenceController.text,
+                    notes: notesController.text,
+                  );
                 }
 
                 if (!sheetContext.mounted) {
@@ -3692,18 +3599,6 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
     }
   }
 
-  DateTime _firstAugustSendTimeUtc(int leaveYear) {
-    // 00:00 Europe/London on 1 August in the year before leave.
-    // 1 August is BST, therefore 23:00 UTC on 31 July.
-    return DateTime.utc(leaveYear - 1, 7, 31, 23);
-  }
-
-  DateTime _firstOctoberSendTimeUtc(int leaveYear) {
-    // 00:00 Europe/London on 1 October in the year before leave.
-    // 1 October is BST, therefore 23:00 UTC on 30 September.
-    return DateTime.utc(leaveYear - 1, 9, 30, 23);
-  }
-
   Future<Map<String, String>> _blockRequestIdentity() async {
     final SupabaseClient supabase = Supabase.instance.client;
     final User? user = supabase.auth.currentUser;
@@ -3739,7 +3634,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
 
   Future<({String subject, String body})> _buildBlockUnionEmail({
     required int leaveYear,
-    required int blockNumber,
+    required int? blockNumber,
     required AnnualLeaveBlockPeriodType periodType,
     required AnnualLeaveBlockChangeType changeType,
     required DateTime originalStart,
@@ -3756,17 +3651,18 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
     final String changeLabel = _blockChangeEmailLabel(changeType);
 
     final String subject =
-        '$leaveYear Block $blockNumber – $periodLabel – $changeLabel';
+        '$leaveYear ${blockNumber == null ? 'Block leave' : 'Block $blockNumber'} – $periodLabel – $changeLabel';
 
     final List<String> lines = <String>[
       'Hello,',
       '',
       changeType == AnnualLeaveBlockChangeType.mutualSwap
           ? 'Please can you record the following mutual block annual leave swap.'
-          : 'Please can you consider the following block annual leave exchange request.',
+          : 'Please can you consider moving my block annual leave to the dates below. '
+            'This is not a mutual swap with another driver.',
       '',
       'Leave year: $leaveYear',
-      'Block: $blockNumber',
+      if (blockNumber != null) 'Block: $blockNumber',
       'Period: $periodLabel',
       'Current dates: ${_displayDate(originalStart)} to ${_displayDate(originalEnd)}',
       'Requested dates: ${_displayDate(proposedStart)} to ${_displayDate(proposedEnd)}',
@@ -4788,3 +4684,4 @@ class _SettingsSectionTitle extends StatelessWidget {
     );
   }
 }
+
