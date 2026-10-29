@@ -12,7 +12,7 @@ String _key(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.
 String _label(DateTime d) => '${d.day}/${d.month}/${d.year}';
 
 Future<List<Duty>?> _pick(BuildContext context, String title, List<Duty> duties, int count, {Duty? initial}) {
-  final selected = <Duty>[if (initial != null) initial];
+  final selected = <Duty>[?initial];
   return showRosterDecisionSheet<List<Duty>>(
     context: context,
     builder: (sheetContext) => StatefulBuilder(builder: (context, setState) => RosterDecisionSheet(
@@ -83,7 +83,7 @@ Future<bool> moveRestDays(BuildContext context, DateTime date) async {
   final count = await showRosterDecisionSheet<int>(
     context: context,
     builder: (sheetContext) => RosterDecisionSheet(
-      title: const Text('Move rest days'),
+      title: Text('Move rest days — ${_label(initial.date)}'),
       actions: [
         CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext, 1), child: const Text('Just this date')),
         if (rests.length >= 2) CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext, 2), child: const Text('Multiple dates')),
