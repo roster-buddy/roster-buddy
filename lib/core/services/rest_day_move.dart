@@ -49,6 +49,7 @@ Future<bool> actionRestDayMove(BuildContext context, List<Map<String, dynamic>> 
   Map<String, dynamic>? chosen = selectedDate == null ? null : remaining.where(
     (pair) => pair['rest'] == _key(selectedDate) || pair['work'] == _key(selectedDate),
   ).firstOrNull;
+  if (selectedDate != null && chosen == null) return true;
   if (chosen == null && remaining.length == 1) chosen = remaining.first;
   chosen ??= await showRosterDecisionSheet<Map<String, dynamic>>(
     context: context,

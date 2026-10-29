@@ -7780,7 +7780,7 @@ class _CalendarPageState extends State<_CalendarPage> {
         leaveRequest?.status == AnnualLeaveRequestStatus.granted;
 
     final pendingMove = _restDayMoves.where((move) => restDayMovePairs(move.notes!).any(
-      (pair) => pair['rest'] == _dateKey(date) || pair['work'] == _dateKey(date),
+      (pair) => pair['allocated'] != true && (pair['rest'] == _dateKey(date) || pair['work'] == _dateKey(date)),
     )).firstOrNull;
 
     showModalBottomSheet<void>(
