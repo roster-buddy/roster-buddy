@@ -8015,7 +8015,11 @@ class _CalendarPageState extends State<_CalendarPage> {
     }
 
     if (duty.dutyType == DutyType.restDay) {
-      return const <_CalendarDayAction>[_CalendarDayAction.allocateShift];
+      return <_CalendarDayAction>[
+        _CalendarDayAction.allocateShift,
+        if (duty.source == RosterSource.manual)
+          _CalendarDayAction.manualChange,
+      ];
     }
 
     if (_isPermanentlyUnavailableSunday(duty)) {
@@ -8034,6 +8038,15 @@ class _CalendarPageState extends State<_CalendarPage> {
       if (duty.source == RosterSource.manual) {
         return const <_CalendarDayAction>[_CalendarDayAction.manualChange];
       }
+    }
+
+    if (duty.source == RosterSource.manual &&
+        !hasActiveLeaveRequest &&
+        (duty.dutyType == DutyType.unknown ||
+            duty.dutyType == DutyType.publicHoliday ||
+            duty.dutyType == DutyType.sick ||
+            duty.dutyType == DutyType.unavailable)) {
+      return const <_CalendarDayAction>[_CalendarDayAction.manualChange];
     }
 
     if (duty.dutyType == DutyType.working) {
@@ -8249,6 +8262,7 @@ class _CalendarPageState extends State<_CalendarPage> {
     }
 
     final List<DutyType> selectableTypes = <DutyType>[
+      if (originalDuty.dutyType == DutyType.unknown) DutyType.unknown,
       if (originalDuty.dutyType == DutyType.annualLeave) DutyType.annualLeave,
       DutyType.working,
       DutyType.training,
