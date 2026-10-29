@@ -8,6 +8,7 @@ import '../models/duty_type.dart';
 import '../widgets/roster_decision_sheet.dart';
 import 'duty_resolver.dart';
 import 'job_card_service.dart';
+import '../widgets/roster_time_input_formatter.dart';
 
 String _key(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
@@ -113,7 +114,7 @@ Future<Map<String, dynamic>?> _allocateMovedDuty(BuildContext context, Map<Strin
   var selection = -1;
   const border = OutlineInputBorder();
   String? validTime(String? value) {
-    return RegExp(r'^(?:[01]\d|2[0-3]):[0-5]\d$').hasMatch(value?.trim() ?? '')
+    return RegExp(r'^(?:[01]\d|2[0-3]):[0-5]\d$').hasMatch(RosterTimeInputFormatter.normalise(value ?? ''))
         ? null : 'Enter HH:mm';
   }
   try {
@@ -160,10 +161,10 @@ Future<Map<String, dynamic>?> _allocateMovedDuty(BuildContext context, Map<Strin
                   const SizedBox(height: 12),
                 ],
                 Row(children: [
-                  Expanded(child: TextFormField(controller: on, keyboardType: TextInputType.datetime, validator: validTime,
+                  Expanded(child: TextFormField(controller: on, keyboardType: TextInputType.number, inputFormatters: const [RosterTimeInputFormatter()], validator: validTime,
                     decoration: const InputDecoration(labelText: 'Book on', hintText: 'HH:mm', border: border))),
                   const SizedBox(width: 12),
-                  Expanded(child: TextFormField(controller: off, keyboardType: TextInputType.datetime, validator: validTime,
+                  Expanded(child: TextFormField(controller: off, keyboardType: TextInputType.number, inputFormatters: const [RosterTimeInputFormatter()], validator: validTime,
                     decoration: const InputDecoration(labelText: 'Book off', hintText: 'HH:mm', border: border))),
                 ]),
                 const SizedBox(height: 10),
@@ -177,7 +178,7 @@ Future<Map<String, dynamic>?> _allocateMovedDuty(BuildContext context, Map<Strin
                   onPressed: () {
                     if (form.currentState!.validate()) {
                       Navigator.pop(sheetContext, <String, dynamic>{
-                        'turn': turn.text.trim(), 'on': on.text.trim(), 'off': off.text.trim(), 'type': 'working',
+                        'turn': turn.text.trim(), 'on': RosterTimeInputFormatter.normalise(on.text), 'off': RosterTimeInputFormatter.normalise(off.text), 'type': 'working',
                       });
                     }
                   },
