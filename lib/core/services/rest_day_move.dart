@@ -7,6 +7,7 @@ import '../models/duty.dart';
 import '../models/duty_type.dart';
 import '../widgets/roster_decision_sheet.dart';
 import 'duty_resolver.dart';
+import 'job_card_service.dart';
 
 String _key(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 String _label(DateTime d) => '${d.day}/${d.month}/${d.year}';
@@ -97,6 +98,13 @@ Future<bool> moveRestDays(BuildContext context, DateTime date, {required RestDay
 }
 
 Future<Map<String, dynamic>?> _allocateMovedDuty(BuildContext context, Map<String, dynamic> pair) async {
+  List<JobCardChoice> choices = <JobCardChoice>[];
+  try {
+    choices = await JobCardService().findValidJobCardsForDate(dutyDate: DateTime.parse(pair['rest'] as String));
+  } catch (_) {
+    // Manual allocation remains available when Job Cards are unavailable.
+  }
+  if (!context.mounted) return null;
   final turn = TextEditingController();
   final on = TextEditingController();
   final off = TextEditingController();
@@ -111,6 +119,17 @@ Future<Map<String, dynamic>?> _allocateMovedDuty(BuildContext context, Map<Strin
       builder: (sheetContext) => RosterDecisionSheet(
         title: Text("Allocate duty — ${pair['rest']}"),
         content: Form(key: form, child: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (choices.isNotEmpty) DropdownButtonFormField<JobCardChoice>(
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Select a Job Card turn'),
+            items: choices.map((choice) => DropdownMenuItem(value: choice, child: Text('Turn ${choice.jobCard.turnNumber} · ${choice.jobCard.bookOn}–${choice.jobCard.bookOff}'))).toList(),
+            onChanged: (choice) {
+              if (choice == null) return;
+              turn.text = choice.jobCard.turnNumber;
+              on.text = choice.jobCard.bookOn;
+              off.text = choice.jobCard.bookOff;
+            },
+          ),
           TextFormField(controller: turn, decoration: const InputDecoration(labelText: 'Turn number (optional)')),
           TextFormField(controller: on, keyboardType: TextInputType.datetime, validator: validTime, decoration: const InputDecoration(labelText: 'Book on (HH:mm)')),
           TextFormField(controller: off, keyboardType: TextInputType.datetime, validator: validTime, decoration: const InputDecoration(labelText: 'Book off (HH:mm)')),
