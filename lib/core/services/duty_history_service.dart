@@ -29,7 +29,7 @@ class DutyHistoryService {
   }
 
   Duty _duty(DateTime date, Map<String, dynamic> row) {
-    String? time(dynamic value) => value == null ? null : value.toString().substring(0, 5);
+    String? time(dynamic value) => value?.toString().substring(0, 5);
     const types = {
       'working': DutyType.working, 'training': DutyType.training, 'medical': DutyType.medical,
       'rest_day': DutyType.restDay, 'annual_leave': DutyType.annualLeave, 'sick': DutyType.sick,

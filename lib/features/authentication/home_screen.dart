@@ -5106,7 +5106,7 @@ class _DutyHistorySection extends StatelessWidget {
                         context: sheetContext,
                         builder: (confirmContext) => RosterDecisionSheet(
                           title: const Text('Revert to this entry?'),
-                          content: Text('${_historySourceLabel(duties[index].source)} · ${_historyDutyLabel(duties[index])}'),
+                          content: _DutyHistoryEntry(duty: duties[index], isCurrent: false),
                           actions: [
                             CupertinoDialogAction(onPressed: () => Navigator.pop(confirmContext, false), child: const Text('Back')),
                             CupertinoDialogAction(onPressed: () => Navigator.pop(confirmContext, true), child: const Text('Revert to this entry')),
@@ -5132,8 +5132,8 @@ class _DutyHistorySection extends StatelessWidget {
       Navigator.pop(context);
       onChanged();
     } catch (_) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not revert the roster entry. Please try again.')));
+      if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not revert the roster entry. Please try again.'))); }
     }
   }
 
