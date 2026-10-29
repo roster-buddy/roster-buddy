@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'sign_up_screen.dart';
@@ -17,6 +18,15 @@ class _SignInScreenState extends State<SignInScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  late final SemanticsHandle _autofillSemantics;
+
+  @override
+  void initState() {
+    super.initState();
+    // Keep both login fields exposed to Safari's password manager before focus.
+    _autofillSemantics = SemanticsBinding.instance.ensureSemantics();
+  }
+
   bool _hidePassword = true;
   bool _isSigningIn = false;
 
@@ -26,6 +36,7 @@ class _SignInScreenState extends State<SignInScreen> {
 
   @override
   void dispose() {
+    _autofillSemantics.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
