@@ -154,6 +154,14 @@ class _HomeScreenState extends State<HomeScreen> {
         blockQuery = blockQuery.gt('updated_at', cutoff);
       }
 
+      dynamic cancellationQuery = supabase.from('annual_leave_requests')
+          .select('id').eq('user_id', user.id)
+          .eq('request_type', 'floating').eq('status', 'granted')
+          .eq('cancellation_pending', true);
+      if (lastSeen != null) {
+        cancellationQuery = cancellationQuery.gt('updated_at', lastSeen.toUtc().toIso8601String());
+      }
+      final List<dynamic> cancellationRows = await cancellationQuery;
       final List<dynamic> floatingRows = await floatingQuery;
       final List<dynamic> blockRows = await blockQuery;
 
@@ -195,7 +203,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _pendingActionCount =
-            floatingRows.length + blockRows.length + newShiftSwapCount;
+            floatingRows.length + cancellationRows.length + blockRows.length + newShiftSwapCount;
       });
     } catch (_) {
       // Badge loading must never prevent the main app from loading.
@@ -1941,6 +1949,35 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   }
 
   Widget _buildRequestCard(AnnualLeaveRequest request) {
+    if (request.cancellationPending) {
+      return Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(_dateLabel(request.leaveDate),
+              style: const TextStyle(color: navy, fontWeight: FontWeight.w900, fontSize: 16)),
+            const SizedBox(height: 8),
+            const Text('Pending cancellation', style: TextStyle(color: leaveRed, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            const Text('Awaiting Rosters / DTCM approval. Leave stays granted until confirmed.',
+              style: TextStyle(color: textGrey)),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () async {
+                final changed = await manageFloatingLeaveCancellation(context: context, requests: [request]);
+                if (changed && mounted) {
+                  widget.onChanged();
+                  await _load();
+                }
+              },
+              child: const Text('Action cancellation'),
+            ),
+          ]),
+        ),
+      );
+    }
+
     final bool isAbeyance = request.status == AnnualLeaveRequestStatus.abeyance;
 
     final String statusText = isAbeyance

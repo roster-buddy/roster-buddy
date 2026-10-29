@@ -34,12 +34,12 @@ Future<bool> manageFloatingLeaveCancellation({
       builder: (sheetContext) => SafeArea(child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(pending ? 'Action pending cancellation' : 'Cancel annual leave',
+          Text('Cancellation approved?',
             style: const TextStyle(color: Color(0xFF102A43), fontSize: 22, fontWeight: FontWeight.w900)),
           const SizedBox(height: 16),
           Text(dates),
           const SizedBox(height: 12),
-          const Text('Leave stays granted and deducted until Rosters confirms cancellation.'),
+          const Text('Has the cancellation of the selected date or dates been approved by Rosters / DTCM?'),
           const SizedBox(height: 20),
           FilledButton.icon(
             onPressed: () {
@@ -47,11 +47,11 @@ Future<bool> manageFloatingLeaveCancellation({
               Navigator.pop(sheetContext, 'request');
             },
             icon: const Icon(Icons.mail_outline),
-            label: Text(pending ? 'Prepare cancellation email again' : 'Prepare email and mark pending')),
+            label: const Text('No — prepare email and mark pending')),
           const SizedBox(height: 8),
           OutlinedButton(
             onPressed: () => Navigator.pop(sheetContext, 'confirm'),
-            child: const Text('Rosters has confirmed cancellation')),
+            child: const Text('Yes — action cancellation')),
           if (pending) OutlinedButton(
             onPressed: () => Navigator.pop(sheetContext, 'retain'),
             child: const Text('Declined / withdrawn — keep leave')),

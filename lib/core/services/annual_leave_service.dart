@@ -506,7 +506,8 @@ class AnnualLeaveService {
         .where(
           (AnnualLeaveRequest request) =>
               request.status == AnnualLeaveRequestStatus.requested ||
-              request.status == AnnualLeaveRequestStatus.abeyance,
+              request.status == AnnualLeaveRequestStatus.abeyance ||
+              request.cancellationPending,
         )
         .toList();
 
