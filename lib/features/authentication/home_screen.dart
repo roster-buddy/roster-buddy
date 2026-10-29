@@ -81,6 +81,7 @@ Future<bool> _openAnnualLeaveRequestCancellationEmail({
   return launchUrl(
     _rosterBuddyMailUri(subject: subject, body: body),
     mode: LaunchMode.platformDefault,
+    webOnlyWindowName: '_self',
   );
 }
 
@@ -3698,6 +3699,7 @@ class _DashboardPageState extends State<_DashboardPage> {
         final bool opened = await launchUrl(
           emailUri,
           mode: LaunchMode.platformDefault,
+          webOnlyWindowName: '_self',
         );
 
         if (!mounted) {
@@ -3988,6 +3990,7 @@ class _DashboardPageState extends State<_DashboardPage> {
       final bool opened = await launchUrl(
         emailUri,
         mode: LaunchMode.platformDefault,
+        webOnlyWindowName: '_self',
       );
 
       if (!mounted) {
@@ -6025,6 +6028,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                   emailLaunchFuture = launchUrl(
                     immediateEmailUri,
                     mode: LaunchMode.platformDefault,
+                    webOnlyWindowName: '_self',
                   );
                 }
 
@@ -6338,6 +6342,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                     emailLaunchFuture = launchUrl(
                       emailUri,
                       mode: LaunchMode.platformDefault,
+                      webOnlyWindowName: '_self',
                     );
                   }
 
@@ -7438,6 +7443,7 @@ class _CalendarPageState extends State<_CalendarPage> {
       final bool opened = await launchUrl(
         emailUri,
         mode: LaunchMode.platformDefault,
+        webOnlyWindowName: '_self',
       );
 
       if (!opened && mounted) {
@@ -10356,6 +10362,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                 cancellationEmailFuture = launchUrl(
                   cancellationEmailUri,
                   mode: LaunchMode.platformDefault,
+                  webOnlyWindowName: '_self',
                 );
 
                 Navigator.of(dialogContext).pop(false);
