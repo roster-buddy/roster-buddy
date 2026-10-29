@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../core/services/duty_history_service.dart';
 import 'package:flutter/cupertino.dart';
 import '../../core/services/rest_day_move.dart';
 import 'package:flutter/material.dart';
@@ -3429,7 +3430,8 @@ class _DashboardPageState extends State<_DashboardPage> {
                   ],
                   const SizedBox(height: 22),
                   _DutyHistorySection(
-                    future: _dutyResolver.getDutiesForDate(date),
+                    future: DutyHistoryService().load(date, _dutyResolver.getDutiesForDate(date)),
+                    onChanged: () { widget.onRosterChanged(); _loadDashboardDuties(); },
                   ),
                 ],
                 const SizedBox(height: 22),
@@ -5058,12 +5060,14 @@ class _DutyPresentation {
 }
 
 class _DutyHistorySection extends StatelessWidget {
-  const _DutyHistorySection({required this.future});
+  const _DutyHistorySection({required this.future, required this.onChanged});
+
+  final VoidCallback onChanged;
 
   final Future<List<Duty>> future;
 
   Future<void> _showTurnHistory(BuildContext context, List<Duty> duties) async {
-    await showModalBottomSheet<void>(
+    final selected = await showModalBottomSheet<Duty>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
@@ -5080,7 +5084,7 @@ class _DutyHistorySection extends StatelessWidget {
                     Icon(Icons.history, size: 22, color: Color(0xFF102A43)),
                     SizedBox(width: 8),
                     Text(
-                      'Turn History',
+                      'Roster history',
                       style: TextStyle(
                         color: Color(0xFF102A43),
                         fontSize: 22,
@@ -5091,12 +5095,28 @@ class _DutyHistorySection extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  'Latest change shown first.',
+                  'Current entry first. Hold an older entry to revert.',
                   style: TextStyle(color: Color(0xFF52667A)),
                 ),
                 const SizedBox(height: 16),
                 for (int index = 0; index < duties.length; index++) ...[
-                  _DutyHistoryEntry(duty: duties[index], isCurrent: index == 0),
+                  GestureDetector(
+                    onLongPress: index == 0 ? null : () async {
+                      final confirmed = await showRosterDecisionSheet<bool>(
+                        context: sheetContext,
+                        builder: (confirmContext) => RosterDecisionSheet(
+                          title: const Text('Revert to this entry?'),
+                          content: Text('${_historySourceLabel(duties[index].source)} · ${_historyDutyLabel(duties[index])}'),
+                          actions: [
+                            CupertinoDialogAction(onPressed: () => Navigator.pop(confirmContext, false), child: const Text('Back')),
+                            CupertinoDialogAction(onPressed: () => Navigator.pop(confirmContext, true), child: const Text('Revert to this entry')),
+                          ],
+                        ),
+                      );
+                      if (confirmed == true && sheetContext.mounted) Navigator.pop(sheetContext, duties[index]);
+                    },
+                    child: _DutyHistoryEntry(duty: duties[index], isCurrent: index == 0),
+                  ),
                   if (index != duties.length - 1) const SizedBox(height: 8),
                 ],
               ],
@@ -5105,6 +5125,16 @@ class _DutyHistorySection extends StatelessWidget {
         );
       },
     );
+    if (selected == null || !context.mounted) return;
+    try {
+      await DutyHistoryService().revert(selected, duties.first);
+      if (!context.mounted) return;
+      Navigator.pop(context);
+      onChanged();
+    } catch (_) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not revert the roster entry. Please try again.')));
+    }
   }
 
   @override
@@ -5144,7 +5174,7 @@ class _DutyHistorySection extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Row(
+            InkWell(onTap: () => _showTurnHistory(context, duties), child: const Row(
               children: [
                 Icon(Icons.update, size: 20, color: Color(0xFF102A43)),
                 SizedBox(width: 8),
@@ -5157,17 +5187,17 @@ class _DutyHistorySection extends StatelessWidget {
                   ),
                 ),
               ],
-            ),
+            )),
             const SizedBox(height: 10),
-            _DutyHistoryEntry(duty: duties.first, isCurrent: true),
-            if (duties.length > 1) ...[
+            InkWell(onTap: () => _showTurnHistory(context, duties), child: _DutyHistoryEntry(duty: duties.first, isCurrent: true)),
+            ...[
               const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: () => _showTurnHistory(context, duties),
                   icon: const Icon(Icons.history),
-                  label: const Text('Turn History'),
+                  label: const Text('Roster history'),
                 ),
               ),
             ],
@@ -8016,7 +8046,8 @@ class _CalendarPageState extends State<_CalendarPage> {
                   ],
                   const SizedBox(height: 22),
                   _DutyHistorySection(
-                    future: _dutyResolver.getDutiesForDate(date),
+                    future: DutyHistoryService().load(date, _dutyResolver.getDutiesForDate(date)),
+                    onChanged: () { widget.onRosterChanged(); _loadMonth(); },
                   ),
                   const SizedBox(height: 22),
                   if (duty != null && duty.dutyType == DutyType.working) ...[
