@@ -10,7 +10,6 @@ import 'duty_resolver.dart';
 import 'job_card_service.dart';
 
 String _key(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-String _label(DateTime d) => '${d.day}/${d.month}/${d.year}';
 
 typedef RestDayDatePicker = Future<List<Duty>?> Function(
   String title, List<Duty> duties, int count, Duty? initial,
@@ -65,33 +64,34 @@ Future<bool> moveRestDays(BuildContext context, DateTime date, {required RestDay
   final start = DateTime(date.year, date.month, date.day).subtract(Duration(days: date.weekday % 7));
   final resolved = await DutyResolver().getResolvedDutiesForRange(start, start.add(const Duration(days: 6)));
   final duties = resolved.values.toList()..sort((a,b) => a.date.compareTo(b.date));
-  final rests = duties.where((d) => d.dutyType == DutyType.restDay).toList();
+  final rests = duties.where((d) => d.date.weekday != DateTime.sunday && d.dutyType == DutyType.restDay).toList();
+  final working = duties.where((d) => d.date.weekday != DateTime.sunday && d.dutyType.countsAsWorking && d.hasTimes).toList();
   if (!context.mounted) return false;
-  if (rests.isEmpty) throw Exception('No rest days found in this week.');
-  final initial = rests.where((d) => _key(d.date) == _key(date)).firstOrNull ?? rests.first;
+  if (rests.isEmpty || working.isEmpty) throw Exception('No eligible working/rest dates in this week. Sundays cannot be swapped.');
+  final initial = working.where((d) => _key(d.date) == _key(date)).firstOrNull;
   final count = await showRosterDecisionSheet<int>(
     context: context,
     builder: (sheetContext) => RosterDecisionSheet(
-      title: Text('Move rest days — ${_label(initial.date)}'),
+      title: const Text('Move rest days'),
       actions: [
         CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext, 1), child: const Text('Just this date')),
-        if (rests.length >= 2) CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext, 2), child: const Text('Multiple dates')),
+        if (rests.length >= 2 && working.length >= 2) CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext, 2), child: const Text('Multiple dates')),
         CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext), child: const Text('Back')),
       ],
     ),
   );
   if (count == null || !context.mounted) return false;
-  final sources = count == 1 && _key(initial.date) == _key(date) ? [initial] : await pickDates('Select rest days in this week', rests, count, count == 2 ? initial : null);
+  final sources = count == 1 && initial != null ? [initial] : await pickDates('Select $count working dates to become rest days', working, count, initial);
   if (sources == null || !context.mounted) return false;
-  final targets = await pickDates(count == 1 ? 'Select the date to swap with' : 'Select the dates to swap with', duties.where((d) => d.dutyType.countsAsWorking && d.hasTimes).toList(), count, null);
+  final targets = await pickDates('Select $count rest dates to become working days', rests, count, null);
   if (targets == null || !context.mounted) return false;
   sources.sort((a,b) => a.date.compareTo(b.date));
   targets.sort((a,b) => a.date.compareTo(b.date));
   final pairs = <Map<String, dynamic>>[
     for (var i=0; i<count; i++) {
-      'rest': _key(sources[i].date), 'work': _key(targets[i].date),
-      'type': targets[i].dutyType.name, 'on': targets[i].bookOn, 'off': targets[i].bookOff,
-      'turn': targets[i].turnNumber, 'restSource': sources[i].source.name, 'workSource': targets[i].source.name,
+      'rest': _key(targets[i].date), 'work': _key(sources[i].date),
+      'type': sources[i].dutyType.name, 'on': sources[i].bookOn, 'off': sources[i].bookOff,
+      'turn': sources[i].turnNumber, 'restSource': targets[i].source.name, 'workSource': sources[i].source.name,
     }
   ];
   return actionRestDayMove(context, pairs);
