@@ -32,6 +32,12 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Analyze Dart code
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
       - name: Build web app
         run: flutter build web --release --base-href "/roster-buddy/" --no-wasm-dry-run
 
