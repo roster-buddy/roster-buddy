@@ -286,7 +286,7 @@ class AnnualLeaveService {
         .from(_requestTable)
         .select(
           'id, user_id, leave_date, status, request_type, '
-          'requested_at, decision_at, notes, queue_position',
+          'requested_at, decision_at, notes, queue_position, cancellation_pending',
         )
         .eq('user_id', user.id)
         .eq('leave_date', dateValue)
@@ -332,7 +332,7 @@ class AnnualLeaveService {
           .from(_requestTable)
           .select(
             'id, user_id, leave_date, status, request_type, '
-            'requested_at, decision_at, notes, queue_position',
+            'requested_at, decision_at, notes, queue_position, cancellation_pending',
           )
           .eq('id', existing['id'])
           .single();
@@ -351,7 +351,7 @@ class AnnualLeaveService {
         })
         .select(
           'id, user_id, leave_date, status, request_type, '
-          'requested_at, decision_at, notes, queue_position',
+          'requested_at, decision_at, notes, queue_position, cancellation_pending',
         )
         .single();
 
@@ -426,7 +426,7 @@ class AnnualLeaveService {
         .from(_requestTable)
         .select(
           'id, user_id, leave_date, status, request_type, '
-          'requested_at, decision_at, notes, queue_position',
+          'requested_at, decision_at, notes, queue_position, cancellation_pending',
         )
         .eq('id', requestId)
         .eq('user_id', user.id)
@@ -448,6 +448,7 @@ class AnnualLeaveService {
 
     final Map<String, dynamic> changes = <String, dynamic>{
       'status': status,
+      if (status == 'cancelled') 'cancellation_pending': false,
       'decision_at': status == 'requested'
           ? null
           : DateTime.now().toUtc().toIso8601String(),
@@ -470,7 +471,7 @@ class AnnualLeaveService {
         .from(_requestTable)
         .select(
           'id, user_id, leave_date, status, request_type, '
-          'requested_at, decision_at, notes, queue_position',
+          'requested_at, decision_at, notes, queue_position, cancellation_pending',
         )
         .eq('id', requestId)
         .eq('user_id', user.id)
@@ -492,7 +493,7 @@ class AnnualLeaveService {
         .from(_requestTable)
         .select(
           'id, user_id, leave_date, status, request_type, '
-          'requested_at, decision_at, notes, queue_position',
+          'requested_at, decision_at, notes, queue_position, cancellation_pending',
         )
         .eq('user_id', user.id)
         .eq('request_type', 'floating')
@@ -541,7 +542,7 @@ class AnnualLeaveService {
         .from(_requestTable)
         .select(
           'id, user_id, leave_date, status, request_type, '
-          'requested_at, decision_at, notes, queue_position',
+          'requested_at, decision_at, notes, queue_position, cancellation_pending',
         )
         .eq('user_id', user.id)
         .gte('leave_date', _databaseDate(start))

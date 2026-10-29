@@ -13,6 +13,7 @@ class AnnualLeaveRequest {
     this.decisionAt,
     this.notes,
     this.queuePosition,
+    this.cancellationPending = false,
   });
 
   final String id;
@@ -23,6 +24,7 @@ class AnnualLeaveRequest {
   final DateTime requestedAt;
   final DateTime? decisionAt;
   final String? notes;
+  final bool cancellationPending;
 
   /// Position in the annual-leave abeyance queue.
   ///
@@ -42,6 +44,7 @@ class AnnualLeaveRequest {
           : DateTime.parse(row['decision_at'].toString()),
       notes: _nullableString(row['notes']),
       queuePosition: _nullableInt(row['queue_position']),
+      cancellationPending: row['cancellation_pending'] == true,
     );
   }
 

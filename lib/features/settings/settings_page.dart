@@ -11,6 +11,7 @@ import '../../core/models/annual_leave_request.dart';
 import '../../core/services/annual_leave_block_pending_action_service.dart';
 import '../../core/services/annual_leave_block_service.dart';
 import '../../core/services/annual_leave_service.dart';
+import '../../core/services/floating_leave_cancellation.dart';
 import '../upload/storage_service.dart';
 
 class AppSettingsPage extends StatefulWidget {
@@ -336,6 +337,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
 
 class AnnualLeaveSettingsPage extends StatefulWidget {
   const AnnualLeaveSettingsPage({
+    this.onRosterChanged,
     this.refreshVersion = 0,
     this.currentTabIndex = 3,
     this.onNavigate,
@@ -345,6 +347,7 @@ class AnnualLeaveSettingsPage extends StatefulWidget {
 
   final int currentTabIndex;
   final int refreshVersion;
+  final VoidCallback? onRosterChanged;
   final Future<void> Function(int destination)? onNavigate;
   final bool embedded;
 
@@ -2851,14 +2854,14 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                           ),
                         ),
                         if (request.status !=
-                            AnnualLeaveRequestStatus.granted) ...[
+                            AnnualLeaveRequestStatus.cancelled) ...[
                           const SizedBox(width: 4),
                           const Icon(Icons.chevron_right, color: textGrey),
                         ],
                       ],
                     ),
                     onTap: request.status == AnnualLeaveRequestStatus.granted
-                        ? null
+                        ? () => _manageFloatingCancellations([request])
                         : () => _showRequestActions(request),
                   ),
                   if (request != floatingRequests.last)
@@ -2866,14 +2869,22 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                 ],
               ),
             ),
+          if (floatingRequests.any((r) => r.status == AnnualLeaveRequestStatus.granted))
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: OutlinedButton.icon(
+                onPressed: _selectFloatingCancellations,
+                icon: const Icon(Icons.checklist),
+                label: const Text('Cancel / action multiple dates'),
+              ),
+            ),
           if (floatingRequests.isNotEmpty) ...[
             const Divider(height: 1),
             const Padding(
               padding: EdgeInsets.all(16),
               child: Text(
-                'Tap a requested or abeyance day to record the response '
-                'from Rosters, change its abeyance queue position or cancel '
-                'the request.',
+                'Tap granted leave to cancel or action a pending cancellation. '
+                'Use Cancel / action multiple dates to prepare one email for several days.',
                 style: TextStyle(color: textGrey, fontSize: 12, height: 1.4),
               ),
             ),
@@ -2881,6 +2892,54 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
         ],
       ),
     );
+  }
+
+
+  Future<void> _manageFloatingCancellations(List<AnnualLeaveRequest> requests) async {
+    final changed = await manageFloatingLeaveCancellation(context: context, requests: requests);
+    if (changed && mounted) {
+      widget.onRosterChanged?.call();
+      await _load();
+    }
+  }
+
+  Future<void> _selectFloatingCancellations() async {
+    final available = _requests.where((r) =>
+        r.requestType == AnnualLeaveRequestType.floating &&
+        r.status == AnnualLeaveRequestStatus.granted).toList();
+    final selected = <String>{};
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Select floating leave dates'),
+          content: SizedBox(
+            width: 460,
+            child: SingleChildScrollView(child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: available.map((r) => CheckboxListTile(
+                value: selected.contains(r.id),
+                title: Text(_displayDate(r.leaveDate)),
+                subtitle: Text(r.cancellationPending ? 'Pending cancellation' : 'Granted'),
+                onChanged: (value) => setDialogState(() {
+                  if (value == true) { selected.add(r.id); } else { selected.remove(r.id); }
+                }),
+              )).toList(),
+            )),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Back')),
+            FilledButton(
+              onPressed: selected.isEmpty ? null : () => Navigator.pop(dialogContext, true),
+              child: Text('Continue (${selected.length})'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await _manageFloatingCancellations(available.where((r) => selected.contains(r.id)).toList());
+    }
   }
 
   Future<void> _showRequestActions(AnnualLeaveRequest request) async {
@@ -3497,6 +3556,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
   }
 
   String _requestStatusLabel(AnnualLeaveRequest request) {
+    if (request.cancellationPending) return 'PENDING CANCELLATION';
     switch (request.status) {
       case AnnualLeaveRequestStatus.requested:
         return 'REQUESTED';

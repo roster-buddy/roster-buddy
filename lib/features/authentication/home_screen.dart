@@ -12,6 +12,7 @@ import '../../core/models/roster_source.dart';
 import '../../core/services/annual_leave_block_pending_action_service.dart';
 import '../../core/services/annual_leave_block_service.dart';
 import '../../core/services/annual_leave_service.dart';
+import '../../core/services/floating_leave_cancellation.dart';
 import '../../core/services/duty_resolver.dart';
 import '../../core/services/hidden_18_service.dart';
 import '../../core/services/job_card_service.dart';
@@ -564,6 +565,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       AnnualLeaveSettingsPage(
         embedded: true,
+        onRosterChanged: _notifyRosterChanged,
         refreshVersion: _dashboardRefreshVersion,
       ),
       AppSettingsPage(
@@ -9998,7 +10000,9 @@ class _CalendarPageState extends State<_CalendarPage> {
 
       case AnnualLeaveRequestStatus.granted:
         title = 'Annual leave granted';
-        description = 'This annual leave request has been granted.';
+        description = leaveRequest?.cancellationPending == true
+                              ? 'Cancellation pending — leave stays granted until Rosters confirms.'
+                              : 'This annual leave request has been granted.';
         colour = leaveRed;
         icon = Icons.event_available_outlined;
 
@@ -10296,199 +10300,23 @@ class _CalendarPageState extends State<_CalendarPage> {
   Future<void> _processGrantedAnnualLeaveCancellation(
     List<DateTime> dates,
   ) async {
-    if (dates.isEmpty) {
-      return;
-    }
-
-    final SupabaseClient supabase = Supabase.instance.client;
-    final User? user = supabase.auth.currentUser;
-
-    String driverName = '';
-    String depot = '';
-    String payrollNumber = '';
-
-    if (user != null) {
-      final Map<String, dynamic>? profile = await supabase
-          .from('driver_profiles')
-          .select('display_name, depot, payroll_number')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-      final Map<String, dynamic> metadata =
-          user.userMetadata ?? <String, dynamic>{};
-
-      driverName = (profile?['display_name'] ?? metadata['full_name'] ?? '')
-          .toString()
-          .trim();
-
-      depot = (profile?['depot'] ?? metadata['depot'] ?? '').toString().trim();
-
-      payrollNumber =
-          (profile?['payroll_number'] ?? metadata['payroll_number'] ?? '')
-              .toString()
-              .trim();
-    }
-
-    final List<String> signature = <String>[
-      if (driverName.isNotEmpty) driverName,
-      if (depot.isNotEmpty) depot,
-      if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
-    ];
-
-    final String cancelledDates = dates
-        .map((DateTime date) => '- ${_fullDate(date)}')
-        .join('\n');
-
-    final String cancellationBody =
-        'Please can I cancel my previously granted annual leave for '
-        'the following ${dates.length == 1 ? 'date' : 'dates'}:\n\n'
-        '$cancelledDates\n\n'
-        'Regards'
-        '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
-
-    final String cancellationSubject = dates.length == 1
-        ? 'Annual Leave Cancellation - ${_fullDate(dates.first)}'
-        : 'Annual Leave Cancellation - ${dates.length} Dates';
-
-    final Uri cancellationEmailUri = _rosterBuddyMailUri(
-      subject: cancellationSubject,
-      body: cancellationBody,
-    );
-
-    Future<bool>? cancellationEmailFuture;
-
-    if (!mounted) {
-      return;
-    }
-
-    final bool? alreadyConfirmed = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return CupertinoAlertDialog(
-          title: const Text('Cancellation confirmed?'),
-          content: Text(
-            dates.length == 1
-                ? 'Has the cancellation of ${_fullDate(dates.first)} '
-                      'already been confirmed by Rosters / DTCM?'
-                : 'Have the cancellations for these ${dates.length} annual '
-                      'leave dates already been confirmed by Rosters / DTCM?',
-          ),
-          actions: [
-            CupertinoDialogAction(
-              onPressed: () {
-                cancellationEmailFuture = launchUrl(
-                  cancellationEmailUri,
-                  mode: LaunchMode.platformDefault,
-                  webOnlyWindowName: '_self',
-                );
-
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: const Text('No'),
-            ),
-            CupertinoDialogAction(
-              isDefaultAction: true,
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
-              child: const Text('Yes'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (alreadyConfirmed == null || !mounted) {
-      return;
-    }
-
-    try {
-      final List<AnnualLeaveRequest> requests = <AnnualLeaveRequest>[];
-
-      for (final DateTime date in dates) {
-        final AnnualLeaveRequest? request =
-            _leaveRequestsByDate[_dateKey(date)];
-
-        if (request == null ||
-            request.status != AnnualLeaveRequestStatus.granted) {
-          throw AnnualLeaveException(
-            'Annual leave for ${_fullDate(date)} is no longer shown as granted.',
-          );
-        }
-
-        requests.add(request);
-      }
-
-      if (alreadyConfirmed) {
-        for (final AnnualLeaveRequest request in requests) {
-          await _annualLeaveService.cancelRequest(requestId: request.id);
-        }
-
-        await _loadMonth();
-
-        if (!mounted) {
-          return;
-        }
-
-        widget.onRosterChanged();
-
-        setState(() {
-          _isSelectingAnnualLeaveCancellationDates = false;
-          _selectedAnnualLeaveCancellationDateKeys.clear();
-        });
-
-        _showCalendarMessage(
-          dates.length == 1
-              ? 'Annual leave cancelled for ${_fullDate(dates.first)}. '
-                    'Your allocated rostered duty now applies again.'
-              : '${dates.length} annual leave dates cancelled. '
-                    'The allocated rostered duties now apply again.',
-        );
-
+    final requests = <AnnualLeaveRequest>[];
+    for (final date in dates) {
+      final request = _leaveRequestsByDate[_dateKey(date)];
+      if (request == null || request.status != AnnualLeaveRequestStatus.granted) {
+        _showCalendarMessage('Selected leave has changed. Refresh and try again.');
         return;
       }
-
-      final bool opened = cancellationEmailFuture == null
-          ? false
-          : await cancellationEmailFuture!;
-
-      if (!mounted) {
-        return;
-      }
-
+      requests.add(request);
+    }
+    final changed = await manageFloatingLeaveCancellation(context: context, requests: requests);
+    if (changed && mounted) {
       setState(() {
         _isSelectingAnnualLeaveCancellationDates = false;
         _selectedAnnualLeaveCancellationDateKeys.clear();
       });
-
-      if (opened) {
-        _showCalendarMessage(
-          dates.length == 1
-              ? 'Cancellation email prepared. Annual leave will remain '
-                    'granted until Rosters confirms the cancellation.'
-              : 'Cancellation email prepared for ${dates.length} dates. '
-                    'They will remain granted until Rosters confirms cancellation.',
-        );
-      } else {
-        _showCalendarMessage(
-          'Roster Buddy could not open your email app. '
-          'The annual leave remains granted.',
-        );
-      }
-    } on AnnualLeaveException catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      _showCalendarMessage(error.message);
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-
-      _showCalendarMessage(
-        'Roster Buddy could not process the annual leave cancellation.',
-      );
+      widget.onRosterChanged();
+      await _loadMonth();
     }
   }
 
