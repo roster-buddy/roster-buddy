@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import '../../core/services/rest_day_move.dart';
 import 'package:flutter/material.dart';
 import '../../core/widgets/roster_decision_sheet.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -1447,6 +1448,25 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   }
 
   Widget _buildShiftSwapCard(ShiftSwap swap) {
+    if (swap.notes?.startsWith('TYPE=Rest day move') == true) {
+      final pairs = restDayMovePairs(swap.notes!);
+      return Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Rest day move — pending', style: TextStyle(fontWeight: FontWeight.bold)),
+          for (final pair in pairs) Text("${pair['rest']} → ${pair['work']}"),
+          TextButton(onPressed: () async {
+            try {
+              final changed = await actionRestDayMove(context, pairs, id: swap.id);
+              if (changed && mounted) { widget.onChanged(); await _load(); }
+            } catch (_) {
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not action rest day move. Please try again.')));
+            }
+          }, child: const Text('Action')),
+        ],
+      )));
+    }
+
     final String? otherDriver = _shiftSwapMetadata(swap, 'OTHER_DRIVER');
     final String? otherPayroll = _shiftSwapMetadata(swap, 'OTHER_PAYROLL');
 
@@ -8076,6 +8096,7 @@ class _CalendarPageState extends State<_CalendarPage> {
     if (duty.dutyType == DutyType.restDay) {
       return <_CalendarDayAction>[
         _CalendarDayAction.allocateShift,
+        _CalendarDayAction.moveRestDays,
         if (duty.source == RosterSource.manual)
           _CalendarDayAction.manualChange,
       ];
@@ -8212,6 +8233,9 @@ class _CalendarPageState extends State<_CalendarPage> {
         );
         return;
 
+      case _CalendarDayAction.moveRestDays:
+        if (effectiveDuty != null) await _confirmMoveRestDayHere(date: date, originalDuty: effectiveDuty);
+        return;
       case _CalendarDayAction.moveRestDayHere:
         if (effectiveDuty == null || !effectiveDuty.dutyType.countsAsWorking) {
           _showCalendarMessage(
@@ -8834,619 +8858,9 @@ class _CalendarPageState extends State<_CalendarPage> {
                                   onPressed: selectedOption == null
                                       ? null
                                       : () async {
-                                          if (selectedOption ==
-                                              'Change to Rest Day') {
-                                            final DateTime selectedDay =
-                                                DateTime(
-                                                  date.year,
-                                                  date.month,
-                                                  date.day,
-                                                );
-
-                                            final DateTime weekSunday =
-                                                selectedDay.subtract(
-                                                  Duration(
-                                                    days:
-                                                        selectedDay.weekday % 7,
-                                                  ),
-                                                );
-
-                                            final List<DateTime> restDays =
-                                                <DateTime>[];
-
-                                            for (
-                                              int offset = 0;
-                                              offset < 7;
-                                              offset++
-                                            ) {
-                                              final DateTime candidate =
-                                                  weekSunday.add(
-                                                    Duration(days: offset),
-                                                  );
-
-                                              final Duty? candidateDuty =
-                                                  _dutiesByDate[_dateKey(
-                                                    candidate,
-                                                  )];
-
-                                              if (candidateDuty?.dutyType ==
-                                                  DutyType.restDay) {
-                                                restDays.add(candidate);
-                                              }
-                                            }
-
-                                            if (restDays.isEmpty) {
-                                              _showCalendarMessage(
-                                                'There are no Rest Days in this roster week to swap with.',
-                                              );
-                                              return;
-                                            }
-
-                                            final Set<DateTime>
-                                            selectedAlternatives = <DateTime>{};
-
-                                            final List<DateTime>?
-                                            chosenRestDays = await showCupertinoModalPopup<List<DateTime>>(
-                                              context: dialogContext,
-                                              builder: (BuildContext pickerContext) {
-                                                return StatefulBuilder(
-                                                  builder:
-                                                      (
-                                                        BuildContext
-                                                        pickerContext,
-                                                        void Function(
-                                                          void Function(),
-                                                        )
-                                                        setPickerState,
-                                                      ) {
-                                                        return DefaultTextStyle(
-                                                          style: TextStyle(
-                                                            fontSize: 14,
-                                                            color: CupertinoColors
-                                                                .label
-                                                                .resolveFrom(
-                                                                  pickerContext,
-                                                                ),
-                                                            decoration:
-                                                                TextDecoration
-                                                                    .none,
-                                                          ),
-                                                          child: CupertinoPopupSurface(
-                                                            child: SafeArea(
-                                                              top: false,
-                                                              child: Padding(
-                                                                padding:
-                                                                    const EdgeInsets.fromLTRB(
-                                                                      20,
-                                                                      20,
-                                                                      20,
-                                                                      24,
-                                                                    ),
-                                                                child: Column(
-                                                                  mainAxisSize:
-                                                                      MainAxisSize
-                                                                          .min,
-                                                                  crossAxisAlignment:
-                                                                      CrossAxisAlignment
-                                                                          .start,
-                                                                  children: <Widget>[
-                                                                    const Text(
-                                                                      'Which Rest Day could you work?',
-                                                                      style: TextStyle(
-                                                                        fontSize:
-                                                                            19,
-                                                                        fontWeight:
-                                                                            FontWeight.w700,
-                                                                        decoration:
-                                                                            TextDecoration.none,
-                                                                      ),
-                                                                    ),
-                                                                    const SizedBox(
-                                                                      height: 6,
-                                                                    ),
-                                                                    const Text(
-                                                                      'Select one or more Rest Days. If you select more than one, they will be offered to Rosters as alternatives for the same one-day swap.',
-                                                                    ),
-                                                                    const SizedBox(
-                                                                      height:
-                                                                          16,
-                                                                    ),
-                                                                    ...restDays.map((
-                                                                      DateTime
-                                                                      restDay,
-                                                                    ) {
-                                                                      final bool
-                                                                      selected =
-                                                                          selectedAlternatives.contains(
-                                                                            restDay,
-                                                                          );
-
-                                                                      return Padding(
-                                                                        padding: const EdgeInsets.only(
-                                                                          bottom:
-                                                                              8,
-                                                                        ),
-                                                                        child: GestureDetector(
-                                                                          behavior:
-                                                                              HitTestBehavior.opaque,
-                                                                          onTap: () {
-                                                                            setPickerState(() {
-                                                                              if (selected) {
-                                                                                selectedAlternatives.remove(
-                                                                                  restDay,
-                                                                                );
-                                                                              } else {
-                                                                                selectedAlternatives.add(
-                                                                                  restDay,
-                                                                                );
-                                                                              }
-                                                                            });
-                                                                          },
-                                                                          child: Container(
-                                                                            width:
-                                                                                double.infinity,
-                                                                            padding: const EdgeInsets.symmetric(
-                                                                              horizontal: 14,
-                                                                              vertical: 13,
-                                                                            ),
-                                                                            decoration: BoxDecoration(
-                                                                              color: selected
-                                                                                  ? CupertinoColors.activeBlue.withValues(
-                                                                                      alpha: 0.12,
-                                                                                    )
-                                                                                  : CupertinoColors.systemGrey6.resolveFrom(
-                                                                                      pickerContext,
-                                                                                    ),
-                                                                              borderRadius: BorderRadius.circular(
-                                                                                12,
-                                                                              ),
-                                                                              border: Border.all(
-                                                                                color: selected
-                                                                                    ? CupertinoColors.activeBlue.resolveFrom(
-                                                                                        pickerContext,
-                                                                                      )
-                                                                                    : const Color(
-                                                                                        0x00000000,
-                                                                                      ),
-                                                                                width: selected
-                                                                                    ? 1.5
-                                                                                    : 0,
-                                                                              ),
-                                                                            ),
-                                                                            child: Row(
-                                                                              children:
-                                                                                  <
-                                                                                    Widget
-                                                                                  >[
-                                                                                    Expanded(
-                                                                                      child: Text(
-                                                                                        _fullDate(
-                                                                                          restDay,
-                                                                                        ),
-                                                                                        style: const TextStyle(
-                                                                                          fontSize: 16,
-                                                                                          fontWeight: FontWeight.w600,
-                                                                                          decoration: TextDecoration.none,
-                                                                                        ),
-                                                                                      ),
-                                                                                    ),
-                                                                                    Icon(
-                                                                                      selected
-                                                                                          ? CupertinoIcons.check_mark_circled_solid
-                                                                                          : CupertinoIcons.circle,
-                                                                                      color: selected
-                                                                                          ? CupertinoColors.activeBlue.resolveFrom(
-                                                                                              pickerContext,
-                                                                                            )
-                                                                                          : CupertinoColors.secondaryLabel.resolveFrom(
-                                                                                              pickerContext,
-                                                                                            ),
-                                                                                    ),
-                                                                                  ],
-                                                                            ),
-                                                                          ),
-                                                                        ),
-                                                                      );
-                                                                    }),
-                                                                    const SizedBox(
-                                                                      height: 8,
-                                                                    ),
-                                                                    SizedBox(
-                                                                      width: double
-                                                                          .infinity,
-                                                                      child: CupertinoButton.filled(
-                                                                        onPressed:
-                                                                            selectedAlternatives.isEmpty
-                                                                            ? null
-                                                                            : () {
-                                                                                final List<
-                                                                                  DateTime
-                                                                                >
-                                                                                result = selectedAlternatives.toList()
-                                                                                  ..sort(
-                                                                                    (
-                                                                                      DateTime a,
-                                                                                      DateTime b,
-                                                                                    ) => a.compareTo(
-                                                                                      b,
-                                                                                    ),
-                                                                                  );
-
-                                                                                Navigator.of(
-                                                                                  pickerContext,
-                                                                                ).pop(
-                                                                                  result,
-                                                                                );
-                                                                              },
-                                                                        child: Text(
-                                                                          selectedAlternatives.length ==
-                                                                                  1
-                                                                              ? 'Continue with 1 option'
-                                                                              : 'Continue with ${selectedAlternatives.length} options',
-                                                                        ),
-                                                                      ),
-                                                                    ),
-                                                                    SizedBox(
-                                                                      width: double
-                                                                          .infinity,
-                                                                      child: CupertinoButton(
-                                                                        onPressed: () {
-                                                                          Navigator.of(
-                                                                            pickerContext,
-                                                                          ).pop();
-                                                                        },
-                                                                        child: const Text(
-                                                                          'Cancel',
-                                                                        ),
-                                                                      ),
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        );
-                                                      },
-                                                );
-                                              },
-                                            );
-
-                                            if (!mounted ||
-                                                !dialogContext.mounted ||
-                                                chosenRestDays == null ||
-                                                chosenRestDays.isEmpty) {
-                                              return;
-                                            }
-
-                                            final String?
-                                            confirmation = await showRosterDecisionSheet<String>(
-                                              context: dialogContext,
-                                              builder: (BuildContext confirmContext) {
-                                                return RosterDecisionSheet(
-                                                  title: const Text(
-                                                    'Confirm Rest Day Change',
-                                                  ),
-                                                  content: Text(
-                                                    'Have you confirmed this change '
-                                                    'with DTCM / Rosters?\n\n'
-                                                    '${_fullDate(date)} will become '
-                                                    'your Rest Day.',
-                                                  ),
-                                                  actions: <Widget>[
-                                                    CupertinoDialogAction(
-                                                      onPressed: () {
-                                                        Navigator.of(
-                                                          confirmContext,
-                                                        ).pop('cancel');
-                                                      },
-                                                      child: const Text(
-                                                        'Cancel',
-                                                      ),
-                                                    ),
-                                                    CupertinoDialogAction(
-                                                      onPressed: () {
-                                                        Navigator.of(
-                                                          confirmContext,
-                                                        ).pop('not_confirmed');
-                                                      },
-                                                      child: const Text(
-                                                        'Not confirmed',
-                                                      ),
-                                                    ),
-                                                    CupertinoDialogAction(
-                                                      isDefaultAction: true,
-                                                      onPressed: () {
-                                                        Navigator.of(
-                                                          confirmContext,
-                                                        ).pop('confirmed');
-                                                      },
-                                                      child: const Text(
-                                                        'Confirmed with DTCM / Rosters',
-                                                      ),
-                                                    ),
-                                                  ],
-                                                );
-                                              },
-                                            );
-
-                                            if (!mounted ||
-                                                confirmation == null ||
-                                                confirmation == 'cancel') {
-                                              return;
-                                            }
-
-                                            if (confirmation ==
-                                                'not_confirmed') {
-                                              final SupabaseClient supabase =
-                                                  Supabase.instance.client;
-
-                                              final User? user =
-                                                  supabase.auth.currentUser;
-
-                                              String driverName = '';
-                                              String depot = '';
-                                              String payrollNumber = '';
-
-                                              if (user != null) {
-                                                final Map<String, dynamic>?
-                                                profile = await supabase
-                                                    .from('driver_profiles')
-                                                    .select(
-                                                      'display_name, depot, payroll_number',
-                                                    )
-                                                    .eq('user_id', user.id)
-                                                    .maybeSingle();
-
-                                                final Map<String, dynamic>
-                                                metadata =
-                                                    user.userMetadata ??
-                                                    <String, dynamic>{};
-
-                                                driverName =
-                                                    (profile?['display_name'] ??
-                                                            metadata['full_name'] ??
-                                                            '')
-                                                        .toString()
-                                                        .trim();
-
-                                                depot =
-                                                    (profile?['depot'] ??
-                                                            metadata['depot'] ??
-                                                            '')
-                                                        .toString()
-                                                        .trim();
-
-                                                payrollNumber =
-                                                    (profile?['payroll_number'] ??
-                                                            metadata['payroll_number'] ??
-                                                            '')
-                                                        .toString()
-                                                        .trim();
-                                              }
-
-                                              final String requestDate =
-                                                  _fullDate(date);
-
-                                              final String requestText;
-
-                                              if (chosenRestDays.length == 1) {
-                                                requestText =
-                                                    'Would it be possible to move my rest day to '
-                                                    '$requestDate and work on '
-                                                    '${_fullDate(chosenRestDays.first)} instead?';
-                                              } else {
-                                                final String
-                                                options = chosenRestDays
-                                                    .map(
-                                                      (DateTime restDay) =>
-                                                          '- ${_fullDate(restDay)}',
-                                                    )
-                                                    .join('\n');
-
-                                                requestText =
-                                                    'Would it be possible to move my rest day to '
-                                                    '$requestDate and work on one of the following '
-                                                    'dates instead?\n\n$options';
-                                              }
-
-                                              final List<String>
-                                              signature = <String>[
-                                                if (driverName.isNotEmpty)
-                                                  driverName,
-                                                if (depot.isNotEmpty) depot,
-                                                if (payrollNumber.isNotEmpty)
-                                                  'Payroll Number: $payrollNumber',
-                                              ];
-
-                                              final String body =
-                                                  '$requestText\n\n'
-                                                  'Regards'
-                                                  '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
-
-                                              final String subject =
-                                                  'Rest Day Swap Request - $requestDate';
-
-                                              final Uri emailUri =
-                                                  _rosterBuddyMailUri(
-                                                    subject: subject,
-                                                    body: body,
-                                                  );
-
-                                              if (dialogContext.mounted) {
-                                                Navigator.of(
-                                                  dialogContext,
-                                                ).pop();
-                                              }
-
-                                              final bool opened =
-                                                  await launchUrl(
-                                                    emailUri,
-                                                    mode: LaunchMode
-                                                        .platformDefault,
-                                                    webOnlyWindowName: '_self',
-                                                  );
-
-                                              if (!mounted) {
-                                                return;
-                                              }
-
-                                              if (!opened) {
-                                                _showCalendarMessage(
-                                                  'Roster Buddy could not open the email app.',
-                                                );
-                                              }
-
-                                              return;
-                                            }
-
-                                            if (confirmation != 'confirmed') {
-                                              return;
-                                            }
-
-                                            DateTime? agreedRestDay;
-
-                                            if (chosenRestDays.length == 1) {
-                                              agreedRestDay =
-                                                  chosenRestDays.first;
-                                            } else {
-                                              if (!dialogContext.mounted) {
-                                                return;
-                                              }
-
-                                              agreedRestDay = await showRosterDecisionSheet<DateTime>(
-                                                context: dialogContext,
-                                                builder: (BuildContext agreedContext) {
-                                                  return RosterDecisionSheet(
-                                                    title: const Text(
-                                                      'Which Rest Day was agreed?',
-                                                    ),
-                                                    content: const Text(
-                                                      'Choose the one Rest Day that DTCM / Rosters confirmed you will work.',
-                                                    ),
-                                                    actions: <Widget>[
-                                                      ...chosenRestDays.map(
-                                                        (DateTime restDay) =>
-                                                            CupertinoDialogAction(
-                                                              onPressed: () {
-                                                                Navigator.of(
-                                                                  agreedContext,
-                                                                ).pop(restDay);
-                                                              },
-                                                              child: Text(
-                                                                _fullDate(
-                                                                  restDay,
-                                                                ),
-                                                              ),
-                                                            ),
-                                                      ),
-                                                      CupertinoDialogAction(
-                                                        onPressed: () {
-                                                          Navigator.of(
-                                                            agreedContext,
-                                                          ).pop();
-                                                        },
-                                                        child: const Text(
-                                                          'Cancel',
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  );
-                                                },
-                                              );
-                                            }
-
-                                            if (!mounted ||
-                                                agreedRestDay == null) {
-                                              return;
-                                            }
-
-                                            final Duty? originalRestDayDuty =
-                                                _dutiesByDate[_dateKey(
-                                                  agreedRestDay,
-                                                )];
-
-                                            if (originalRestDayDuty == null ||
-                                                originalRestDayDuty.dutyType !=
-                                                    DutyType.restDay) {
-                                              _showCalendarMessage(
-                                                'The selected replacement day is no longer a Rest Day.',
-                                              );
-                                              return;
-                                            }
-
-                                            final String turnNumber =
-                                                originalDuty.turnNumber
-                                                    ?.trim() ??
-                                                '';
-                                            final String bookOn =
-                                                originalDuty.bookOn?.trim() ??
-                                                '';
-                                            final String bookOff =
-                                                originalDuty.bookOff?.trim() ??
-                                                '';
-
-                                            if (turnNumber.isEmpty ||
-                                                bookOn.isEmpty ||
-                                                bookOff.isEmpty) {
-                                              _showCalendarMessage(
-                                                'This duty does not contain enough turn information to move automatically.',
-                                              );
-                                              return;
-                                            }
-
-                                            try {
-                                              await _manualDutyService
-                                                  .saveRestDayWorked(
-                                                    date: agreedRestDay,
-                                                    turnNumber: turnNumber,
-                                                    bookOn: bookOn,
-                                                    bookOff: bookOff,
-                                                    originalDuty:
-                                                        originalRestDayDuty,
-                                                  );
-
-                                              await _manualDutyService
-                                                  .saveMovedRestDay(
-                                                    date: date,
-                                                    originalDuty: originalDuty,
-                                                  );
-
-                                              await _loadMonth();
-
-                                              if (!mounted) {
-                                                return;
-                                              }
-
-                                              if (dialogContext.mounted) {
-                                                Navigator.of(
-                                                  dialogContext,
-                                                ).pop();
-                                              }
-
-                                              _showCalendarMessage(
-                                                'Rest Day moved to ${_fullDate(date)}. '
-                                                'You will work ${_fullDate(agreedRestDay)} instead.',
-                                              );
-                                            } on ManualDutyException catch (
-                                              error
-                                            ) {
-                                              if (!mounted) {
-                                                return;
-                                              }
-
-                                              _showCalendarMessage(
-                                                error.message,
-                                              );
-                                            } catch (_) {
-                                              if (!mounted) {
-                                                return;
-                                              }
-
-                                              _showCalendarMessage(
-                                                'Roster Buddy could not complete the Rest Day swap.',
-                                              );
-                                            }
-
+                                          if (selectedOption == 'Change to Rest Day') {
+                                            Navigator.of(dialogContext).pop();
+                                            await _confirmMoveRestDayHere(date: date, originalDuty: originalDuty);
                                             return;
                                           }
 
@@ -9939,67 +9353,15 @@ class _CalendarPageState extends State<_CalendarPage> {
     );
   }
 
-  Future<void> _confirmMoveRestDayHere({
-    required DateTime date,
-    required Duty originalDuty,
-  }) async {
-    final bool? confirmed = await showRosterDecisionSheet<bool>(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return RosterDecisionSheet(
-          title: const Text('Move Rest Day here?'),
-          content: Text(
-            'This will make ${_fullDate(date)} a Rest Day. '
-            'The original rostered duty will remain preserved in the duty history.',
-          ),
-          actions: [
-            CupertinoDialogAction(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: const Text('Cancel'),
-            ),
-            CupertinoDialogAction(
-              isDestructiveAction: true,
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
-              child: const Text('Move Rest Day'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true || !mounted) {
-      return;
-    }
-
+  Future<void> _confirmMoveRestDayHere({required DateTime date, required Duty originalDuty}) async {
     try {
-      await _manualDutyService.saveMovedRestDay(
-        date: date,
-        originalDuty: originalDuty,
-      );
-
-      await _loadMonth();
-
-      if (!mounted) {
-        return;
+      final changed = await moveRestDays(context, date);
+      if (changed && mounted) {
+        widget.onRosterChanged();
+        await _loadMonth();
       }
-
-      _showCalendarMessage('Rest Day moved to ${_fullDate(date)}.');
-    } on ManualDutyException catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      _showCalendarMessage(error.message);
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-
-      _showCalendarMessage('Roster Buddy could not move the Rest Day.');
+    } catch (error) {
+      if (mounted) _showCalendarMessage('Could not move rest days: $error');
     }
   }
 
@@ -10013,6 +9375,8 @@ class _CalendarPageState extends State<_CalendarPage> {
         return 'Manual change';
       case _CalendarDayAction.shiftSwap:
         return 'Mutual Swap';
+      case _CalendarDayAction.moveRestDays:
+        return 'Move rest days';
       case _CalendarDayAction.moveRestDayHere:
         return 'Move rest day here';
       case _CalendarDayAction.requestAnnualLeave:
@@ -11365,6 +10729,7 @@ enum _CalendarDayAction {
   manualChange,
   shiftSwap,
   moveRestDayHere,
+  moveRestDays,
   requestAnnualLeave,
   manageAnnualLeave,
   allocateShift,
