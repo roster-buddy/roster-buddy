@@ -126,7 +126,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
       return name;
     }
 
-    return 'Name, depot, roster code and payroll number';
+    return 'Name, depot, Driver Number and payroll number';
   }
 
   String _baseRosterSummary() {
@@ -4019,13 +4019,13 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
           );
         } else if (message.contains('driver')) {
           _showMessage(
-            'That roster code is already linked to another Roster Buddy '
+            'That Driver Number is already linked to another Roster Buddy '
             'account.',
             isError: true,
           );
         } else {
           _showMessage(
-            'That payroll number or roster code is already linked to '
+            'That payroll number or Driver Number is already linked to '
             'another Roster Buddy account.',
             isError: true,
           );
@@ -4147,14 +4147,14 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
                           keyboardType: TextInputType.number,
                           textInputAction: TextInputAction.next,
                           decoration: const InputDecoration(
-                            labelText: 'Roster Code',
+                            labelText: 'Driver Number',
                             helperText:
-                                'Used to locate your position on a Base Roster.',
+                                'Your Driver Number, used on Annual Leave Rosters and emails.',
                             prefixIcon: Icon(Icons.badge_outlined),
                             border: OutlineInputBorder(),
                           ),
                           validator: (value) =>
-                              _requiredNumber(value, 'roster code'),
+                              _requiredNumber(value, 'Driver Number'),
                         ),
                         const SizedBox(height: 16),
                         TextFormField(

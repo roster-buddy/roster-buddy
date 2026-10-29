@@ -1,3 +1,4 @@
+import 'driver_email_identity.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -19,6 +20,7 @@ Future<bool> manageFloatingLeaveCancellation({
     String dateLabel(DateTime d) => '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
     final dates = sorted.map((r) => dateLabel(r.leaveDate)).join('\n');
     final signature = [
+      await driverNumberEmailLine(),
       profile?['display_name'], profile?['depot'],
       if (profile?['payroll_number'] != null) 'Payroll Number: ${profile!['payroll_number']}',
     ].where((v) => v != null && v.toString().trim().isNotEmpty).join('\n');

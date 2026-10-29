@@ -1,3 +1,4 @@
+import '../../core/services/driver_email_identity.dart';
 import '../../core/formatters/roster_date_format.dart';
 import 'dart:async';
 import '../../core/services/duty_history_service.dart';
@@ -71,6 +72,7 @@ Future<bool> _openAnnualLeaveRequestCancellationEmail({
   }
 
   final List<String> signature = <String>[
+          await driverNumberEmailLine(),
     if (driverName.isNotEmpty) driverName,
     if (depot.isNotEmpty) depot,
     if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
@@ -3710,6 +3712,7 @@ class _DashboardPageState extends State<_DashboardPage> {
         }
 
         final List<String> signature = <String>[
+          await driverNumberEmailLine(),
           if (driverName.isNotEmpty) driverName,
           if (depot.isNotEmpty) depot,
           if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
@@ -4001,6 +4004,7 @@ class _DashboardPageState extends State<_DashboardPage> {
       }
 
       final List<String> signature = <String>[
+          await driverNumberEmailLine(),
         if (driverName.isNotEmpty) driverName,
         if (depot.isNotEmpty) depot,
         if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
@@ -6100,6 +6104,7 @@ class _CalendarPageState extends State<_CalendarPage> {
           .join('\n');
 
       final List<String> signature = <String>[
+          await driverNumberEmailLine(),
         if (driverName.isNotEmpty) driverName,
         if (depot.isNotEmpty) depot,
         if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
@@ -6317,6 +6322,7 @@ class _CalendarPageState extends State<_CalendarPage> {
       }
 
       final List<String> signature = <String>[
+          await driverNumberEmailLine(),
         if (driverName.isNotEmpty) driverName,
         if (depot.isNotEmpty) depot,
         if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
@@ -6452,6 +6458,7 @@ class _CalendarPageState extends State<_CalendarPage> {
       }
 
       final List<String> signature = <String>[
+          await driverNumberEmailLine(),
         if (driverName.isNotEmpty) driverName,
         if (depot.isNotEmpty) depot,
         if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
@@ -7587,6 +7594,7 @@ class _CalendarPageState extends State<_CalendarPage> {
       }
 
       final List<String> signature = <String>[
+          await driverNumberEmailLine(),
         if (driverName.isNotEmpty) driverName,
         if (depot.isNotEmpty) depot,
         if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
@@ -9273,7 +9281,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                                                     'Proposed duty date: $proposedDate\n'
                                                     'Turn: $proposedTurn'
                                                     '${notes.isEmpty ? '' : '\n\nNotes:\n$notes'}'
-                                                    '\n\nRegards'
+                                                    '\n\nRegards\n${await driverNumberEmailLine()}'
                                                     '${driverName.isEmpty ? '' : '\n$driverName'}'
                                                     '${depot.isEmpty ? '' : '\n$depot'}'
                                                     '${payrollNumber.isEmpty ? '' : '\nPayroll Number: $payrollNumber'}';
@@ -11017,7 +11025,7 @@ class SettingsPage extends StatelessWidget {
                   const ListTile(
                     leading: Icon(Icons.badge_outlined),
                     title: Text('Driver profile'),
-                    subtitle: Text('Roster Code, payroll number and depot'),
+                    subtitle: Text('Driver Number, payroll number and depot'),
                     trailing: Icon(Icons.chevron_right),
                   ),
                   const Divider(height: 1),

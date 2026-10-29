@@ -1,3 +1,4 @@
+import 'driver_email_identity.dart';
 import '../formatters/roster_date_format.dart';
 import 'dart:convert';
 import 'package:flutter/cupertino.dart';
@@ -23,7 +24,7 @@ Future<bool> actionRestDayMove(BuildContext context, List<Map<String, dynamic>> 
   final user = client.auth.currentUser;
   final profile = user == null ? null : await client.from('driver_profiles').select('display_name,depot,payroll_number').eq('user_id', user.id).maybeSingle();
   final lines = pairs.map((p) => '${displayStoredDate(p['rest'])} → ${displayStoredDate(p['work'])}').join('\n');
-  final uri = Uri.parse('mailto:drivers.rosters@wmtrains.co.uk?subject=${Uri.encodeComponent('Rest day move request')}&body=${Uri.encodeComponent('Please approve these rest day moves:\n$lines\n\nRegards\n${profile?['display_name'] ?? ''}\n${profile?['depot'] ?? ''}\nPayroll: ${profile?['payroll_number'] ?? ''}')}');
+  final uri = Uri.parse('mailto:drivers.rosters@wmtrains.co.uk?subject=${Uri.encodeComponent('Rest day move request')}&body=${Uri.encodeComponent('Please approve these rest day moves:\n$lines\n\nRegards\n${profile?['display_name'] ?? ''}\n${profile?['depot'] ?? ''}\n${await driverNumberEmailLine()}\nPayroll Number: ${profile?['payroll_number'] ?? ''}')}');
   if (!context.mounted) return false;
   final approved = awaitingAllocation ? true : await showRosterDecisionSheet<bool>(
     context: context,
