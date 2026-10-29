@@ -14,7 +14,6 @@ Future<bool> manageFloatingLeaveCancellation({
   if (user == null) return false;
   try {
     final sorted = requests.toList()..sort((a, b) => a.leaveDate.compareTo(b.leaveDate));
-    final pending = sorted.every((r) => r.cancellationPending);
     final profile = await client.from('driver_profiles')
         .select('display_name,depot,payroll_number').eq('user_id', user.id).maybeSingle();
     String dateLabel(DateTime d) => '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
@@ -34,12 +33,9 @@ Future<bool> manageFloatingLeaveCancellation({
       builder: (sheetContext) => SafeArea(child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Cancellation approved?',
+          Text('Cancellation confirmed by DTCM / Rosters?',
             style: const TextStyle(color: Color(0xFF102A43), fontSize: 22, fontWeight: FontWeight.w900)),
           const SizedBox(height: 16),
-          Text(dates),
-          const SizedBox(height: 12),
-          const Text('Has the cancellation of the selected date or dates been approved by Rosters / DTCM?'),
           const SizedBox(height: 20),
           FilledButton.icon(
             onPressed: () {
@@ -47,15 +43,11 @@ Future<bool> manageFloatingLeaveCancellation({
               Navigator.pop(sheetContext, 'request');
             },
             icon: const Icon(Icons.mail_outline),
-            label: const Text('No — prepare email and mark pending')),
+            label: const Text('No')),
           const SizedBox(height: 8),
           OutlinedButton(
             onPressed: () => Navigator.pop(sheetContext, 'confirm'),
-            child: const Text('Yes — action cancellation')),
-          if (pending) OutlinedButton(
-            onPressed: () => Navigator.pop(sheetContext, 'retain'),
-            child: const Text('Declined / withdrawn — keep leave')),
-          TextButton(onPressed: () => Navigator.pop(sheetContext), child: const Text('Back')),
+            child: const Text('Yes')),
         ]),
       )),
     );

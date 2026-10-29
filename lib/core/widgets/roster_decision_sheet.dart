@@ -27,6 +27,11 @@ class RosterDecisionSheet extends StatelessWidget {
         titleText.contains('authorised') ||
         titleText.contains('rest day change') ||
         titleText.contains('union');
+    final shortTitle = titleText.contains('cancellation')
+        ? 'Cancellation confirmed by DTCM / Rosters?'
+        : titleText.contains('union')
+            ? 'Confirmed by the union?'
+            : 'Confirmed by DTCM / Rosters?';
     final buttons = <Widget>[];
     for (final action in actions) {
       VoidCallback? callback;
@@ -47,10 +52,10 @@ class RosterDecisionSheet extends StatelessWidget {
       }
       final text = label is Text ? label.data : null;
       if (approval && text == 'No') {
-        label = const Text('No — prepare email');
+        label = const Text('No');
         primary = true;
       } else if (approval && text == 'Yes') {
-        label = const Text('Yes — action change');
+        label = const Text('Yes');
         primary = false;
       }
       buttons.add(Padding(
@@ -70,15 +75,15 @@ class RosterDecisionSheet extends StatelessWidget {
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (title != null) DefaultTextStyle(
           style: const TextStyle(color: Color(0xFF102A43), fontSize: 22, fontWeight: FontWeight.w900),
-          child: title!),
-        if (content != null) ...[
+          child: approval ? Text(shortTitle) : title!),
+        if (content != null && !approval) ...[
           const SizedBox(height: 18),
           DefaultTextStyle(style: const TextStyle(color: Color(0xFF52667A), fontSize: 16, height: 1.4),
             child: content!),
         ],
         const SizedBox(height: 10),
         ...buttons,
-        if (!hasBack) TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Back')),
+        if (!hasBack && !approval) TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Back')),
       ]),
     ));
   }

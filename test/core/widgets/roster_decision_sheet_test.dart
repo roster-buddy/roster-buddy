@@ -25,9 +25,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(BottomSheet), findsOneWidget);
     expect(find.byType(CupertinoAlertDialog), findsNothing);
-    expect(find.text('No — prepare email'), findsOneWidget);
-    expect(find.text('Yes — action change'), findsOneWidget);
-    await tester.tap(find.text('No — prepare email'));
+    expect(find.text('No'), findsOneWidget);
+    expect(find.text('Yes'), findsOneWidget);
+    await tester.tap(find.text('No'));
     await tester.pumpAndSettle();
     expect(choice, isFalse);
   });
