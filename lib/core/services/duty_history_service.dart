@@ -35,7 +35,7 @@ class DutyHistoryService {
       'rest_day': DutyType.restDay, 'annual_leave': DutyType.annualLeave, 'sick': DutyType.sick,
       'public_holiday': DutyType.publicHoliday, 'unavailable': DutyType.unavailable,
     };
-    final sources = {'base_roster': RosterSource.baseRoster, 'ten_day': RosterSource.tenDay, 'seven_day': RosterSource.sevenDay, 'forty_eight_hour': RosterSource.fortyEightHour};
+    final sources = {'base_roster': RosterSource.baseRoster, '10_day': RosterSource.tenDay, '7_day': RosterSource.sevenDay, '48_hour': RosterSource.fortyEightHour, 'annual_leave': RosterSource.annualLeave};
     final source = sources[row['source']] ?? RosterSource.values.where((s) => s.name == row['source']).firstOrNull ?? RosterSource.manual;
     return Duty(date: date, source: source,
       dutyType: types[row['duty_type']] ?? DutyType.unknown,
