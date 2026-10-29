@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import '../../core/widgets/roster_decision_sheet.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -974,10 +975,10 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   }
 
   Future<void> _cancel(AnnualLeaveRequest request) async {
-    final bool? alreadyConfirmed = await showCupertinoDialog<bool>(
+    final bool? alreadyConfirmed = await showRosterDecisionSheet<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
-        return CupertinoAlertDialog(
+        return RosterDecisionSheet(
           title: const Text('Cancellation confirmed?'),
           content: Text(
             'Has the cancellation of your annual leave request for '
@@ -1076,10 +1077,10 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   }
 
   Future<void> _approveShiftSwap(ShiftSwap swap) async {
-    final bool? confirmed = await showCupertinoDialog<bool>(
+    final bool? confirmed = await showRosterDecisionSheet<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
-        return CupertinoAlertDialog(
+        return RosterDecisionSheet(
           title: const Text('Swap confirmed?'),
           content: Text(
             'Has Rosters / DTCM confirmed this mutual swap?\n\n'
@@ -1398,10 +1399,10 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   }
 
   Future<void> _cancelShiftSwap(ShiftSwap swap) async {
-    final bool? confirmed = await showCupertinoDialog<bool>(
+    final bool? confirmed = await showRosterDecisionSheet<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
-        return CupertinoAlertDialog(
+        return RosterDecisionSheet(
           title: const Text('Cancel swap request?'),
           content: Text(
             'Cancel the pending mutual swap from '
@@ -1602,10 +1603,10 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   }
 
   Future<void> _confirmBlockAction(AnnualLeaveBlockPendingAction action) async {
-    final bool? confirmed = await showCupertinoDialog<bool>(
+    final bool? confirmed = await showRosterDecisionSheet<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
-        return CupertinoAlertDialog(
+        return RosterDecisionSheet(
           title: const Text('Union confirmed?'),
           content: Text(
             'Has the Union confirmed this ${_blockChangeTypeLabel(action).toLowerCase()} '
@@ -1666,10 +1667,10 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   Future<void> _cancelScheduledBlockAction(
     AnnualLeaveBlockPendingAction action,
   ) async {
-    final bool? confirmed = await showCupertinoDialog<bool>(
+    final bool? confirmed = await showRosterDecisionSheet<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
-        return CupertinoAlertDialog(
+        return RosterDecisionSheet(
           title: const Text('Cancel queued request?'),
           content: Text(
             'Remove the queued ${_blockChangeTypeLabel(action).toLowerCase()} '
@@ -1714,10 +1715,10 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   }
 
   Future<void> _cancelBlockAction(AnnualLeaveBlockPendingAction action) async {
-    final bool? confirmed = await showCupertinoDialog<bool>(
+    final bool? confirmed = await showRosterDecisionSheet<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
-        return CupertinoAlertDialog(
+        return RosterDecisionSheet(
           title: const Text('Cancel pending change?'),
           content: Text(
             'Cancel the pending ${_blockChangeTypeLabel(action).toLowerCase()} '
@@ -3645,10 +3646,10 @@ class _DashboardPageState extends State<_DashboardPage> {
 
     try {
       if (action == 'grant') {
-        final bool? alreadyConfirmed = await showCupertinoDialog<bool>(
+        final bool? alreadyConfirmed = await showRosterDecisionSheet<bool>(
           context: context,
           builder: (BuildContext dialogContext) {
-            return CupertinoAlertDialog(
+            return RosterDecisionSheet(
               title: const Text('Annual leave confirmed?'),
               content: Text(
                 'Has the annual leave for ${_fullDate(date)} already been '
@@ -3846,10 +3847,10 @@ class _DashboardPageState extends State<_DashboardPage> {
       }
 
       if (action == 'cancel') {
-        final bool? alreadyConfirmed = await showCupertinoDialog<bool>(
+        final bool? alreadyConfirmed = await showRosterDecisionSheet<bool>(
           context: context,
           builder: (BuildContext dialogContext) {
-            return CupertinoAlertDialog(
+            return RosterDecisionSheet(
               title: const Text('Cancellation confirmed?'),
               content: Text(
                 'Has the cancellation of your annual leave request for '
@@ -3939,10 +3940,10 @@ class _DashboardPageState extends State<_DashboardPage> {
     required DateTime date,
     required AnnualLeaveRequest request,
   }) async {
-    final bool? alreadyConfirmed = await showCupertinoDialog<bool>(
+    final bool? alreadyConfirmed = await showRosterDecisionSheet<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
-        return CupertinoAlertDialog(
+        return RosterDecisionSheet(
           title: const Text('Cancellation confirmed?'),
           content: Text(
             'Has the cancellation of ${_fullDate(date)} already been '
@@ -6032,10 +6033,10 @@ class _CalendarPageState extends State<_CalendarPage> {
       return;
     }
 
-    final bool? confirmed = await showCupertinoDialog<bool>(
+    final bool? confirmed = await showRosterDecisionSheet<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
-        return CupertinoAlertDialog(
+        return RosterDecisionSheet(
           title: Text(
             'Request ${dates.length} annual leave '
             'date${dates.length == 1 ? '' : 's'}?',
@@ -6067,10 +6068,10 @@ class _CalendarPageState extends State<_CalendarPage> {
       return;
     }
 
-    final bool? alreadyAuthorised = await showCupertinoDialog<bool>(
+    final bool? alreadyAuthorised = await showRosterDecisionSheet<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
-        return CupertinoAlertDialog(
+        return RosterDecisionSheet(
           title: const Text('Annual leave authorised?'),
           content: Text(
             dates.length == 1
@@ -6380,10 +6381,10 @@ class _CalendarPageState extends State<_CalendarPage> {
         return;
       }
 
-      final bool? alreadyAuthorised = await showCupertinoDialog<bool>(
+      final bool? alreadyAuthorised = await showRosterDecisionSheet<bool>(
         context: context,
         builder: (BuildContext dialogContext) {
-          return CupertinoAlertDialog(
+          return RosterDecisionSheet(
             title: const Text('Annual leave authorised?'),
             content: Text(
               'Has the annual leave for ${_fullDate(date)} already been '
@@ -7333,10 +7334,10 @@ class _CalendarPageState extends State<_CalendarPage> {
   }
 
   Future<void> _cancelQueuedAnnualLeaveRequest(DateTime date) async {
-    final bool? confirmed = await showCupertinoDialog<bool>(
+    final bool? confirmed = await showRosterDecisionSheet<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
-        return CupertinoAlertDialog(
+        return RosterDecisionSheet(
           title: const Text('Cancel queued annual leave?'),
           content: Text(
             'The scheduled annual leave request for ${_fullDate(date)} '
@@ -7400,10 +7401,10 @@ class _CalendarPageState extends State<_CalendarPage> {
     required DateTime date,
     required AnnualLeaveRequest request,
   }) async {
-    final bool? alreadyConfirmed = await showCupertinoDialog<bool>(
+    final bool? alreadyConfirmed = await showRosterDecisionSheet<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
-        return CupertinoAlertDialog(
+        return RosterDecisionSheet(
           title: const Text('Annual leave confirmed?'),
           content: Text(
             'Has the annual leave for ${_fullDate(date)} already been '
@@ -7524,10 +7525,10 @@ class _CalendarPageState extends State<_CalendarPage> {
     required DateTime date,
     required AnnualLeaveRequest request,
   }) async {
-    final bool? alreadyConfirmed = await showCupertinoDialog<bool>(
+    final bool? alreadyConfirmed = await showRosterDecisionSheet<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
-        return CupertinoAlertDialog(
+        return RosterDecisionSheet(
           title: const Text('Cancellation confirmed?'),
           content: Text(
             'Has the cancellation of your annual leave request for '
@@ -9118,10 +9119,10 @@ class _CalendarPageState extends State<_CalendarPage> {
                                             }
 
                                             final String?
-                                            confirmation = await showCupertinoDialog<String>(
+                                            confirmation = await showRosterDecisionSheet<String>(
                                               context: dialogContext,
                                               builder: (BuildContext confirmContext) {
-                                                return CupertinoAlertDialog(
+                                                return RosterDecisionSheet(
                                                   title: const Text(
                                                     'Confirm Rest Day Change',
                                                   ),
@@ -9282,6 +9283,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                                                     emailUri,
                                                     mode: LaunchMode
                                                         .platformDefault,
+                                                    webOnlyWindowName: '_self',
                                                   );
 
                                               if (!mounted) {
@@ -9311,10 +9313,10 @@ class _CalendarPageState extends State<_CalendarPage> {
                                                 return;
                                               }
 
-                                              agreedRestDay = await showCupertinoDialog<DateTime>(
+                                              agreedRestDay = await showRosterDecisionSheet<DateTime>(
                                                 context: dialogContext,
                                                 builder: (BuildContext agreedContext) {
-                                                  return CupertinoAlertDialog(
+                                                  return RosterDecisionSheet(
                                                     title: const Text(
                                                       'Which Rest Day was agreed?',
                                                     ),
@@ -9779,6 +9781,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                                                       emailUri,
                                                       mode: LaunchMode
                                                           .platformDefault,
+                                                      webOnlyWindowName: '_self',
                                                     );
 
                                                 if (!mounted) {
@@ -9940,10 +9943,10 @@ class _CalendarPageState extends State<_CalendarPage> {
     required DateTime date,
     required Duty originalDuty,
   }) async {
-    final bool? confirmed = await showCupertinoDialog<bool>(
+    final bool? confirmed = await showRosterDecisionSheet<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
-        return CupertinoAlertDialog(
+        return RosterDecisionSheet(
           title: const Text('Move Rest Day here?'),
           content: Text(
             'This will make ${_fullDate(date)} a Rest Day. '

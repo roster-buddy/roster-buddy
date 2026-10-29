@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
+import '../../core/widgets/roster_decision_sheet.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -3465,10 +3466,10 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
     required String confirmLabel,
     bool destructive = false,
   }) async {
-    final bool? result = await showDialog<bool>(
+    final bool? result = await showRosterDecisionSheet<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
-        return AlertDialog(
+        return RosterDecisionSheet(
           title: Text(title),
           content: Text(message),
           actions: [
@@ -3695,7 +3696,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
       '&body=${Uri.encodeComponent(body)}',
     );
 
-    return launchUrl(uri);
+    return launchUrl(uri, webOnlyWindowName: '_self');
   }
 
   String _blockTypeLabel(String value) {
