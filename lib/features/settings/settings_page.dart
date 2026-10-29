@@ -375,6 +375,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
       AnnualLeaveBlockPendingActionService();
 
   late int _leaveYear;
+  bool _showTakenDays = false;
 
   bool _loading = true;
   String? _loadError;
@@ -616,6 +617,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
   Future<void> _changeYear(int offset) async {
     setState(() {
       _leaveYear += offset;
+      _showTakenDays = false;
     });
 
     await _load();
@@ -1827,7 +1829,8 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
 
           return !excluded.contains(date);
         })
-        .toList(growable: false);
+        .toList(growable: false)
+        ..sort((a, b) => a.start.compareTo(b.start));
 
     if (!mounted) {
       return null;
@@ -2008,6 +2011,16 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               });
 
               try {
+                final preparedEmail = await _buildBlockUnionEmail(
+                  leaveYear: _leaveYear, blockNumber: _blockCycle?.weekIndex,
+                  periodType: periodType, changeType: changeType,
+                  originalStart: period.start, originalEnd: period.end,
+                  proposedStart: selectedStart, proposedEnd: selectedEnd,
+                  swapDriverNumber: changeType == AnnualLeaveBlockChangeType.mutualSwap ? driverController.text : null,
+                  swapReference: referenceController.text, notes: notesController.text,
+                );
+                if (!sheetContext.mounted) return;
+                Future<bool>? emailOpening;
                 final bool? unionConfirmed = await showCupertinoModalPopup<bool>(
                   context: sheetContext,
                   builder: (BuildContext dialogContext) => CupertinoActionSheet(
@@ -2019,7 +2032,10 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                             ? 'Yes – action swap' : 'Yes – action change'),
                       ),
                       CupertinoActionSheetAction(
-                        onPressed: () => Navigator.of(dialogContext).pop(false),
+                        onPressed: () {
+                          emailOpening = _openBlockUnionEmail(subject: preparedEmail.subject, body: preparedEmail.body);
+                          Navigator.of(dialogContext).pop(false);
+                        },
                         child: const Text('No – email the Union'),
                       ),
                     ],
@@ -2056,24 +2072,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                     notes: notesController.text,
                   );
                 } else {
-                  final email = await _buildBlockUnionEmail(
-                    leaveYear: _leaveYear,
-                    blockNumber: _blockCycle?.weekIndex,
-                    periodType: periodType,
-                    changeType: changeType,
-                    originalStart: period.start,
-                    originalEnd: period.end,
-                    proposedStart: selectedStart,
-                    proposedEnd: selectedEnd,
-                    swapDriverNumber: changeType == AnnualLeaveBlockChangeType.mutualSwap
-                        ? driverController.text : null,
-                    swapReference: referenceController.text,
-                    notes: notesController.text,
-                  );
-                  final bool opened = await _openBlockUnionEmail(
-                    subject: email.subject,
-                    body: email.body,
-                  );
+                  final bool opened = await (emailOpening ?? Future<bool>.value(false));
                   if (!opened) {
                     if (sheetContext.mounted) {
                       setSheetState(() {
@@ -2104,6 +2103,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                 }
 
                 Navigator.of(sheetContext).pop();
+                widget.onRosterChanged?.call();
 
                 if (unionConfirmed) {
                   await _load();
@@ -2454,7 +2454,11 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               child: Column(
                 children: [
                   for (final _AnnualLeaveBlockPeriod period in _blockPeriods)
-                    _buildBlockDateRow(period),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => _showBlockOverrideDialog(period),
+                      child: _buildBlockDateRow(period),
+                    ),
                 ],
               ),
             ),
@@ -2500,7 +2504,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 12, 16, 16),
             child: Text(
-              'Use Edit block weeks for an agreed manual move or a mutual '
+              'Tap a block week for an agreed move or a mutual '
               'swap. Changes apply only to your own leave; the uploaded '
               'Annual Leave Roster remains unchanged.',
               style: TextStyle(color: textGrey, fontSize: 12, height: 1.4),
@@ -2661,11 +2665,22 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
   }
 
   Widget _buildRequestsCard() {
-    final List<AnnualLeaveRequest> floatingRequests = _requests.where((
+    final List<AnnualLeaveRequest> allFloatingRequests = _requests.where((
       AnnualLeaveRequest request,
     ) {
       return request.requestType == AnnualLeaveRequestType.floating;
     }).toList();
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    bool taken(AnnualLeaveRequest request) =>
+        request.status == AnnualLeaveRequestStatus.granted &&
+        !request.cancellationPending &&
+        DateTime(request.leaveDate.year, request.leaveDate.month, request.leaveDate.day).isBefore(today);
+    final takenRequests = allFloatingRequests.where(taken).toList()
+      ..sort((a, b) => a.leaveDate.compareTo(b.leaveDate));
+    final floatingRequests = allFloatingRequests.where((request) => !taken(request)).toList()
+      ..sort((a, b) => a.leaveDate.compareTo(b.leaveDate));
 
     final int abeyanceCount = floatingRequests.where((
       AnnualLeaveRequest request,
@@ -2673,40 +2688,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
       return request.status == AnnualLeaveRequestStatus.abeyance;
     }).length;
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ListTile(
-            leading: const CircleAvatar(
-              backgroundColor: Color(0x1A1769AA),
-              child: Icon(Icons.list_alt_outlined, color: railwayBlue),
-            ),
-            title: const Text(
-              'Floating leave requests',
-              style: TextStyle(color: navy, fontWeight: FontWeight.w900),
-            ),
-            subtitle: Text(
-              abeyanceCount == 0
-                  ? 'Requested, abeyance and granted days'
-                  : '$abeyanceCount day${abeyanceCount == 1 ? '' : 's'} '
-                        'currently in abeyance',
-            ),
-          ),
-          const Divider(height: 1),
-          if (floatingRequests.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(18),
-              child: Text(
-                'You have no active floating annual leave requests '
-                'for this leave year.',
-                style: TextStyle(color: textGrey, height: 1.4),
-              ),
-            )
-          else
-            ...floatingRequests.map(
-              (AnnualLeaveRequest request) => Column(
+    Widget requestRow(AnnualLeaveRequest request) => Column(
                 children: [
                   ListTile(
                     leading: Icon(
@@ -2774,11 +2756,53 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                         ? () => _showGrantedFloatingDetails(request)
                         : () => _showRequestActions(request),
                   ),
-                  if (request != floatingRequests.last)
-                    const Divider(height: 1),
-                ],
+                  const Divider(height: 1),
+                ],);
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ListTile(
+            leading: const CircleAvatar(
+              backgroundColor: Color(0x1A1769AA),
+              child: Icon(Icons.list_alt_outlined, color: railwayBlue),
+            ),
+            title: const Text(
+              'Floating leave requests',
+              style: TextStyle(color: navy, fontWeight: FontWeight.w900),
+            ),
+            subtitle: Text(
+              abeyanceCount == 0
+                  ? 'Requested, abeyance and granted days'
+                  : '$abeyanceCount day${abeyanceCount == 1 ? '' : 's'} '
+                        'currently in abeyance',
+            ),
+          ),
+          const Divider(height: 1),
+          if (floatingRequests.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(18),
+              child: Text(
+                'You have no active floating annual leave requests '
+                'for this leave year.',
+                style: TextStyle(color: textGrey, height: 1.4),
+              ),
+            )
+          else
+            ...floatingRequests.map(requestRow),
+          if (takenRequests.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: OutlinedButton.icon(
+                onPressed: () => setState(() => _showTakenDays = !_showTakenDays),
+                icon: Icon(_showTakenDays ? Icons.expand_less : Icons.expand_more),
+                label: const Text('Days already taken'),
               ),
             ),
+            if (_showTakenDays) ...takenRequests.map(requestRow),
+          ],
           if (floatingRequests.any((r) => r.status == AnnualLeaveRequestStatus.granted))
             Padding(
               padding: const EdgeInsets.all(12),

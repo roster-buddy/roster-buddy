@@ -279,6 +279,9 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    if (destination == 1) {
+      _calendarKey.currentState?.showCurrentMonth();
+    }
     setState(() {
       if (destination == 0 || destination == 1) {
         _dashboardRefreshVersion++;
@@ -5361,10 +5364,12 @@ class _CalendarPage extends StatefulWidget {
 }
 
 class _CalendarPageState extends State<_CalendarPage> {
+  final ScrollController _calendarScrollController = ScrollController();
   List<ShiftSwap> _restDayMoves = <ShiftSwap>[];
 
   @override
   void dispose() {
+    _calendarScrollController.dispose();
     _restDayPicker?.complete(null);
     super.dispose();
   }
@@ -5480,6 +5485,10 @@ class _CalendarPageState extends State<_CalendarPage> {
   }
 
   void showCurrentMonth() {
+    if (_restDayPicker != null) _finishRestDaySelection(false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _calendarScrollController.hasClients) _calendarScrollController.jumpTo(0);
+    });
     final DateTime now = DateTime.now();
     setState(() {
       _displayedMonth = DateTime(now.year, now.month);
@@ -5723,6 +5732,7 @@ class _CalendarPageState extends State<_CalendarPage> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 900),
           child: ListView(
+            controller: _calendarScrollController,
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(16),
             children: [
