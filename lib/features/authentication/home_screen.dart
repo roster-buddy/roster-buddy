@@ -1,3 +1,4 @@
+import '../../core/formatters/roster_date_format.dart';
 import 'dart:async';
 import '../../core/services/duty_history_service.dart';
 import 'package:flutter/cupertino.dart';
@@ -757,33 +758,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   }
 
   String _dateLabel(DateTime date) {
-    const List<String> weekdays = <String>[
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-
-    const List<String> months = <String>[
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-
-    return '${weekdays[date.weekday - 1]} '
-        '${date.day} ${months[date.month - 1]} ${date.year}';
+    return displayDate(date);
   }
 
   Future<void> _load() async {
@@ -1456,7 +1431,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(swap.notes?.contains('ALLOCATION_REQUIRED=true') == true ? 'Rest day move — awaiting allocation' : 'Rest day move — pending', style: const TextStyle(fontWeight: FontWeight.bold)),
-          for (final pair in pairs) Text("${pair['rest']} → ${pair['work']}"),
+          for (final pair in pairs) Text("${displayStoredDate(pair['rest'])} → ${displayStoredDate(pair['work'])}"),
           TextButton(onPressed: () async {
             try {
               final changed = await actionRestDayMove(context, pairs, id: swap.id, awaitingAllocation: swap.notes?.contains('ALLOCATION_REQUIRED=true') == true);
@@ -2792,10 +2767,7 @@ class _DashboardPageState extends State<_DashboardPage> {
   }
 
   static String _displayHidden18Date(DateTime date) {
-    final String day = date.day.toString().padLeft(2, '0');
-    final String month = date.month.toString().padLeft(2, '0');
-
-    return '$day/$month/${date.year}';
+    return displayDate(date);
   }
 
   @override
@@ -3424,7 +3396,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                       duty?.remarks?.trim().isNotEmpty == true) ...[
                     const SizedBox(height: 10),
                     Text(
-                      duty!.remarks!.trim(),
+                      displayDatesInText(duty!.remarks!.trim()),
                       style: const TextStyle(color: textGrey, height: 1.35),
                     ),
                   ],
@@ -5007,33 +4979,7 @@ class _DashboardPageState extends State<_DashboardPage> {
   }
 
   String _fullDate(DateTime date) {
-    const List<String> weekdays = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-
-    const List<String> months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-
-    return '${weekdays[date.weekday - 1]} '
-        '${date.day} ${months[date.month - 1]}';
+    return displayDate(date);
   }
 
   static void showMessage(BuildContext context, String message) {
@@ -5095,13 +5041,13 @@ class _DutyHistorySection extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  'Current entry first. Hold an older entry to revert.',
+                  'Current entry first. Tap an older entry to revert.',
                   style: TextStyle(color: Color(0xFF52667A)),
                 ),
                 const SizedBox(height: 16),
                 for (int index = 0; index < duties.length; index++) ...[
                   GestureDetector(
-                    onLongPress: index == 0 ? null : () async {
+                    onTap: index == 0 ? null : () async {
                       final confirmed = await showRosterDecisionSheet<bool>(
                         context: sheetContext,
                         builder: (confirmContext) => RosterDecisionSheet(
@@ -5312,7 +5258,7 @@ class _DutyHistoryEntry extends StatelessWidget {
           if (duty.remarks?.trim().isNotEmpty == true) ...[
             const SizedBox(height: 4),
             Text(
-              duty.remarks!.trim(),
+              displayDatesInText(duty.remarks!.trim()),
               style: const TextStyle(
                 color: Color(0xFF52667A),
                 fontSize: 12,
@@ -7882,7 +7828,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                       duty?.remarks?.trim().isNotEmpty == true) ...[
                     const SizedBox(height: 8),
                     Text(
-                      duty!.remarks!.trim(),
+                      displayDatesInText(duty!.remarks!.trim()),
                       style: const TextStyle(color: textGrey),
                     ),
                   ],
@@ -10865,19 +10811,7 @@ class _CalendarPageState extends State<_CalendarPage> {
   }
 
   String _fullDate(DateTime date) {
-    const List<String> weekdays = <String>[
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-
-    return '${weekdays[date.weekday - 1]} ${date.day} '
-        '${_monthTitle(DateTime(date.year, date.month)).split(' ').first} '
-        '${date.year}';
+    return displayDate(date);
   }
 
   String _dateKey(DateTime date) {

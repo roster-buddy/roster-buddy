@@ -1,3 +1,4 @@
+import 'core/formatters/roster_date_format.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -23,6 +24,7 @@ class RosterBuddyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Roster Buddy',
       debugShowCheckedModeBanner: false,
+      localizationsDelegates: const [RosterDateLocalizationsDelegate()],
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1769AA)),

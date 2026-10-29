@@ -1,3 +1,4 @@
+import '../formatters/roster_date_format.dart';
 import 'dart:convert';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -21,7 +22,7 @@ Future<bool> actionRestDayMove(BuildContext context, List<Map<String, dynamic>> 
   final client = Supabase.instance.client;
   final user = client.auth.currentUser;
   final profile = user == null ? null : await client.from('driver_profiles').select('display_name,depot,payroll_number').eq('user_id', user.id).maybeSingle();
-  final lines = pairs.map((p) => '${p['rest']} → ${p['work']}').join('\n');
+  final lines = pairs.map((p) => '${displayStoredDate(p['rest'])} → ${displayStoredDate(p['work'])}').join('\n');
   final uri = Uri.parse('mailto:drivers.rosters@wmtrains.co.uk?subject=${Uri.encodeComponent('Rest day move request')}&body=${Uri.encodeComponent('Please approve these rest day moves:\n$lines\n\nRegards\n${profile?['display_name'] ?? ''}\n${profile?['depot'] ?? ''}\nPayroll: ${profile?['payroll_number'] ?? ''}')}');
   if (!context.mounted) return false;
   final approved = awaitingAllocation ? true : await showRosterDecisionSheet<bool>(
@@ -58,7 +59,7 @@ Future<bool> actionRestDayMove(BuildContext context, List<Map<String, dynamic>> 
       actions: [
         for (final pair in remaining) CupertinoDialogAction(
           onPressed: () => Navigator.pop(sheetContext, pair),
-          child: Text(pair['rest'] as String),
+          child: Text(displayStoredDate(pair['rest'])),
         ),
         CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext), child: const Text('Finish later')),
       ],
@@ -152,7 +153,7 @@ Future<Map<String, dynamic>?> _allocateMovedDuty(BuildContext context, Map<Strin
               children: [
                 const Text('Allocate shift', style: TextStyle(color: Color(0xFF102A43), fontSize: 22, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 6),
-                Text(MaterialLocalizations.of(context).formatFullDate(date), style: const TextStyle(color: Color(0xFF52667A))),
+                Text(displayDate(date), style: const TextStyle(color: Color(0xFF52667A))),
                 const SizedBox(height: 18),
                 DropdownButtonFormField<int>(
                   initialValue: selection,

@@ -1,3 +1,4 @@
+import '../../core/formatters/roster_date_format.dart';
 // ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
@@ -133,7 +134,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
         (_metadata['base_roster_commencement_date'] ?? '').toString();
 
     if (commencementDate.isNotEmpty) {
-      return 'Active from $commencementDate';
+      return 'Active from ${displayStoredDate(commencementDate)}';
     }
 
     return 'Commencement date and mutual swap';
@@ -3715,22 +3716,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
   }
 
   String _displayDate(DateTime date) {
-    const List<String> months = <String>[
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-
-    return '${date.day} ${months[date.month - 1]} ${date.year}';
+    return displayDate(date);
   }
 
   static String _databaseDate(DateTime date) {
@@ -4354,10 +4340,7 @@ class _BaseRosterSetupPageState extends State<BaseRosterSetupPage> {
   }
 
   String _formatDate(DateTime date) {
-    final String day = date.day.toString().padLeft(2, '0');
-    final String month = date.month.toString().padLeft(2, '0');
-
-    return '$day/$month/${date.year}';
+    return displayDate(date);
   }
 
   String _storageDate(DateTime date) {

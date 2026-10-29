@@ -1,3 +1,4 @@
+import '../../core/formatters/roster_date_format.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -127,33 +128,7 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
   }
 
   String _formatDate(DateTime date) {
-    const List<String> weekdays = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-
-    const List<String> months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-
-    return '${weekdays[date.weekday - 1]} '
-        '${date.day} ${months[date.month - 1]} ${date.year}';
+    return displayDate(date);
   }
 
   Future<void> _selectCommencementDate() async {
