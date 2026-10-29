@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -2861,7 +2862,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                       ],
                     ),
                     onTap: request.status == AnnualLeaveRequestStatus.granted
-                        ? () => _manageFloatingCancellations([request])
+                        ? () => _showGrantedFloatingDetails(request)
                         : () => _showRequestActions(request),
                   ),
                   if (request != floatingRequests.last)
@@ -2903,38 +2904,103 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
     }
   }
 
-  Future<void> _selectFloatingCancellations() async {
+  Future<void> _showGrantedFloatingDetails(AnnualLeaveRequest request) async {
+    final cancel = await showModalBottomSheet<bool>(
+      context: context, showDragHandle: true, isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(MaterialLocalizations.of(context).formatFullDate(request.leaveDate),
+            style: const TextStyle(color: navy, fontSize: 22, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 18),
+          const Row(children: [
+            Icon(Icons.circle, size: 12, color: leaveRed), SizedBox(width: 8),
+            Text('Annual Leave', style: TextStyle(color: navy, fontSize: 20, fontWeight: FontWeight.w800)),
+            Spacer(), Chip(label: Text('ALD')),
+          ]),
+          const SizedBox(height: 18),
+          Container(
+            width: double.infinity, padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: leaveRed.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: leaveRed.withValues(alpha: 0.35))),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(request.cancellationPending ? 'Cancellation pending' : 'Annual leave granted',
+                style: const TextStyle(color: leaveRed, fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              Text(request.cancellationPending
+                ? 'Leave stays granted until Rosters confirms cancellation.'
+                : 'This annual leave request has been granted.',
+                style: const TextStyle(color: textGrey)),
+            ]),
+          ),
+          const SizedBox(height: 18),
+          SizedBox(width: double.infinity, child: OutlinedButton.icon(
+            onPressed: () => Navigator.pop(sheetContext, true),
+            icon: const Icon(Icons.cancel_outlined),
+            label: Text(request.cancellationPending ? 'Action pending cancellation' : 'Cancel annual leave'),
+            style: OutlinedButton.styleFrom(foregroundColor: leaveRed),
+          )),
+        ]),
+      )),
+    );
+    if (cancel != true || !mounted) return;
+    final scope = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (popupContext) => CupertinoActionSheet(
+        title: Text(request.cancellationPending ? 'Action cancellation' : 'Cancel annual leave'),
+        message: Text(MaterialLocalizations.of(context).formatFullDate(request.leaveDate)),
+        actions: [
+          CupertinoActionSheetAction(onPressed: () => Navigator.pop(popupContext, 'single'),
+            child: const Text('Just this date')),
+          CupertinoActionSheetAction(onPressed: () => Navigator.pop(popupContext, 'multiple'),
+            child: const Text('Multiple dates')),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(popupContext), child: const Text('Back')),
+      ),
+    );
+    if (!mounted) return;
+    if (scope == 'single') await _manageFloatingCancellations([request]);
+    if (scope == 'multiple') await _selectFloatingCancellations(initialRequest: request);
+  }
+
+  Future<void> _selectFloatingCancellations({AnnualLeaveRequest? initialRequest}) async {
     final available = _requests.where((r) =>
         r.requestType == AnnualLeaveRequestType.floating &&
         r.status == AnnualLeaveRequestStatus.granted).toList();
-    final selected = <String>{};
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Select floating leave dates'),
-          content: SizedBox(
-            width: 460,
-            child: SingleChildScrollView(child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: available.map((r) => CheckboxListTile(
-                value: selected.contains(r.id),
-                title: Text(_displayDate(r.leaveDate)),
-                subtitle: Text(r.cancellationPending ? 'Pending cancellation' : 'Granted'),
-                onChanged: (value) => setDialogState(() {
-                  if (value == true) { selected.add(r.id); } else { selected.remove(r.id); }
-                }),
-              )).toList(),
-            )),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Back')),
-            FilledButton(
-              onPressed: selected.isEmpty ? null : () => Navigator.pop(dialogContext, true),
-              child: Text('Continue (${selected.length})'),
+    final selected = <String>{if (initialRequest != null) initialRequest.id};
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context, showDragHandle: true, isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const Text('Select floating leave dates',
+              style: TextStyle(color: navy, fontSize: 22, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 12),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.5),
+              child: SingleChildScrollView(child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: available.map((r) => CheckboxListTile(
+                  value: selected.contains(r.id),
+                  title: Text(_displayDate(r.leaveDate)),
+                  subtitle: Text(r.cancellationPending ? 'Pending cancellation' : 'Granted'),
+                  onChanged: (value) => setSheetState(() {
+                    if (value == true) { selected.add(r.id); } else { selected.remove(r.id); }
+                  }),
+                )).toList(),
+              )),
             ),
-          ],
-        ),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: selected.isEmpty ? null : () => Navigator.pop(sheetContext, true),
+              child: Text('Continue (${selected.length})')),
+            TextButton(onPressed: () => Navigator.pop(sheetContext, false), child: const Text('Back')),
+          ]),
+        )),
       ),
     );
     if (confirmed == true && mounted) {

@@ -29,35 +29,35 @@ Future<bool> manageFloatingLeaveCancellation({
         '&body=${Uri.encodeComponent(body)}');
     if (!context.mounted) return false;
     Future<bool>? email;
-    final action = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => SimpleDialog(
-        title: Text(pending ? 'Action pending cancellation' : 'Cancel floating leave'),
-        children: [
-          Padding(padding: const EdgeInsets.all(20),
-            child: Text('$dates\n\nLeave stays granted and deducted until Rosters confirms cancellation.')),
-          SimpleDialogOption(
+    final action = await showModalBottomSheet<String>(
+      context: context, showDragHandle: true, isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(pending ? 'Action pending cancellation' : 'Cancel annual leave',
+            style: const TextStyle(color: Color(0xFF102A43), fontSize: 22, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 16),
+          Text(dates),
+          const SizedBox(height: 12),
+          const Text('Leave stays granted and deducted until Rosters confirms cancellation.'),
+          const SizedBox(height: 20),
+          FilledButton.icon(
             onPressed: () {
-              // Launch directly from the tap so Safari can open the mail app.
               email = launchUrl(uri, webOnlyWindowName: '_self');
-              Navigator.pop(dialogContext, 'request');
+              Navigator.pop(sheetContext, 'request');
             },
-            child: Text(pending ? 'Prepare cancellation email again' : 'Prepare email and mark pending'),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(dialogContext, 'confirm'),
-            child: const Text('Rosters has confirmed cancellation'),
-          ),
-          if (pending) SimpleDialogOption(
-            onPressed: () => Navigator.pop(dialogContext, 'retain'),
-            child: const Text('Cancellation declined / withdrawn — keep leave'),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Back'),
-          ),
-        ],
-      ),
+            icon: const Icon(Icons.mail_outline),
+            label: Text(pending ? 'Prepare cancellation email again' : 'Prepare email and mark pending')),
+          const SizedBox(height: 8),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(sheetContext, 'confirm'),
+            child: const Text('Rosters has confirmed cancellation')),
+          if (pending) OutlinedButton(
+            onPressed: () => Navigator.pop(sheetContext, 'retain'),
+            child: const Text('Declined / withdrawn — keep leave')),
+          TextButton(onPressed: () => Navigator.pop(sheetContext), child: const Text('Back')),
+        ]),
+      )),
     );
     if (action == null) return false;
     if (action == 'request' && !(await email!)) {
