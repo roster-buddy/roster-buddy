@@ -21,10 +21,10 @@ Future<bool> manageFloatingLeaveCancellation({
     final dates = sorted.map((r) => dateLabel(r.leaveDate)).join('\n');
     final signature = [
       await driverNumberEmailLine(),
-      profile?['display_name'], profile?['depot'],
       if (profile?['payroll_number'] != null) 'Payroll Number: ${profile!['payroll_number']}',
+      profile?['depot'],
     ].where((v) => v != null && v.toString().trim().isNotEmpty).join('\n');
-    final body = 'Please can I cancel my previously granted floating annual leave for:\n\n$dates\n\nRegards\n$signature';
+    final body = 'Please can I cancel my previously granted floating annual leave for:\n\n$dates\n\n$signature';
     final uri = Uri.parse('mailto:drivers.rosters@wmtrains.co.uk'
         '?subject=${Uri.encodeComponent('Floating Annual Leave Cancellation')}'
         '&body=${Uri.encodeComponent(body)}');

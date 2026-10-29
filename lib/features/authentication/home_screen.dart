@@ -73,9 +73,8 @@ Future<bool> _openAnnualLeaveRequestCancellationEmail({
 
   final List<String> signature = <String>[
           await driverNumberEmailLine(),
-    if (driverName.isNotEmpty) driverName,
-    if (depot.isNotEmpty) depot,
     if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
+    if (depot.isNotEmpty) depot,
   ];
 
   final String subject = 'Annual Leave Request Cancellation - $dateLabel';
@@ -83,7 +82,6 @@ Future<bool> _openAnnualLeaveRequestCancellationEmail({
   final String body =
       'Please can I cancel my floating annual leave request for:\n\n'
       '$dateLabel\n\n'
-      'Regards'
       '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
 
   return launchUrl(
@@ -3713,9 +3711,8 @@ class _DashboardPageState extends State<_DashboardPage> {
 
         final List<String> signature = <String>[
           await driverNumberEmailLine(),
-          if (driverName.isNotEmpty) driverName,
-          if (depot.isNotEmpty) depot,
           if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
+          if (depot.isNotEmpty) depot,
         ];
 
         final String subject = 'Annual Leave Request - ${_fullDate(date)}';
@@ -3723,7 +3720,6 @@ class _DashboardPageState extends State<_DashboardPage> {
         final String body =
             'Please can I request floating annual leave for:\n\n'
             '${_fullDate(date)}\n\n'
-            'Regards'
             '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
 
         final Uri emailUri = _rosterBuddyMailUri(subject: subject, body: body);
@@ -4005,9 +4001,8 @@ class _DashboardPageState extends State<_DashboardPage> {
 
       final List<String> signature = <String>[
           await driverNumberEmailLine(),
-        if (driverName.isNotEmpty) driverName,
-        if (depot.isNotEmpty) depot,
         if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
+        if (depot.isNotEmpty) depot,
       ];
 
       final String subject = 'Annual Leave Cancellation - ${_fullDate(date)}';
@@ -4015,7 +4010,6 @@ class _DashboardPageState extends State<_DashboardPage> {
       final String body =
           'Please can I cancel my previously granted annual leave for:\n\n'
           '${_fullDate(date)}\n\n'
-          'Regards'
           '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
 
       final Uri emailUri = _rosterBuddyMailUri(subject: subject, body: body);
@@ -6105,16 +6099,14 @@ class _CalendarPageState extends State<_CalendarPage> {
 
       final List<String> signature = <String>[
           await driverNumberEmailLine(),
-        if (driverName.isNotEmpty) driverName,
-        if (depot.isNotEmpty) depot,
         if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
+        if (depot.isNotEmpty) depot,
       ];
 
       final String body =
           'Please can I request floating annual leave for the following '
           '${immediateDates.length == 1 ? 'date' : 'dates'}:\n\n'
           '$requestedDates\n\n'
-          'Regards'
           '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
 
       final String subject = immediateDates.length == 1
@@ -6323,9 +6315,8 @@ class _CalendarPageState extends State<_CalendarPage> {
 
       final List<String> signature = <String>[
           await driverNumberEmailLine(),
-        if (driverName.isNotEmpty) driverName,
-        if (depot.isNotEmpty) depot,
         if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
+        if (depot.isNotEmpty) depot,
       ];
 
       // Future requests store their fully populated email now. Supabase
@@ -6335,7 +6326,6 @@ class _CalendarPageState extends State<_CalendarPage> {
         final String body =
             'Please can I request floating annual leave for:\n\n'
             '${_fullDate(date)}\n\n'
-            'Regards'
             '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
 
         final String subject = 'Annual Leave Request - ${_fullDate(date)}';
@@ -6459,9 +6449,8 @@ class _CalendarPageState extends State<_CalendarPage> {
 
       final List<String> signature = <String>[
           await driverNumberEmailLine(),
-        if (driverName.isNotEmpty) driverName,
-        if (depot.isNotEmpty) depot,
         if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
+        if (depot.isNotEmpty) depot,
       ];
 
       final String subject = 'Annual Leave Request - ${_fullDate(date)}';
@@ -6469,7 +6458,6 @@ class _CalendarPageState extends State<_CalendarPage> {
       final String body =
           'Please can I request floating annual leave for:\n\n'
           '${_fullDate(date)}\n\n'
-          'Regards'
           '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
 
       final Uri emailUri = _rosterBuddyMailUri(subject: subject, body: body);
@@ -7595,9 +7583,8 @@ class _CalendarPageState extends State<_CalendarPage> {
 
       final List<String> signature = <String>[
           await driverNumberEmailLine(),
-        if (driverName.isNotEmpty) driverName,
-        if (depot.isNotEmpty) depot,
         if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
+        if (depot.isNotEmpty) depot,
       ];
 
       final String subject = 'Annual Leave Request - ${_fullDate(date)}';
@@ -7605,7 +7592,6 @@ class _CalendarPageState extends State<_CalendarPage> {
       final String body =
           'Please can I request floating annual leave for:\n\n'
           '${_fullDate(date)}\n\n'
-          'Regards'
           '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
 
       final Uri emailUri = _rosterBuddyMailUri(subject: subject, body: body);
@@ -9281,10 +9267,9 @@ class _CalendarPageState extends State<_CalendarPage> {
                                                     'Proposed duty date: $proposedDate\n'
                                                     'Turn: $proposedTurn'
                                                     '${notes.isEmpty ? '' : '\n\nNotes:\n$notes'}'
-                                                    '\n\nRegards\n${await driverNumberEmailLine()}'
-                                                    '${driverName.isEmpty ? '' : '\n$driverName'}'
-                                                    '${depot.isEmpty ? '' : '\n$depot'}'
-                                                    '${payrollNumber.isEmpty ? '' : '\nPayroll Number: $payrollNumber'}';
+                                                    '\n\n${await driverNumberEmailLine()}'
+                                                    '${payrollNumber.isEmpty ? '' : '\nPayroll Number: $payrollNumber'}'
+                                                    '${depot.isEmpty ? '' : '\n$depot'}';
 
                                                 final String subject =
                                                     'Mutual Shift Swap Request - $dutyDate';

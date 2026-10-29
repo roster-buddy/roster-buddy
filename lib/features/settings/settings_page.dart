@@ -3699,13 +3699,11 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
         'Swap / agreement reference: ${swapReference!.trim()}',
       if (notes?.trim().isNotEmpty == true) 'Notes: ${notes!.trim()}',
       '',
-      'Regards,',
-      if (identity['name']?.isNotEmpty == true) identity['name']!,
-      if (identity['depot']?.isNotEmpty == true) identity['depot']!,
       if (identity['driverNumber']?.isNotEmpty == true)
         'Driver Number: ${identity['driverNumber']}',
       if (identity['payrollNumber']?.isNotEmpty == true)
         'Payroll Number: ${identity['payrollNumber']}',
+      if (identity['depot']?.isNotEmpty == true) identity['depot']!,
     ];
 
     return (subject: subject, body: lines.join('\n'));
