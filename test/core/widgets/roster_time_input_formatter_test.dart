@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import '../../../lib/core/widgets/roster_time_input_formatter.dart';
+import 'package:roster_buddy/core/widgets/roster_time_input_formatter.dart';
 
 void main() {
   const formatter = RosterTimeInputFormatter();
