@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import '../../core/services/rest_day_move.dart';
 import 'package:flutter/material.dart';
@@ -1453,11 +1454,11 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
       return Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Rest day move — pending', style: TextStyle(fontWeight: FontWeight.bold)),
+          Text(swap.notes?.contains('ALLOCATION_REQUIRED=true') == true ? 'Rest day move — awaiting allocation' : 'Rest day move — pending', style: const TextStyle(fontWeight: FontWeight.bold)),
           for (final pair in pairs) Text("${pair['rest']} → ${pair['work']}"),
           TextButton(onPressed: () async {
             try {
-              final changed = await actionRestDayMove(context, pairs, id: swap.id);
+              final changed = await actionRestDayMove(context, pairs, id: swap.id, awaitingAllocation: swap.notes?.contains('ALLOCATION_REQUIRED=true') == true);
               if (changed && mounted) { widget.onChanged(); await _load(); }
             } catch (_) {
               if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not action rest day move. Please try again.')));
@@ -5400,6 +5401,103 @@ class _CalendarPage extends StatefulWidget {
 }
 
 class _CalendarPageState extends State<_CalendarPage> {
+  List<ShiftSwap> _restDayMoves = <ShiftSwap>[];
+
+  @override
+  void dispose() {
+    _restDayPicker?.complete(null);
+    super.dispose();
+  }
+
+  Future<void> _actionCalendarRestMove(ShiftSwap move) async {
+    try {
+      final changed = await actionRestDayMove(context, restDayMovePairs(move.notes!), id: move.id,
+        awaitingAllocation: move.notes!.contains('ALLOCATION_REQUIRED=true'));
+      if (changed && mounted) {
+        widget.onRosterChanged();
+        await _loadMonth();
+      }
+    } catch (_) {
+      if (mounted) _showCalendarMessage('Could not action the rest day move. Please try again.');
+    }
+  }
+
+  Completer<List<Duty>?>? _restDayPicker;
+  Map<String, Duty> _restDayChoices = <String, Duty>{};
+  final Set<String> _restDaySelected = <String>{};
+  int _restDayRequired = 0;
+  String _restDaySelectionTitle = '';
+
+  Future<List<Duty>?> _pickRestDayDates(
+    String title, List<Duty> duties, int count, Duty? initial,
+  ) {
+    if (_restDayPicker != null) _finishRestDaySelection(false);
+    final completer = Completer<List<Duty>?>();
+    setState(() {
+      _restDayPicker = completer;
+      _restDayChoices = {for (final duty in duties) _dateKey(duty.date): duty};
+      _restDaySelected.clear();
+      if (initial != null) _restDaySelected.add(_dateKey(initial.date));
+      _restDayRequired = count;
+      _restDaySelectionTitle = title;
+      _isSelectingAnnualLeaveDates = false;
+      _isSelectingAnnualLeaveCancellationDates = false;
+    });
+    return completer.future;
+  }
+
+  void _finishRestDaySelection(bool confirmed) {
+    final picker = _restDayPicker;
+    if (picker == null) return;
+    final selected = confirmed
+        ? _restDaySelected.map((key) => _restDayChoices[key]!).toList()
+        : null;
+    setState(() {
+      _restDayPicker = null;
+      _restDaySelected.clear();
+      _restDayChoices.clear();
+    });
+    picker.complete(selected);
+  }
+
+  void _toggleRestDayDate(DateTime date) {
+    final key = _dateKey(date);
+    if (!_restDayChoices.containsKey(key)) return;
+    setState(() {
+      if (_restDaySelected.contains(key)) {
+        _restDaySelected.remove(key);
+      } else if (_restDaySelected.length < _restDayRequired) {
+        _restDaySelected.add(key);
+      }
+    });
+  }
+
+  Widget _buildRestDaySelectionBar() {
+    return Material(
+      color: const Color(0xFFF4F7FA),
+      elevation: 4,
+      child: SafeArea(top: false, child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(_restDaySelectionTitle, style: const TextStyle(color: navy, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: OutlinedButton(
+              onPressed: () => _finishRestDaySelection(false),
+              child: const Text('Cancel'),
+            )),
+            const SizedBox(width: 12),
+            Expanded(child: FilledButton(
+              onPressed: _restDaySelected.length == _restDayRequired
+                  ? () => _finishRestDaySelection(true) : null,
+              child: Text('Confirm (${_restDaySelected.length}/$_restDayRequired)'),
+            )),
+          ]),
+        ]),
+      )),
+    );
+  }
+
   static const Color navy = Color(0xFF102A43);
 
   Future<void> openExternalAction(
@@ -5557,6 +5655,7 @@ class _CalendarPageState extends State<_CalendarPage> {
             calendarDates.last,
           );
 
+      final movesFuture = _shiftSwapService.getRequests();
       final User? user = Supabase.instance.client.auth.currentUser;
 
       Future<List<dynamic>> scheduledRequestsFuture =
@@ -5572,6 +5671,7 @@ class _CalendarPageState extends State<_CalendarPage> {
             .lte('leave_date', _dateKey(calendarDates.last));
       }
 
+      final moves = await movesFuture;
       final Map<String, Duty> dutiesByDate = await dutiesFuture;
       final Map<String, AnnualLeaveRequest> leaveRequestsByDate =
           await leaveRequestsFuture;
@@ -5589,6 +5689,7 @@ class _CalendarPageState extends State<_CalendarPage> {
       }
 
       setState(() {
+        _restDayMoves = moves.where((move) => move.status == ShiftSwapStatus.pending && move.notes?.startsWith('TYPE=Rest day move') == true).toList();
         _dutiesByDate = dutiesByDate;
         _leaveRequestsByDate = leaveRequestsByDate;
         _scheduledAnnualLeaveDateKeys = scheduledDateKeys;
@@ -5656,7 +5757,7 @@ class _CalendarPageState extends State<_CalendarPage> {
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
+    return Column(children: [Expanded(child: RefreshIndicator(
       onRefresh: _loadMonth,
       child: Center(
         child: ConstrainedBox(
@@ -5694,7 +5795,8 @@ class _CalendarPageState extends State<_CalendarPage> {
           ),
         ),
       ),
-    );
+    )), if (_restDayPicker != null) _buildRestDaySelectionBar(),
+    ]);
   }
 
   Widget _buildMonthHeader() {
@@ -6749,6 +6851,10 @@ class _CalendarPageState extends State<_CalendarPage> {
         child: InkWell(
           borderRadius: BorderRadius.circular(11),
           onTap: () {
+            if (_restDayPicker != null) {
+              _toggleRestDayDate(date);
+              return;
+            }
             if (_isSelectingAnnualLeaveCancellationDates) {
               _toggleAnnualLeaveCancellationDateSelection(
                 date: date,
@@ -6769,7 +6875,7 @@ class _CalendarPageState extends State<_CalendarPage> {
             _showDayDetails(date: date, duty: duty);
           },
           onLongPress:
-              (_isSelectingAnnualLeaveDates ||
+              (_restDayPicker != null || _isSelectingAnnualLeaveDates ||
                   _isSelectingAnnualLeaveCancellationDates)
               ? null
               : () => _showDayActions(date: date, duty: duty),
@@ -6809,6 +6915,13 @@ class _CalendarPageState extends State<_CalendarPage> {
                         ),
                       ),
                     ),
+                    if (_restDayPicker != null && _restDayChoices.containsKey(_dateKey(date)))
+                      SizedBox(width: 22, height: 22, child: Checkbox(
+                        value: _restDaySelected.contains(_dateKey(date)),
+                        fillColor: const WidgetStatePropertyAll(Colors.white),
+                        checkColor: railwayBlue,
+                        onChanged: (_) => _toggleRestDayDate(date),
+                      )),
                     if (isSelectedAnnualLeaveDate ||
                         isSelectedAnnualLeaveCancellationDate)
                       Container(
@@ -6888,7 +7001,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                 const Spacer(),
                 if (duty != null || isGrantedAnnualLeave) ...[
                   Text(
-                    isGrantedAnnualLeave ? 'Leave' : _shortDutyLabel(duty!),
+                    isGrantedAnnualLeave ? 'Leave' : duty?.remarks?.contains('awaiting allocation') == true ? 'Allocate duty' : _shortDutyLabel(duty!),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -7636,6 +7749,10 @@ class _CalendarPageState extends State<_CalendarPage> {
     final bool isGrantedAnnualLeave =
         leaveRequest?.status == AnnualLeaveRequestStatus.granted;
 
+    final pendingMove = _restDayMoves.where((move) => restDayMovePairs(move.notes!).any(
+      (pair) => pair['rest'] == _dateKey(date) || pair['work'] == _dateKey(date),
+    )).firstOrNull;
+
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -7656,6 +7773,17 @@ class _CalendarPageState extends State<_CalendarPage> {
                     fontWeight: FontWeight.w900,
                   ),
                 ),
+                if (pendingMove != null) ...[
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: () {
+                      Navigator.pop(sheetContext);
+                      _actionCalendarRestMove(pendingMove);
+                    },
+                    child: Text(pendingMove.notes!.contains('ALLOCATION_REQUIRED=true')
+                      ? 'Allocate new working day' : 'Action pending rest day move'),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 if (duty == null && !isGrantedAnnualLeave)
                   const Text(
@@ -9355,7 +9483,7 @@ class _CalendarPageState extends State<_CalendarPage> {
 
   Future<void> _confirmMoveRestDayHere({required DateTime date, required Duty originalDuty}) async {
     try {
-      final changed = await moveRestDays(context, date);
+      final changed = await moveRestDays(context, date, pickDates: _pickRestDayDates);
       if (changed && mounted) {
         widget.onRosterChanged();
         await _loadMonth();
