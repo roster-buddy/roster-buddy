@@ -118,7 +118,7 @@ Future<Map<String, dynamic>?> _allocateMovedDuty(BuildContext context, Map<Strin
   );
   if (mode == null || !context.mounted) return null;
   if (mode == 'card') {
-    return showRosterDecisionSheet<Map<String, dynamic>>(
+    final selected = await showRosterDecisionSheet<Map<String, dynamic>>(
       context: context,
       builder: (sheetContext) => RosterDecisionSheet(
         title: const Text('Select Job Card turn'),
@@ -131,10 +131,12 @@ Future<Map<String, dynamic>?> _allocateMovedDuty(BuildContext context, Map<Strin
             }),
             child: Text('Turn ${choice.jobCard.turnNumber} · ${choice.jobCard.bookOn}–${choice.jobCard.bookOff}'),
           ),
-          CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext), child: const Text('Back')),
+          CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext, <String, dynamic>{'back': true}), child: const Text('Back')),
         ],
       ),
     );
+    if (selected?['back'] == true && context.mounted) return _allocateMovedDuty(context, pair);
+    return selected;
   }
   final turn = TextEditingController();
   final on = TextEditingController();
