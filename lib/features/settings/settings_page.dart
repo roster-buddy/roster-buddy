@@ -336,6 +336,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
 
 class AnnualLeaveSettingsPage extends StatefulWidget {
   const AnnualLeaveSettingsPage({
+    this.refreshVersion = 0,
     this.currentTabIndex = 3,
     this.onNavigate,
     this.embedded = false,
@@ -343,6 +344,7 @@ class AnnualLeaveSettingsPage extends StatefulWidget {
   });
 
   final int currentTabIndex;
+  final int refreshVersion;
   final Future<void> Function(int destination)? onNavigate;
   final bool embedded;
 
@@ -391,6 +393,14 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
 
     _leaveYear = DateTime.now().year;
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant AnnualLeaveSettingsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshVersion != widget.refreshVersion) {
+      _load();
+    }
   }
 
   Future<void> _load() async {
