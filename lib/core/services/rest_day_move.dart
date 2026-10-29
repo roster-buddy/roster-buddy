@@ -206,10 +206,10 @@ Future<Map<String, dynamic>?> _allocateMovedDuty(BuildContext context, Map<Strin
                         await onSave(allocation);
                         if (sheetContext.mounted) Navigator.pop(sheetContext, allocation);
                       } catch (_) {
-                        if (sheetContext.mounted) setState(() {
+                        if (sheetContext.mounted) { setState(() {
                           saving = false;
                           saveError = 'Could not save this date. Please try again.';
-                        });
+                        }); }
                       }
                     }
                   },
