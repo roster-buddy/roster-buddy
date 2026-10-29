@@ -1569,23 +1569,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
 
     final String minute = local.minute.toString().padLeft(2, '0');
 
-    const List<String> months = <String>[
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-
-    return '${local.hour.toString().padLeft(2, '0')}:$minute '
-        'on ${local.day} ${months[local.month - 1]} ${local.year}';
+    return '${local.hour.toString().padLeft(2, '0')}:$minute on ${displayDate(local)}';
   }
 
   String _blockChangeTypeLabel(AnnualLeaveBlockPendingAction action) {
