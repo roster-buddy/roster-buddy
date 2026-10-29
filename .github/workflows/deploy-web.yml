@@ -41,6 +41,25 @@ jobs:
       - name: Build web app
         run: flutter build web --release --base-href "/roster-buddy/" --no-wasm-dry-run
 
+      - name: Version web assets
+        env:
+          ROSTER_BUILD_ID: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path('build/web')
+          version = os.environ['ROSTER_BUILD_ID']
+          bootstrap = (root / 'flutter_bootstrap.js').read_text()
+          assert '__ROSTER_BUILD__' in bootstrap
+          versioned_bootstrap = f'flutter_bootstrap.{version}.js'
+          (root / versioned_bootstrap).write_text(bootstrap.replace('__ROSTER_BUILD__', version))
+          (root / f'main.{version}.dart.js').write_bytes((root / 'main.dart.js').read_bytes())
+          index = (root / 'index.html').read_text().replace('src="flutter_bootstrap.js"', f'src="{versioned_bootstrap}"')
+          assert versioned_bootstrap in index
+          (root / 'index.html').write_text(index)
+          PY
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
