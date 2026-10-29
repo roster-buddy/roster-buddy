@@ -45,7 +45,6 @@ Future<bool> _openAnnualLeaveRequestCancellationEmail({
   final SupabaseClient supabase = Supabase.instance.client;
   final User? user = supabase.auth.currentUser;
 
-  String driverName = '';
   String depot = '';
   String payrollNumber = '';
 
@@ -59,9 +58,6 @@ Future<bool> _openAnnualLeaveRequestCancellationEmail({
     final Map<String, dynamic> metadata =
         user.userMetadata ?? <String, dynamic>{};
 
-    driverName = (profile?['display_name'] ?? metadata['full_name'] ?? '')
-        .toString()
-        .trim();
 
     depot = (profile?['depot'] ?? metadata['depot'] ?? '').toString().trim();
 
@@ -3681,7 +3677,6 @@ class _DashboardPageState extends State<_DashboardPage> {
         final SupabaseClient supabase = Supabase.instance.client;
         final User? user = supabase.auth.currentUser;
 
-        String driverName = '';
         String depot = '';
         String payrollNumber = '';
 
@@ -3695,9 +3690,6 @@ class _DashboardPageState extends State<_DashboardPage> {
           final Map<String, dynamic> metadata =
               user.userMetadata ?? <String, dynamic>{};
 
-          driverName = (profile?['display_name'] ?? metadata['full_name'] ?? '')
-              .toString()
-              .trim();
 
           depot = (profile?['depot'] ?? metadata['depot'] ?? '')
               .toString()
@@ -3971,7 +3963,6 @@ class _DashboardPageState extends State<_DashboardPage> {
       final SupabaseClient supabase = Supabase.instance.client;
       final User? user = supabase.auth.currentUser;
 
-      String driverName = '';
       String depot = '';
       String payrollNumber = '';
 
@@ -3985,9 +3976,6 @@ class _DashboardPageState extends State<_DashboardPage> {
         final Map<String, dynamic> metadata =
             user.userMetadata ?? <String, dynamic>{};
 
-        driverName = (profile?['display_name'] ?? metadata['full_name'] ?? '')
-            .toString()
-            .trim();
 
         depot = (profile?['depot'] ?? metadata['depot'] ?? '')
             .toString()
@@ -6065,7 +6053,6 @@ class _CalendarPageState extends State<_CalendarPage> {
       final SupabaseClient supabase = Supabase.instance.client;
       final User? user = supabase.auth.currentUser;
 
-      String driverName = '';
       String depot = '';
       String payrollNumber = '';
 
@@ -6079,9 +6066,6 @@ class _CalendarPageState extends State<_CalendarPage> {
         final Map<String, dynamic> metadata =
             user.userMetadata ?? <String, dynamic>{};
 
-        driverName = (profile?['display_name'] ?? metadata['full_name'] ?? '')
-            .toString()
-            .trim();
 
         depot = (profile?['depot'] ?? metadata['depot'] ?? '')
             .toString()
@@ -6285,7 +6269,6 @@ class _CalendarPageState extends State<_CalendarPage> {
       final SupabaseClient supabase = Supabase.instance.client;
       final User? user = supabase.auth.currentUser;
 
-      String driverName = '';
       String depot = '';
       String payrollNumber = '';
 
@@ -6299,9 +6282,6 @@ class _CalendarPageState extends State<_CalendarPage> {
         final Map<String, dynamic> metadata =
             user.userMetadata ?? <String, dynamic>{};
 
-        driverName = (profile?['display_name'] ?? metadata['full_name'] ?? '')
-            .toString()
-            .trim();
 
         depot = (profile?['depot'] ?? metadata['depot'] ?? '')
             .toString()
@@ -6419,7 +6399,6 @@ class _CalendarPageState extends State<_CalendarPage> {
       final SupabaseClient supabase = Supabase.instance.client;
       final User? user = supabase.auth.currentUser;
 
-      String driverName = '';
       String depot = '';
       String payrollNumber = '';
 
@@ -6433,9 +6412,6 @@ class _CalendarPageState extends State<_CalendarPage> {
         final Map<String, dynamic> metadata =
             user.userMetadata ?? <String, dynamic>{};
 
-        driverName = (profile?['display_name'] ?? metadata['full_name'] ?? '')
-            .toString()
-            .trim();
 
         depot = (profile?['depot'] ?? metadata['depot'] ?? '')
             .toString()
@@ -7553,7 +7529,6 @@ class _CalendarPageState extends State<_CalendarPage> {
       final SupabaseClient supabase = Supabase.instance.client;
       final User? user = supabase.auth.currentUser;
 
-      String driverName = '';
       String depot = '';
       String payrollNumber = '';
 
@@ -7567,9 +7542,6 @@ class _CalendarPageState extends State<_CalendarPage> {
         final Map<String, dynamic> metadata =
             user.userMetadata ?? <String, dynamic>{};
 
-        driverName = (profile?['display_name'] ?? metadata['full_name'] ?? '')
-            .toString()
-            .trim();
 
         depot = (profile?['depot'] ?? metadata['depot'] ?? '')
             .toString()
@@ -9190,7 +9162,6 @@ class _CalendarPageState extends State<_CalendarPage> {
                                                 final User? user =
                                                     supabase.auth.currentUser;
 
-                                                String driverName = '';
                                                 String depot = '';
                                                 String payrollNumber = '';
 
@@ -9209,12 +9180,6 @@ class _CalendarPageState extends State<_CalendarPage> {
                                                       user.userMetadata ??
                                                       <String, dynamic>{};
 
-                                                  driverName =
-                                                      (profile?['display_name'] ??
-                                                              metadata['full_name'] ??
-                                                              '')
-                                                          .toString()
-                                                          .trim();
 
                                                   depot =
                                                       (profile?['depot'] ??
