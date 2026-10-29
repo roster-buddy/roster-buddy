@@ -10000,7 +10000,7 @@ class _CalendarPageState extends State<_CalendarPage> {
 
       case AnnualLeaveRequestStatus.granted:
         title = 'Annual leave granted';
-        description = leaveRequest?.cancellationPending == true
+        description = request.cancellationPending
                               ? 'Cancellation pending — leave stays granted until Rosters confirms.'
                               : 'This annual leave request has been granted.';
         colour = leaveRed;

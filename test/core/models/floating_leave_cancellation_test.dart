@@ -6,7 +6,7 @@ void main() {
     'id': 'request', 'user_id': 'owner', 'leave_date': '2026-11-25',
     'status': status, 'request_type': 'floating',
     'requested_at': '2026-10-29T08:00:00Z',
-    if (pending != null) 'cancellation_pending': pending,
+    'cancellation_pending': ?pending,
   };
   test('pending cancellation stays granted until confirmed', () {
     final request = AnnualLeaveRequest.fromMap(row(pending: true));

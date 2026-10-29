@@ -61,24 +61,30 @@ Future<bool> manageFloatingLeaveCancellation({
     );
     if (action == null) return false;
     if (action == 'request' && !(await email!)) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open email. No cancellation was recorded.')));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open email. No cancellation was recorded.')));
+      }
       return false;
     }
     await client.rpc('action_floating_leave_cancellation', params: {
       'p_ids': sorted.map((r) => r.id).toList(), 'p_action': action,
     });
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(action == 'confirm'
           ? 'Cancellation confirmed. Balance and calendar updated.'
           : action == 'retain'
               ? 'Leave retained. Pending cancellation cleared.'
               : 'Cancellation pending. Send the prepared draft from your email app. Leave stays granted until confirmed.'),
-    ));
+      ));
+    }
     return true;
   } catch (_) {
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Could not update cancellation. Refresh the leave list and try again.')));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update cancellation. Refresh the leave list and try again.')));
+    }
     return false;
   }
 }
