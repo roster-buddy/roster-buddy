@@ -562,7 +562,10 @@ class _HomeScreenState extends State<HomeScreen> {
         onRosterChanged: _notifyRosterChanged,
         refreshVersion: _dashboardRefreshVersion,
       ),
-      const AnnualLeaveSettingsPage(embedded: true),
+      AnnualLeaveSettingsPage(
+        embedded: true,
+        refreshVersion: _dashboardRefreshVersion,
+      ),
       AppSettingsPage(
         email: email,
         onSignOut: _signOut,
