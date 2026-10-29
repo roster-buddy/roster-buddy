@@ -7803,17 +7803,6 @@ class _CalendarPageState extends State<_CalendarPage> {
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                if (pendingMove != null) ...[
-                  const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: () {
-                      Navigator.pop(sheetContext);
-                      _actionCalendarRestMove(pendingMove);
-                    },
-                    child: Text(pendingMove.notes!.contains('ALLOCATION_REQUIRED=true')
-                      ? 'Allocate new working day' : 'Action pending rest day move'),
-                  ),
-                ],
                 const SizedBox(height: 14),
                 if (duty == null && !isGrantedAnnualLeave)
                   const Text(
@@ -7897,6 +7886,12 @@ class _CalendarPageState extends State<_CalendarPage> {
                       style: const TextStyle(color: textGrey),
                     ),
                   ],
+                  const SizedBox(height: 22),
+                  _DutyHistorySection(
+                    future: DutyHistoryService().load(date, _dutyResolver.getDutiesForDate(date)),
+                    onChanged: () { widget.onRosterChanged(); _loadMonth(); },
+                  ),
+                  const SizedBox(height: 22),
                   if (_scheduledAnnualLeaveDateKeys.contains(
                     _dateKey(date),
                   )) ...[
@@ -7943,112 +7938,13 @@ class _CalendarPageState extends State<_CalendarPage> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.of(sheetContext).pop();
-                          _cancelQueuedAnnualLeaveRequest(date);
-                        },
-                        icon: const Icon(Icons.cancel_outlined),
-                        label: const Text('Cancel queued request'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: leaveRed,
-                        ),
-                      ),
-                    ),
                   ],
                   if (_leaveRequestsByDate[_dateKey(date)] != null) ...[
                     const SizedBox(height: 18),
                     _buildAnnualLeaveRequestStatus(
                       _leaveRequestsByDate[_dateKey(date)]!,
                     ),
-                    const SizedBox(height: 12),
-                    if (_leaveRequestsByDate[_dateKey(date)]!.status ==
-                            AnnualLeaveRequestStatus.requested ||
-                        _leaveRequestsByDate[_dateKey(date)]!.status ==
-                            AnnualLeaveRequestStatus.abeyance) ...[
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          onPressed: () {
-                            final AnnualLeaveRequest leaveRequest =
-                                _leaveRequestsByDate[_dateKey(date)]!;
-
-                            Navigator.of(sheetContext).pop();
-
-                            Future<void>.delayed(
-                              const Duration(milliseconds: 150),
-                              () async {
-                                if (!mounted) {
-                                  return;
-                                }
-
-                                await _showManageAnnualLeaveDialog(
-                                  date: date,
-                                  request: leaveRequest,
-                                );
-                              },
-                            );
-                          },
-                          icon: const Icon(Icons.event_note_outlined),
-                          label: const Text('Action annual leave'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: leaveRed,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          final AnnualLeaveRequest leaveRequest =
-                              _leaveRequestsByDate[_dateKey(date)]!;
-
-                          Navigator.of(sheetContext).pop();
-
-                          Future<void>.delayed(
-                            const Duration(milliseconds: 150),
-                            () async {
-                              if (!mounted) {
-                                return;
-                              }
-
-                              if (leaveRequest.status ==
-                                  AnnualLeaveRequestStatus.granted) {
-                                await _chooseGrantedAnnualLeaveCancellationScope(
-                                  date: date,
-                                );
-                              } else {
-                                await _cancelActiveAnnualLeaveRequest(
-                                  date: date,
-                                  request: leaveRequest,
-                                );
-                              }
-                            },
-                          );
-                        },
-                        icon: const Icon(Icons.cancel_outlined),
-                        label: Text(
-                          _leaveRequestsByDate[_dateKey(date)]!.status ==
-                                  AnnualLeaveRequestStatus.granted
-                              ? 'Cancel annual leave'
-                              : 'Cancel annual leave request',
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: leaveRed,
-                        ),
-                      ),
-                    ),
                   ],
-                  const SizedBox(height: 22),
-                  _DutyHistorySection(
-                    future: DutyHistoryService().load(date, _dutyResolver.getDutiesForDate(date)),
-                    onChanged: () { widget.onRosterChanged(); _loadMonth(); },
-                  ),
                   const SizedBox(height: 22),
                   if (duty != null && duty.dutyType == DutyType.working) ...[
                     FutureBuilder<JobCardMatch?>(
@@ -8167,6 +8063,116 @@ class _CalendarPageState extends State<_CalendarPage> {
                       duty: duty,
                     ),
                   ],
+                if (pendingMove != null) ...[
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: () {
+                      Navigator.pop(sheetContext);
+                      _actionCalendarRestMove(pendingMove);
+                    },
+                    child: Text(pendingMove.notes!.contains('ALLOCATION_REQUIRED=true')
+                      ? 'Allocate new working day' : 'Action pending rest day move'),
+                  ),
+                ],
+                  if (_scheduledAnnualLeaveDateKeys.contains(_dateKey(date))) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.of(sheetContext).pop();
+                          _cancelQueuedAnnualLeaveRequest(date);
+                        },
+                        icon: const Icon(Icons.cancel_outlined),
+                        label: const Text('Cancel queued request'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: leaveRed,
+                        ),
+                      ),
+                    ),
+                  ],
+                  if (_leaveRequestsByDate[_dateKey(date)] != null) ...[
+                    const SizedBox(height: 12),
+                    if (_leaveRequestsByDate[_dateKey(date)]!.status ==
+                            AnnualLeaveRequestStatus.requested ||
+                        _leaveRequestsByDate[_dateKey(date)]!.status ==
+                            AnnualLeaveRequestStatus.abeyance) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () {
+                            final AnnualLeaveRequest leaveRequest =
+                                _leaveRequestsByDate[_dateKey(date)]!;
+
+                            Navigator.of(sheetContext).pop();
+
+                            Future<void>.delayed(
+                              const Duration(milliseconds: 150),
+                              () async {
+                                if (!mounted) {
+                                  return;
+                                }
+
+                                await _showManageAnnualLeaveDialog(
+                                  date: date,
+                                  request: leaveRequest,
+                                );
+                              },
+                            );
+                          },
+                          icon: const Icon(Icons.event_note_outlined),
+                          label: const Text('Action annual leave'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: leaveRed,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          final AnnualLeaveRequest leaveRequest =
+                              _leaveRequestsByDate[_dateKey(date)]!;
+
+                          Navigator.of(sheetContext).pop();
+
+                          Future<void>.delayed(
+                            const Duration(milliseconds: 150),
+                            () async {
+                              if (!mounted) {
+                                return;
+                              }
+
+                              if (leaveRequest.status ==
+                                  AnnualLeaveRequestStatus.granted) {
+                                await _chooseGrantedAnnualLeaveCancellationScope(
+                                  date: date,
+                                );
+                              } else {
+                                await _cancelActiveAnnualLeaveRequest(
+                                  date: date,
+                                  request: leaveRequest,
+                                );
+                              }
+                            },
+                          );
+                        },
+                        icon: const Icon(Icons.cancel_outlined),
+                        label: Text(
+                          _leaveRequestsByDate[_dateKey(date)]!.status ==
+                                  AnnualLeaveRequestStatus.granted
+                              ? 'Cancel annual leave'
+                              : 'Cancel annual leave request',
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: leaveRed,
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
