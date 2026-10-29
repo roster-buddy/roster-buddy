@@ -118,9 +118,9 @@ Future<Map<String, dynamic>?> _allocateMovedDuty(BuildContext context, Map<Strin
         actions: [
           CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext), child: const Text('Finish later')),
           CupertinoDialogAction(onPressed: () {
-            if (form.currentState!.validate()) Navigator.pop(sheetContext, <String, dynamic>{
+            if (form.currentState!.validate()) { Navigator.pop(sheetContext, <String, dynamic>{
               'turn': turn.text.trim(), 'on': on.text.trim(), 'off': off.text.trim(), 'type': 'working',
-            });
+            }); }
           }, child: const Text('Confirm')),
         ],
       ),
