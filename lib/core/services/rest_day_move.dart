@@ -98,76 +98,98 @@ Future<bool> moveRestDays(BuildContext context, DateTime date, {required RestDay
 }
 
 Future<Map<String, dynamic>?> _allocateMovedDuty(BuildContext context, Map<String, dynamic> pair) async {
+  final date = DateTime.parse(pair['rest'] as String);
   List<JobCardChoice> choices = <JobCardChoice>[];
   try {
-    choices = await JobCardService().findValidJobCardsForDate(dutyDate: DateTime.parse(pair['rest'] as String));
+    choices = await JobCardService().findValidJobCardsForDate(dutyDate: date);
   } catch (_) {
     // Manual allocation remains available when Job Cards are unavailable.
   }
   if (!context.mounted) return null;
-  final mode = await showRosterDecisionSheet<String>(
-    context: context,
-    builder: (sheetContext) => RosterDecisionSheet(
-      title: Text("Allocate work — ${pair['rest']}"),
-      actions: [
-        CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext, 'card'), child: const Text('Job Card turn')),
-        CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext, 'manual'), child: const Text('Manual / cross-depot cover')),
-        CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext), child: const Text('Finish later')),
-      ],
-    ),
-  );
-  if (mode == null || !context.mounted) return null;
-  if (mode == 'card') {
-    final selected = await showRosterDecisionSheet<Map<String, dynamic>>(
-      context: context,
-      builder: (sheetContext) => RosterDecisionSheet(
-        title: const Text('Select Job Card turn'),
-        content: choices.isEmpty ? const Text('No valid Job Cards for this date. Go back and choose Manual / cross-depot cover.') : null,
-        actions: [
-          for (final choice in choices) CupertinoDialogAction(
-            onPressed: () => Navigator.pop(sheetContext, <String, dynamic>{
-              'turn': choice.jobCard.turnNumber, 'on': choice.jobCard.bookOn,
-              'off': choice.jobCard.bookOff, 'type': 'working',
-            }),
-            child: Text('Turn ${choice.jobCard.turnNumber} · ${choice.jobCard.bookOn}–${choice.jobCard.bookOff}'),
-          ),
-          CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext, <String, dynamic>{'back': true}), child: const Text('Back')),
-        ],
-      ),
-    );
-    if (selected?['back'] == true && context.mounted) return _allocateMovedDuty(context, pair);
-    return selected;
-  }
   final turn = TextEditingController();
   final on = TextEditingController();
   final off = TextEditingController();
   final form = GlobalKey<FormState>();
+  var selection = -1;
+  const border = OutlineInputBorder();
   String? validTime(String? value) {
     return RegExp(r'^(?:[01]\d|2[0-3]):[0-5]\d$').hasMatch(value?.trim() ?? '')
         ? null : 'Enter HH:mm';
   }
   try {
-    return await showRosterDecisionSheet<Map<String, dynamic>>(
+    return await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
-      builder: (sheetContext) => RosterDecisionSheet(
-        title: Text("Manual / cross-depot cover — ${pair['rest']}"),
-        content: Form(key: form, child: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextFormField(controller: turn, decoration: const InputDecoration(labelText: 'Turn number (optional)')),
-          TextFormField(controller: on, keyboardType: TextInputType.datetime, validator: validTime, decoration: const InputDecoration(labelText: 'Book on (HH:mm)')),
-          TextFormField(controller: off, keyboardType: TextInputType.datetime, validator: validTime, decoration: const InputDecoration(labelText: 'Book off (HH:mm)')),
-        ])),
-        actions: [
-          CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext), child: const Text('Finish later')),
-          CupertinoDialogAction(onPressed: () {
-            if (form.currentState!.validate()) { Navigator.pop(sheetContext, <String, dynamic>{
-              'turn': turn.text.trim(), 'on': on.text.trim(), 'off': off.text.trim(), 'type': 'working',
-            }); }
-          }, child: const Text('Confirm')),
-        ],
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setState) => SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(20, 4, 20, 24 + MediaQuery.viewInsetsOf(context).bottom),
+            child: Form(key: form, child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Allocate shift', style: TextStyle(color: Color(0xFF102A43), fontSize: 22, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 6),
+                Text(MaterialLocalizations.of(context).formatFullDate(date), style: const TextStyle(color: Color(0xFF52667A))),
+                const SizedBox(height: 18),
+                DropdownButtonFormField<int>(
+                  initialValue: selection,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Turn / Job Card', border: border),
+                  items: [
+                    const DropdownMenuItem(value: -1, child: Text('Manual / cross-depot duty')),
+                    for (var i = 0; i < choices.length; i++) DropdownMenuItem(
+                      value: i,
+                      child: Text('Turn ${choices[i].jobCard.turnNumber} · ${choices[i].jobCard.bookOn}–${choices[i].jobCard.bookOff}'),
+                    ),
+                  ],
+                  onChanged: (value) => setState(() {
+                    selection = value ?? -1;
+                    if (selection >= 0) {
+                      final card = choices[selection].jobCard;
+                      turn.text = card.turnNumber; on.text = card.bookOn; off.text = card.bookOff;
+                    } else {
+                      turn.clear(); on.clear(); off.clear();
+                    }
+                  }),
+                ),
+                const SizedBox(height: 12),
+                if (selection == -1) ...[
+                  TextFormField(controller: turn, decoration: const InputDecoration(labelText: 'Manual turn / duty reference', border: border)),
+                  const SizedBox(height: 12),
+                ],
+                Row(children: [
+                  Expanded(child: TextFormField(controller: on, keyboardType: TextInputType.datetime, validator: validTime,
+                    decoration: const InputDecoration(labelText: 'Book on', hintText: 'HH:mm', border: border))),
+                  const SizedBox(width: 12),
+                  Expanded(child: TextFormField(controller: off, keyboardType: TextInputType.datetime, validator: validTime,
+                    decoration: const InputDecoration(labelText: 'Book off', hintText: 'HH:mm', border: border))),
+                ]),
+                const SizedBox(height: 10),
+                const Text('Selecting a Job Card fills its booked times automatically. Manual or cross-depot duties can still be entered.',
+                  style: TextStyle(color: Color(0xFF52667A), height: 1.4)),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFF2E7D32)),
+                  icon: const Icon(Icons.add_circle_outline),
+                  label: const Text('Save allocated shift'),
+                  onPressed: () {
+                    if (form.currentState!.validate()) {
+                      Navigator.pop(sheetContext, <String, dynamic>{
+                        'turn': turn.text.trim(), 'on': on.text.trim(), 'off': off.text.trim(), 'type': 'working',
+                      });
+                    }
+                  },
+                ),
+                TextButton(onPressed: () => Navigator.pop(sheetContext), child: const Text('Finish later')),
+              ],
+            )),
+          ),
+        ),
       ),
     );
   } finally {
-    // Modal reverse animation can still reference controllers briefly.
     Future<void>.delayed(const Duration(seconds: 1), () {
       turn.dispose(); on.dispose(); off.dispose();
     });
