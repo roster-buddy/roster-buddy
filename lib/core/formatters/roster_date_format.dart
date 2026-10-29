@@ -30,8 +30,8 @@ class RosterDateLocalizations extends DefaultMaterialLocalizations {
   @override
   String get dateHelpText => 'dd/mm/yyyy';
   @override
-  DateTime? parseCompactDate(String? input) {
-    final parts = (input ?? '').trim().split('/');
+  DateTime? parseCompactDate(String? inputString) {
+    final parts = (inputString ?? '').trim().split('/');
     if (parts.length != 3) return null;
     final day = int.tryParse(parts[0]);
     final month = int.tryParse(parts[1]);
