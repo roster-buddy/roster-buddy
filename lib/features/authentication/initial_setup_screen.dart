@@ -75,13 +75,17 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
 
   Future<void> _loadSavedDriverNumber() async {
     final initial = _driverNumberController.text;
+    final initialRoster = _rosterNumberController.text;
     final client = Supabase.instance.client;
     final user = client.auth.currentUser;
     if (user == null) return;
     try {
-      final profile = await client.from('driver_profiles').select('driver_number').eq('user_id', user.id).maybeSingle();
+      final profile = await client.from('driver_profiles').select('driver_number, roster_number').eq('user_id', user.id).maybeSingle();
       if (mounted && _driverNumberController.text == initial && profile?['driver_number'] != null) {
         _driverNumberController.text = profile!['driver_number'].toString();
+      }
+      if (mounted && _rosterNumberController.text == initialRoster && profile?['roster_number'] != null) {
+        _rosterNumberController.text = profile!['roster_number'].toString();
       }
     } catch (_) {
       // Existing metadata remains available if the profile cannot be loaded.
@@ -660,13 +664,13 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
             keyboardType: TextInputType.number,
             textInputAction: TextInputAction.next,
             decoration: const InputDecoration(
-              labelText: 'Roster number',
+              labelText: 'Roster Code',
               helperText: 'Used to find your line on the Base Roster.',
               prefixIcon: Icon(Icons.badge_outlined),
               border: OutlineInputBorder(),
             ),
             validator: (String? value) =>
-                _requiredNumber(value, 'roster number'),
+                _requiredNumber(value, 'Roster Code'),
           ),
           const SizedBox(height: 16),
           TextFormField(

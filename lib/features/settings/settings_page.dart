@@ -3824,6 +3824,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _depotController = TextEditingController();
   final TextEditingController _driverNumberController = TextEditingController();
+  final TextEditingController _rosterCodeController = TextEditingController();
   final TextEditingController _payrollNumberController =
       TextEditingController();
 
@@ -3843,6 +3844,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
     _nameController.dispose();
     _depotController.dispose();
     _driverNumberController.dispose();
+    _rosterCodeController.dispose();
     _payrollNumberController.dispose();
     super.dispose();
   }
@@ -3866,6 +3868,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
     _nameController.text = (metadata['full_name'] ?? '').toString();
     _depotController.text = (metadata['depot'] ?? '').toString();
     _driverNumberController.text = (metadata['driver_number'] ?? '').toString();
+    _rosterCodeController.text = (metadata['roster_number'] ?? '').toString();
     _payrollNumberController.text = (metadata['payroll_number'] ?? '')
         .toString();
 
@@ -3873,7 +3876,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
       final Map<String, dynamic>? profile = await supabase
           .from('driver_profiles')
           .select(
-            'display_name, depot, driver_number, payroll_number, '
+            'display_name, depot, driver_number, roster_number, payroll_number, '
             'permanently_unavailable_sundays',
           )
           .eq('user_id', user.id)
@@ -3884,6 +3887,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
         _depotController.text = (profile['depot'] ?? '').toString();
         _driverNumberController.text = (profile['driver_number'] ?? '')
             .toString();
+        _rosterCodeController.text = (profile['roster_number'] ?? '').toString();
         _payrollNumberController.text = (profile['payroll_number'] ?? '')
             .toString();
 
@@ -3954,6 +3958,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
     final String displayName = _nameController.text.trim();
     final String depot = _depotController.text.trim();
     final String driverNumber = _driverNumberController.text.trim();
+    final String rosterCode = _rosterCodeController.text.trim();
     final String payrollNumber = _payrollNumberController.text.trim();
 
     setState(() {
@@ -3966,6 +3971,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
         'display_name': displayName,
         'depot': depot,
         'driver_number': driverNumber,
+        'roster_number': rosterCode,
         'payroll_number': payrollNumber,
         'permanently_unavailable_sundays': _permanentlyUnavailableSundays,
       }, onConflict: 'user_id');
@@ -3977,6 +3983,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
               'full_name': displayName,
               'depot': depot,
               'driver_number': driverNumber,
+        'roster_number': rosterCode,
               'payroll_number': payrollNumber,
             },
           ),
@@ -4139,6 +4146,20 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
                             border: OutlineInputBorder(),
                           ),
                           validator: (value) => _requiredValue(value, 'depot'),
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _rosterCodeController,
+                          enabled: !_saving,
+                          keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.next,
+                          decoration: const InputDecoration(
+                            labelText: 'Roster Code',
+                            helperText: 'Used to find your line on the Base Roster.',
+                            prefixIcon: Icon(Icons.badge_outlined),
+                            border: OutlineInputBorder(),
+                          ),
+                          validator: (value) => _requiredNumber(value, 'Roster Code'),
                         ),
                         const SizedBox(height: 16),
                         TextFormField(
