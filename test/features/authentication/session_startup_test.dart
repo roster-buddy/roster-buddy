@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:roster_buddy/features/authentication/session_startup.dart';
 import 'package:roster_buddy/features/authentication/sign_in_screen.dart';
@@ -33,9 +34,11 @@ void main() {
 
   testWidgets('login advertises username and password to autofill', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: SignInScreen()));
+    expect(SemanticsBinding.instance.semanticsEnabled, isTrue);
     final fields = tester.widgetList<TextField>(find.byType(TextField)).toList();
     expect(fields[0].autofillHints, contains(AutofillHints.username));
     expect(fields[1].autofillHints, contains(AutofillHints.password));
     expect(find.byType(AutofillGroup), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 }
