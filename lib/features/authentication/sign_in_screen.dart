@@ -1,3 +1,4 @@
+import 'credential_autofill_submitter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
@@ -19,10 +20,14 @@ class _SignInScreenState extends State<SignInScreen> {
   final _passwordController = TextEditingController();
 
   late final SemanticsHandle _autofillSemantics;
+  late final CredentialAutofillSubmitter _autofillSubmitter;
 
   @override
   void initState() {
     super.initState();
+    _autofillSubmitter = CredentialAutofillSubmitter(onReady: () {
+      if (mounted && !_isSigningIn) _signIn();
+    });
     // Keep both login fields exposed to Safari's password manager before focus.
     _autofillSemantics = SemanticsBinding.instance.ensureSemantics();
   }
@@ -36,6 +41,7 @@ class _SignInScreenState extends State<SignInScreen> {
 
   @override
   void dispose() {
+    _autofillSubmitter.dispose();
     _autofillSemantics.dispose();
     _emailController.dispose();
     _passwordController.dispose();
@@ -43,6 +49,8 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 
   Future<void> _signIn() async {
+    if (_isSigningIn) return;
+    _autofillSubmitter.cancel();
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -167,6 +175,7 @@ class _SignInScreenState extends State<SignInScreen> {
                     const SizedBox(height: 32),
                     TextFormField(
                       controller: _emailController,
+                      onChanged: _autofillSubmitter.emailChanged,
                       autofillHints: const [AutofillHints.username, AutofillHints.email],
                       keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.next,
@@ -197,6 +206,7 @@ class _SignInScreenState extends State<SignInScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _passwordController,
+                      onChanged: _autofillSubmitter.passwordChanged,
                       autofillHints: const [AutofillHints.password],
                       autocorrect: false,
                       enableSuggestions: false,
