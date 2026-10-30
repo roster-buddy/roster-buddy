@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -24,11 +23,6 @@ class DocumentProcessingService {
   static final SupabaseClient _supabase = Supabase.instance.client;
 
   static const String _documentTableName = 'roster_documents';
-  static const String _dutyTableName = 'document_duties';
-  static const String _annualLeaveAllocationTableName =
-      'annual_leave_allocations';
-  static const String _annualLeavePeriodTableName = 'annual_leave_periods';
-  static const String _jobCardTableName = 'job_cards';
 
   static Future<DocumentProcessingResult> processUploadedDocument({
     required String documentId,
@@ -160,7 +154,6 @@ class DocumentProcessingService {
           cards: cards,
         );
 
-        await _updateProcessingStatus(documentId, 'processed');
 
         return DocumentProcessingResult(
           status: DocumentProcessingStatus.processed,
@@ -184,7 +177,6 @@ class DocumentProcessingService {
           allocations: allocations,
         );
 
-        await _updateProcessingStatus(documentId, 'processed');
 
         return DocumentProcessingResult(
           status: DocumentProcessingStatus.processed,
@@ -211,7 +203,6 @@ class DocumentProcessingService {
         duties: importableDuties,
       );
 
-      await _updateProcessingStatus(documentId, 'processed');
 
       return DocumentProcessingResult(
         status: DocumentProcessingStatus.processed,
@@ -284,52 +275,27 @@ class DocumentProcessingService {
     required String documentId,
     required List<AnnualLeaveAllocation> allocations,
   }) async {
-    await _supabase
-        .from(_annualLeaveAllocationTableName)
-        .delete()
-        .eq('document_id', documentId);
-
-    for (final AnnualLeaveAllocation allocation in allocations) {
-      final Map<String, dynamic> insertedAllocation = await _supabase
-          .from(_annualLeaveAllocationTableName)
-          .insert({
-            'document_id': documentId,
-            'leave_year': allocation.leaveYear,
-            'depot': allocation.depot.trim(),
-            'driver_number': allocation.driverNumber.trim(),
-            'surname': allocation.surname.trim(),
-            'block_number': allocation.blockNumber,
-            'source': _databaseAnnualLeaveSource(allocation.source),
-            'original_block_number': allocation.originalBlockNumber,
-            'other_driver_number': _cleanValue(allocation.otherDriverNumber),
-            'other_driver_surname': _cleanValue(allocation.otherDriverSurname),
-            'swap_reference': _cleanValue(allocation.swapReference),
-            'is_confirmed': allocation.isConfirmed,
-            'page_number': allocation.pageNumber,
-            'unique_key': allocation.uniqueKey,
-          })
-          .select('id')
-          .single();
-
-      final String allocationId = insertedAllocation['id'].toString();
-
-      if (allocation.periods.isEmpty) {
-        continue;
-      }
-
-      final List<Map<String, dynamic>> periodRows = allocation.periods
-          .map(
-            (AnnualLeavePeriod period) => {
-              'allocation_id': allocationId,
-              'period_type': _databaseAnnualLeavePeriodType(period.type),
-              'start_date': _databaseDate(period.startDate),
-              'end_date': _databaseDate(period.endDate),
-            },
-          )
-          .toList(growable: false);
-
-      await _supabase.from(_annualLeavePeriodTableName).insert(periodRows);
-    }
+    final rows = allocations.map((allocation) => <String, dynamic>{
+      'leave_year': allocation.leaveYear,
+      'depot': allocation.depot.trim(),
+      'driver_number': allocation.driverNumber.trim(),
+      'surname': allocation.surname.trim(),
+      'block_number': allocation.blockNumber,
+      'source': _databaseAnnualLeaveSource(allocation.source),
+      'original_block_number': allocation.originalBlockNumber,
+      'other_driver_number': _cleanValue(allocation.otherDriverNumber),
+      'other_driver_surname': _cleanValue(allocation.otherDriverSurname),
+      'swap_reference': _cleanValue(allocation.swapReference),
+      'is_confirmed': allocation.isConfirmed,
+      'page_number': allocation.pageNumber,
+      'unique_key': allocation.uniqueKey,
+      'periods': allocation.periods.map((period) => <String, dynamic>{
+        'period_type': _databaseAnnualLeavePeriodType(period.type),
+        'start_date': _databaseDate(period.startDate),
+        'end_date': _databaseDate(period.endDate),
+      }).toList(growable: false),
+    }).toList(growable: false);
+    await _commitReplacement(documentId, 'annual_leave', rows);
   }
 
   static String _databaseAnnualLeaveSource(AnnualLeaveAllocationSource source) {
@@ -372,22 +338,7 @@ class DocumentProcessingService {
       growable: false,
     );
 
-    await _supabase
-        .from(_jobCardTableName)
-        .delete()
-        .eq('document_id', documentId);
-
-    if (cardsToInsert.isEmpty) {
-      return 0;
-    }
-
-    const int batchSize = 250;
-
-    for (int start = 0; start < cardsToInsert.length; start += batchSize) {
-      final int end = math.min(start + batchSize, cardsToInsert.length);
-
       final List<Map<String, dynamic>> rows = cardsToInsert
-          .sublist(start, end)
           .map(
             (JobCard card) => <String, dynamic>{
               'document_id': documentId,
@@ -408,8 +359,7 @@ class DocumentProcessingService {
           )
           .toList(growable: false);
 
-      await _supabase.from(_jobCardTableName).insert(rows);
-    }
+    await _commitReplacement(documentId, 'job_cards', rows);
 
     return cardsToInsert.length;
   }
@@ -418,20 +368,18 @@ class DocumentProcessingService {
     required String documentId,
     required List<Duty> duties,
   }) async {
-    await _supabase.from(_dutyTableName).delete().eq('document_id', documentId);
+    final rows = duties
+        .map((duty) => _dutyRow(documentId: documentId, duty: duty))
+        .toList(growable: false);
+    await _commitReplacement(documentId, 'duties', rows);
+  }
 
-    const int batchSize = 250;
-
-    for (var start = 0; start < duties.length; start += batchSize) {
-      final int end = math.min(start + batchSize, duties.length);
-
-      final List<Map<String, dynamic>> rows = duties
-          .sublist(start, end)
-          .map((duty) => _dutyRow(documentId: documentId, duty: duty))
-          .toList(growable: false);
-
-      await _supabase.from(_dutyTableName).insert(rows);
-    }
+  static Future<void> _commitReplacement(
+    String documentId, String kind, List<Map<String, dynamic>> rows,
+  ) async {
+    await _supabase.rpc('replace_document_import', params: {
+      'p_document_id': documentId, 'p_kind': kind, 'p_rows': rows,
+    });
   }
 
   static Map<String, dynamic> _dutyRow({
@@ -464,10 +412,15 @@ class DocumentProcessingService {
     String documentId,
     String status,
   ) async {
-    await _supabase
+    final query = _supabase
         .from(_documentTableName)
         .update({'processing_status': status})
         .eq('id', documentId);
+    if (status == 'failed') {
+      await query.neq('processing_status', 'processed');
+    } else {
+      await query;
+    }
   }
 
   static String _blockingWarningMessage(ParseResult result) {

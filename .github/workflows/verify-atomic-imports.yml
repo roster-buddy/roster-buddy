@@ -1,0 +1,24 @@
+name: Verify atomic import changes
+on:
+  push:
+    branches: [codex/atomic-document-imports]
+  pull_request:
+    paths:
+      - 'lib/features/upload/**'
+      - 'docs/sql/atomic_document_imports.sql'
+      - 'test/**'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build web --release --base-href "/roster-buddy/" --no-wasm-dry-run
