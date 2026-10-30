@@ -410,7 +410,10 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
     }
   }
 
+  int _leaveLoadGeneration = 0;
+
   Future<void> _load() async {
+    final generation = ++_leaveLoadGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
@@ -494,7 +497,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
         }
       }
 
-      if (blockPeriods.isEmpty) {
+      {
         const List<AnnualLeaveBlockPeriodType> periodOrder =
             <AnnualLeaveBlockPeriodType>[
               AnnualLeaveBlockPeriodType.spring,
@@ -504,6 +507,10 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
             ];
 
         for (final AnnualLeaveBlockPeriodType type in periodOrder) {
+          if (blockPeriods.any((period) =>
+              period.type == _blockPeriodDatabaseValue(type))) {
+            continue;
+          }
           AnnualLeaveBlockOverride? stored;
 
           for (final AnnualLeaveBlockOverride value in blockOverrides) {
@@ -561,7 +568,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               first.leaveDate.compareTo(second.leaveDate),
         );
 
-      if (!mounted) {
+      if (!mounted || generation != _leaveLoadGeneration) {
         return;
       }
 
@@ -580,7 +587,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
         _loading = false;
       });
     } on AnnualLeaveException catch (error) {
-      if (!mounted) {
+      if (!mounted || generation != _leaveLoadGeneration) {
         return;
       }
 
@@ -589,7 +596,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
         _loadError = error.message;
       });
     } on AnnualLeaveBlockPendingActionException catch (error) {
-      if (!mounted) {
+      if (!mounted || generation != _leaveLoadGeneration) {
         return;
       }
 
@@ -598,7 +605,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
         _loadError = error.message;
       });
     } catch (_) {
-      if (!mounted) {
+      if (!mounted || generation != _leaveLoadGeneration) {
         return;
       }
 

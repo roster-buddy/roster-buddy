@@ -5616,9 +5616,11 @@ class _CalendarPageState extends State<_CalendarPage> {
   }
 
   int _monthLoadGeneration = 0;
+  String? _loadedMonthKey;
 
   Future<void> _loadMonth() async {
     final generation = ++_monthLoadGeneration;
+    final monthKey = _dateKey(_displayedMonth);
     setState(() {
       _isLoading = true;
       _loadError = null;
@@ -5670,6 +5672,7 @@ class _CalendarPageState extends State<_CalendarPage> {
       }
 
       setState(() {
+        _loadedMonthKey = monthKey;
         _restDayMoves = moves.where((move) => move.status == ShiftSwapStatus.pending && move.notes?.startsWith('TYPE=Rest day move') == true).toList();
         _dutiesByDate = dutiesByDate;
         _leaveRequestsByDate = leaveRequestsByDate;
@@ -5760,7 +5763,9 @@ class _CalendarPageState extends State<_CalendarPage> {
               const SizedBox(height: 14),
               _buildWeekdayHeader(),
               const SizedBox(height: 6),
-              if (_isLoading)
+              if (_isLoading && _loadedMonthKey == _dateKey(_displayedMonth))
+                const LinearProgressIndicator(),
+              if (_isLoading && _loadedMonthKey != _dateKey(_displayedMonth))
                 const Card(
                   child: Padding(
                     padding: EdgeInsets.all(28),
