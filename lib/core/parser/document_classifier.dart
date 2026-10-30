@@ -6,14 +6,8 @@ class DocumentClassifier {
   DocumentType classify(List<String> pages) {
     final text = pages.join('\n').toUpperCase();
 
-    if (_looksLikeAnnualLeave(text)) {
-      return DocumentType.annualLeaveRoster;
-    }
-
-    if (_looksLikeJobCard(text)) {
-      return DocumentType.jobCard;
-    }
-
+    // Explicit amendment headings win over leave codes and depot/turn text
+    // inside their rows.
     if (_looksLike48Hour(text)) {
       return DocumentType.fortyEightHourAmendment;
     }
@@ -26,8 +20,20 @@ class DocumentClassifier {
       return DocumentType.tenDayAmendment;
     }
 
+    if (_looksLikeJobCard(text)) {
+      return DocumentType.jobCard;
+    }
+
+    if (_looksLikeAnnualLeave(text)) {
+      return DocumentType.annualLeaveRoster;
+    }
+
     if (_looksLikeBaseRoster(text)) {
       return DocumentType.baseRoster;
+    }
+
+    if (RegExp(r'\bSUNDAY\s+(?:AMENDMENT|DUTIES|ROSTER|SHEET)\b').hasMatch(text)) {
+      return DocumentType.fortyEightHourAmendment;
     }
 
     return DocumentType.unknown;
@@ -54,6 +60,8 @@ class DocumentClassifier {
   }
 
   bool _looksLikeJobCard(String text) {
-    return text.contains('WO') || text.contains('JOB CARD');
+    return RegExp(r'\bJOB\s+CARD\b').hasMatch(text) ||
+        (RegExp(r'\bW[O0Q]\s*[-:]?\s*\d{2,4}\b').hasMatch(text) &&
+            RegExp(r'\b(?:DAY(?:\s+CODE)?|DAYS?|APPLIES)\s*[:\-]?\s*(?:SUN|SU|SO|SAO|SX)\b').hasMatch(text));
   }
 }

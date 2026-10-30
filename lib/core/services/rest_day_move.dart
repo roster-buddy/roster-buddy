@@ -26,6 +26,7 @@ Future<bool> actionRestDayMove(BuildContext context, List<Map<String, dynamic>> 
   final lines = pairs.map((p) => '${displayStoredDate(p['rest'])} → ${displayStoredDate(p['work'])}').join('\n');
   final uri = Uri.parse('mailto:drivers.rosters@wmtrains.co.uk?subject=${Uri.encodeComponent('Rest day move request')}&body=${Uri.encodeComponent('Please approve these rest day moves:\n$lines\n\n${await driverNumberEmailLine()}\nPayroll Number: ${profile?['payroll_number'] ?? ''}\n${profile?['depot'] ?? ''}')}');
   if (!context.mounted) return false;
+  Future<bool>? emailLaunch;
   final approved = awaitingAllocation ? true : await showRosterDecisionSheet<bool>(
     context: context,
     builder: (sheetContext) => RosterDecisionSheet(
@@ -33,7 +34,7 @@ Future<bool> actionRestDayMove(BuildContext context, List<Map<String, dynamic>> 
       actions: [
         CupertinoDialogAction(onPressed: () {
           // Start directly in the tap handler for Safari's user activation.
-          launchUrl(uri, mode: LaunchMode.platformDefault, webOnlyWindowName: '_self');
+          emailLaunch = launchUrl(uri, mode: LaunchMode.platformDefault, webOnlyWindowName: '_self');
           Navigator.pop(sheetContext, false);
         }, child: const Text('No')),
         CupertinoDialogAction(onPressed: () => Navigator.pop(sheetContext, true), child: const Text('Yes')),
@@ -41,6 +42,14 @@ Future<bool> actionRestDayMove(BuildContext context, List<Map<String, dynamic>> 
     ),
   );
   if (approved == null) return false;
+  if (!approved && !(await emailLaunch!)) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Could not open email. No rest-day move was requested.'),
+      ));
+    }
+    return false;
+  }
   final queueId = await client.rpc('action_rest_day_move', params: {
     'p_action': approved ? 'confirm' : 'request', 'p_pairs': pairs, 'p_id': id,
   });
