@@ -49,8 +49,9 @@ void main() {
                 }]
               : requests;
           final matched = rows.where((row) {
-            for (final filter in request.uri.queryParameters.entries) {
-              final parts = filter.value.split('.');
+            for (final filter in request.uri.queryParametersAll.entries) {
+              for (final expression in filter.value) {
+              final parts = expression.split('.');
               if (parts.length < 2) continue;
               final expected = parts.skip(1).join('.');
               final actual = row[filter.key]?.toString() ?? '';
@@ -63,6 +64,7 @@ void main() {
                   if (!expected.replaceAll(RegExp(r'[()]'), '').split(',').contains(actual)) {
                     return false;
                   }
+              }
               }
             }
             return true;

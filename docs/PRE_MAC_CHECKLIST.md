@@ -1,6 +1,6 @@
 # Roster Buddy: pre-Mac checklist
 
-Updated 29 October 2026. This preserves the six core areas of the agreed August roadmap, with leave and cloud workflows included. Code present is not the same as an end-to-end verified feature.
+Updated 30 October 2026. This preserves the six core areas of the agreed August roadmap, with leave and cloud workflows included. Code present is not the same as an end-to-end verified feature.
 
 ## 1. Smart Scan
 - Present: native ML Kit image OCR, multi-page PDF rendering, classification and page-text reconstruction.
@@ -52,3 +52,10 @@ Camera and multi-page capture; native OCR accuracy/performance; permissions and 
 
 ## Next pass
 Start with annual-leave balance and overlay reconciliation, then parser fixture coverage. Do not enable unattended external emails as a side effect of this audit.
+
+## 30 October verification pass
+- Added `test/core/services/annual_leave_workflow_test.dart`: isolated HTTP fixture runs the real AnnualLeaveService and its REST filters, without production records or email.
+- Covers requested → abeyance → granted → cancellation pending → cancelled, balance recalculation after each transition, queue clearance, and removing cancelled dates from active/pending lists.
+- Covers both year boundaries, other-account exclusion, block-leave exclusion and allowance extras.
+- Existing resolver suite covers Base → 10-Day → 7-Day → 48-Hour → manual and profile matching. Native/UI and live RLS isolation are separate checks, not established by fixture tests.
+- Remaining: live browser cross-screen checks, durable history selection while cancellation awaits approval, rest-day transaction regression fixtures, import/retry fixtures and the native-only checks above.
