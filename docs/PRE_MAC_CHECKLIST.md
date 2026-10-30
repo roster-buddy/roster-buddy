@@ -65,3 +65,12 @@ Start with annual-leave balance and overlay reconciliation, then parser fixture 
 - Keeping leave clears the stored restoration choice.
 - Transaction checks passed for overnight time preservation, no premature restoration, clearing pending data, retaining leave and rejection of another authenticated account under RLS. Test records were rolled back.
 - Security advisors show no new database findings.
+
+## Rest-day and classifier verification pass — 30 October
+- SQL regression fixture: `docs/sql/test_rest_day_move_workflow.sql`. Ran under authenticated RLS using temporary users, then rolled back.
+- Verified pending requests do not alter roster; confirmed work becomes rest; old rests await allocation without copied turns/times; each new shift saves separately; overnight duration; failed saves preserve the prior saved date; queue completes only after every allocation; repeated confirmation preserves allocations; another account cannot allocate.
+- Also verified one-date approval/allocation and cancelling an unapproved request without changing roster.
+- Hardened same-week validation across both working and rest dates, plus missing fields/types. Sunday and duplicate-date rejections verified.
+- Rest-day email handoff now requires a successful launch before recording the pending request.
+- Added classification regressions for Wolverhampton vs WO, amendment leave rows, Sunday sheets, turn-code OCR variants, annual-leave documents and empty/unknown text.
+- Remaining upload reliability work: replacement imports currently delete old rows and insert batches separately. Move these writes into a transaction and test retry/interruption before calling import reliability complete. Native camera/OCR testing remains pending.
