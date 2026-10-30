@@ -1,3 +1,4 @@
+import 'documents_page.dart';
 import '../../core/formatters/roster_date_format.dart';
 // ignore_for_file: deprecated_member_use
 
@@ -22,8 +23,11 @@ class AppSettingsPage extends StatefulWidget {
     required this.email,
     required this.onSignOut,
     this.onNavigate,
+    this.onOpenNotifications,
     super.key,
   });
+
+  final Future<void> Function()? onOpenNotifications;
 
   final String email;
   final Future<void> Function() onSignOut;
@@ -159,6 +163,10 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
   }
 
   Future<void> _openAnnualLeave() async {
+    if (widget.onNavigate != null) {
+      await widget.onNavigate!(3);
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => AnnualLeaveSettingsPage(
@@ -169,10 +177,38 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
     );
   }
 
-  void _showComingSoon(String feature) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('$feature will be added later.')));
+  Future<void> _openDocuments() => Navigator.of(context).push<void>(
+    MaterialPageRoute<void>(builder: (_) => const DocumentsPage()),
+  );
+
+  Future<void> _openAbout() => showModalBottomSheet<void>(
+    context: context, showDragHandle: true,
+    builder: (_) => const SafeArea(child: Padding(
+      padding: EdgeInsets.fromLTRB(20, 4, 20, 28),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Roster Buddy', style: TextStyle(color: navy, fontSize: 24, fontWeight: FontWeight.w800)),
+          SizedBox(height: 8),
+          Text('Version 1.0.0 (1)'),
+          SizedBox(height: 16),
+          Text('Your railway roster, annual leave and duty history in one place.'),
+          SizedBox(height: 12),
+          Text('Use Notifications to action pending requests and Documents to open your uploaded files.'),
+        ],
+      ),
+    )),
+  );
+
+  Future<void> _openRosterEmail() async {
+    final opened = await launchUrl(
+      Uri(scheme: 'mailto', path: 'drivers.rosters@wmtrains.co.uk'),
+      webOnlyWindowName: '_self',
+    );
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open your email app.')),
+      );
+    }
   }
 
   @override
@@ -209,6 +245,8 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                     style: TextStyle(fontWeight: FontWeight.w700),
                   ),
                   subtitle: Text(widget.email),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _openProfile,
                 ),
               ),
               const SizedBox(height: 22),
@@ -275,10 +313,10 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                       ),
                       title: const Text('Notifications'),
                       subtitle: const Text(
-                        'Shift reminders and amendment alerts',
+                        'Pending requests, approvals and allocations',
                       ),
                       trailing: const Icon(Icons.chevron_right),
-                      onTap: () => _showComingSoon('Notifications'),
+                      onTap: widget.onOpenNotifications,
                     ),
                     const Divider(height: 1),
                     ListTile(
@@ -291,7 +329,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                         'Uploaded rosters, amendments and job cards',
                       ),
                       trailing: const Icon(Icons.chevron_right),
-                      onTap: () => _showComingSoon('Documents'),
+                      onTap: _openDocuments,
                     ),
                     const Divider(height: 1),
                     ListTile(
@@ -302,7 +340,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                       title: const Text('About'),
                       subtitle: const Text('Roster Buddy Version 1'),
                       trailing: const Icon(Icons.chevron_right),
-                      onTap: () => _showComingSoon('About'),
+                      onTap: _openAbout,
                     ),
                   ],
                 ),
@@ -313,6 +351,8 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                   leading: const Icon(Icons.email_outlined),
                   title: const Text('Roster email'),
                   subtitle: const Text('drivers.rosters@wmtrains.co.uk'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _openRosterEmail,
                 ),
               ),
               const SizedBox(height: 22),

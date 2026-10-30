@@ -581,6 +581,7 @@ class _HomeScreenState extends State<HomeScreen> {
         refreshVersion: _dashboardRefreshVersion,
       ),
       AppSettingsPage(
+        onOpenNotifications: _openPendingActions,
         email: email,
         onSignOut: _signOut,
         onNavigate: _navigateFromChild,
