@@ -8,6 +8,7 @@ import '../models/annual_leave_request.dart';
 Future<bool> manageFloatingLeaveCancellation({
   required BuildContext context,
   required List<AnnualLeaveRequest> requests,
+  Map<String, dynamic>? historyRestore,
 }) async {
   if (requests.isEmpty) return false;
   final client = Supabase.instance.client;
@@ -61,9 +62,16 @@ Future<bool> manageFloatingLeaveCancellation({
       }
       return false;
     }
-    await client.rpc('action_floating_leave_cancellation', params: {
-      'p_ids': sorted.map((r) => r.id).toList(), 'p_action': action,
-    });
+    if (historyRestore != null) {
+      if (sorted.length != 1) throw StateError('Select one historical shift');
+      await client.rpc('cancel_leave_for_history', params: {
+        'p_id': sorted.single.id, 'p_action': action, 'p_restore': historyRestore,
+      });
+    } else {
+      await client.rpc('action_floating_leave_cancellation', params: {
+        'p_ids': sorted.map((r) => r.id).toList(), 'p_action': action,
+      });
+    }
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(action == 'confirm'

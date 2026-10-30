@@ -58,4 +58,10 @@ Start with annual-leave balance and overlay reconciliation, then parser fixture 
 - Covers requested → abeyance → granted → cancellation pending → cancelled, balance recalculation after each transition, queue clearance, and removing cancelled dates from active/pending lists.
 - Covers both year boundaries, other-account exclusion, block-leave exclusion and allowance extras.
 - Existing resolver suite covers Base → 10-Day → 7-Day → 48-Hour → manual and profile matching. Native/UI and live RLS isolation are separate checks, not established by fixture tests.
-- Remaining: live browser cross-screen checks, durable history selection while cancellation awaits approval, rest-day transaction regression fixtures, import/retry fixtures and the native-only checks above.
+- Remaining: live browser cross-screen checks, rest-day transaction regression fixtures, import/retry fixtures and the native-only checks above.
+
+### History cancellation fix
+- A pending cancellation now stores the exact historical shift selected. Approving later through any cancellation entry point restores that shift and cancels leave in one database transaction.
+- Keeping leave clears the stored restoration choice.
+- Transaction checks passed for overnight time preservation, no premature restoration, clearing pending data, retaining leave and rejection of another authenticated account under RLS. Test records were rolled back.
+- Security advisors show no new database findings.

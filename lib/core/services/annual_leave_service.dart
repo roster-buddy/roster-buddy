@@ -461,11 +461,20 @@ class AnnualLeaveService {
       changes['queue_position'] = null;
     }
 
-    await _supabase
-        .from(_requestTable)
-        .update(changes)
-        .eq('id', requestId)
-        .eq('user_id', user.id);
+    if (status == 'cancelled' &&
+        request.status == AnnualLeaveRequestStatus.granted &&
+        request.requestType == AnnualLeaveRequestType.floating) {
+      // Also restores a historical shift saved by a pending cancellation.
+      await _supabase.rpc('action_floating_leave_cancellation', params: {
+        'p_ids': [requestId], 'p_action': 'confirm',
+      });
+    } else {
+      await _supabase
+          .from(_requestTable)
+          .update(changes)
+          .eq('id', requestId)
+          .eq('user_id', user.id);
+    }
 
     final Map<String, dynamic> refreshed = await _supabase
         .from(_requestTable)

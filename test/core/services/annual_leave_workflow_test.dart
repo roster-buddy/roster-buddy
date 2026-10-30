@@ -27,7 +27,7 @@ void main() {
     server.listen((request) async {
       try {
         final path = request.uri.path;
-        Object result;
+        Object? result;
         if (path == '/auth/v1/token') {
           final payload = base64Url.encode(utf8.encode(jsonEncode({
             'sub': owner, 'exp': 4102444800,
@@ -40,6 +40,15 @@ void main() {
               'email': 'fixture@example.test', 'app_metadata': {}, 'user_metadata': {},
               'created_at': '2026-01-01T00:00:00Z'},
           };
+        } else if (path.endsWith('/rpc/action_floating_leave_cancellation')) {
+          final body = jsonDecode(await utf8.decoder.bind(request).join()) as Map;
+          expect(body['p_action'], 'confirm');
+          for (final row in requests.where((row) => (body['p_ids'] as List).contains(row['id']))) {
+            row['status'] = 'cancelled';
+            row['cancellation_pending'] = false;
+            row['queue_position'] = null;
+          }
+          result = null;
         } else {
           final rows = path.endsWith('annual_leave_balances')
               ? <Map<String, dynamic>>[{

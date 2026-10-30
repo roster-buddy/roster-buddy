@@ -47,12 +47,20 @@ class DutyHistoryService {
   Future<void> revert(Duty selected, Duty current) async {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('Sign in required');
+    await _client.from('manual_duties').upsert({
+      'user_id': user.id,
+      ...restorationPayload(selected, current),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'user_id,duty_date,manual_change_type');
+  }
+
+  static Map<String, dynamic> restorationPayload(Duty selected, Duty current) {
     const types = {
       DutyType.restDay: 'rest_day', DutyType.annualLeave: 'annual_leave',
       DutyType.publicHoliday: 'public_holiday',
     };
-    await _client.from('manual_duties').upsert({
-      'user_id': user.id, 'duty_date': selected.date.toIso8601String().substring(0,10),
+    return {
+      'duty_date': selected.date.toIso8601String().substring(0,10),
       'manual_change_type': 'manual_change',
       'duty_type': types[selected.dutyType] ?? selected.dutyType.name,
       'turn_number': selected.turnNumber, 'book_on': selected.bookOn, 'book_off': selected.bookOff,
@@ -61,7 +69,7 @@ class DutyHistoryService {
       'original_source': current.source.name,
       'original_duty_type': types[current.dutyType] ?? current.dutyType.name,
       'original_turn_number': current.turnNumber, 'original_book_on': current.bookOn,
-      'original_book_off': current.bookOff, 'updated_at': DateTime.now().toUtc().toIso8601String(),
-    }, onConflict: 'user_id,duty_date,manual_change_type');
+      'original_book_off': current.bookOff,
+    };
   }
 }
