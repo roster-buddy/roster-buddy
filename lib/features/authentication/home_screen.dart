@@ -5615,7 +5615,10 @@ class _CalendarPageState extends State<_CalendarPage> {
     );
   }
 
+  int _monthLoadGeneration = 0;
+
   Future<void> _loadMonth() async {
+    final generation = ++_monthLoadGeneration;
     setState(() {
       _isLoading = true;
       _loadError = null;
@@ -5662,7 +5665,7 @@ class _CalendarPageState extends State<_CalendarPage> {
           .where((String value) => value.isNotEmpty)
           .toSet();
 
-      if (!mounted) {
+      if (!mounted || generation != _monthLoadGeneration) {
         return;
       }
 
@@ -5674,7 +5677,7 @@ class _CalendarPageState extends State<_CalendarPage> {
         _isLoading = false;
       });
     } catch (error) {
-      if (!mounted) {
+      if (!mounted || generation != _monthLoadGeneration) {
         return;
       }
 

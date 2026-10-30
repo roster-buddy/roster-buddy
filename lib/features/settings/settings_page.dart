@@ -429,28 +429,24 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
       final DateTime yearStart = DateTime(_leaveYear, 1, 1);
       final DateTime yearEnd = DateTime(_leaveYear, 12, 31);
 
-      final AnnualLeaveBalance balance = await _annualLeaveService
-          .getBalanceForYear(_leaveYear);
-
-      final Map<String, AnnualLeaveRequest> requestMap =
-          await _annualLeaveService.getRequestsForRange(yearStart, yearEnd);
-
-      final List<Map<String, dynamic>> scheduledRequests =
-          await _annualLeaveService.getScheduledFloatingRequestsForYear(
-            _leaveYear,
-          );
-
-      final AnnualLeaveBlockCycle? blockCycle = await _annualLeaveBlockService
-          .getCycleForYear(_leaveYear);
-
-      final List<AnnualLeaveBlockOverride> blockOverrides =
-          await _annualLeaveBlockService.getOverridesForYear(_leaveYear);
-
-      final Map<String, dynamic>? profile = await supabase
+      final results = await Future.wait<Object?>([
+        _annualLeaveService.getBalanceForYear(_leaveYear),
+        _annualLeaveService.getRequestsForRange(yearStart, yearEnd),
+        _annualLeaveService.getScheduledFloatingRequestsForYear(_leaveYear),
+        _annualLeaveBlockService.getCycleForYear(_leaveYear),
+        _annualLeaveBlockService.getOverridesForYear(_leaveYear),
+        supabase
           .from('driver_profiles')
           .select('driver_number')
           .eq('user_id', user.id)
-          .maybeSingle();
+          .maybeSingle(),
+      ]);
+      final balance = results[0] as AnnualLeaveBalance;
+      final requestMap = results[1] as Map<String, AnnualLeaveRequest>;
+      final scheduledRequests = results[2] as List<Map<String, dynamic>>;
+      final blockCycle = results[3] as AnnualLeaveBlockCycle?;
+      final blockOverrides = results[4] as List<AnnualLeaveBlockOverride>;
+      final profile = results[5] as Map<String, dynamic>?;
 
       final String driverNumber = (profile?['driver_number'] ?? '')
           .toString()

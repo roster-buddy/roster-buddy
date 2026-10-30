@@ -294,9 +294,9 @@ class DutyResolver {
     final String databaseStart = _databaseDate(start);
     final String databaseEnd = _databaseDate(end);
 
-    final List<Duty> duties = <Duty>[];
-
-    final List<dynamic> parsedDutyResponse = await _supabase
+    // These reads share only the profile/range and can run together.
+    final responses = await Future.wait<Object?>([
+      _supabase
         .from(_dutyTableName)
         .select(
           'duty_date, source, duty_type, turn_number, book_on, book_off, '
@@ -304,7 +304,62 @@ class DutyResolver {
           'driver_name, depot, amendment_code, mileage, page_number, raw_text',
         )
         .gte('duty_date', databaseStart)
-        .lte('duty_date', databaseEnd);
+        .lte('duty_date', databaseEnd),
+      driverNumber == null ? Future.value(<dynamic>[]) : _supabase
+          .from(_annualLeavePeriodTableName)
+          .select(
+            'period_type, start_date, end_date, '
+            'annual_leave_allocations!inner('
+            'driver_number, surname, depot, source, is_confirmed, page_number'
+            ')',
+          )
+          .lte('start_date', databaseEnd)
+          .gte('end_date', databaseStart)
+          .eq('annual_leave_allocations.driver_number', driverNumber)
+          .eq('annual_leave_allocations.is_confirmed', true),
+      _supabase
+        .from(_annualLeaveRequestTableName)
+        .select(
+          'id, leave_date, status, request_type, notes, requested_at, '
+          'decision_at',
+        )
+        .eq('user_id', user.id)
+        .eq('request_type', 'floating')
+        .eq('status', 'granted')
+        .gte('leave_date', databaseStart)
+        .lte('leave_date', databaseEnd),
+      _supabase
+        .from(_annualLeaveBlockOverrideTableName)
+        .select(
+          'id, leave_year, period_type, '
+          'original_start_date, original_end_date, '
+          'override_start_date, override_end_date, '
+          'change_type, swap_driver_number, swap_reference, notes',
+        )
+        .eq('user_id', user.id)
+        .gte('leave_year', start.year)
+        .lte('leave_year', end.year),
+      _supabase
+        .from(_manualDutyTableName)
+        .select(
+          'duty_date, duty_type, turn_number, book_on, book_off, '
+          'rostered_minutes, remarks, manual_change_type, updated_at',
+        )
+        .eq('user_id', user.id)
+        .gte('duty_date', databaseStart)
+        .lte('duty_date', databaseEnd),
+      _getOfficialBlockPeriodKeys(
+          driverNumber: driverNumber,
+          startYear: start.year,
+          endYear: end.year,
+        ),
+      SundayAvailabilityService(supabase: _supabase)
+          .getAvailableSundayDatesForRange(start, end),
+    ]);
+
+    final List<Duty> duties = <Duty>[];
+
+    final List<dynamic> parsedDutyResponse = responses[0] as List<dynamic>;
 
     duties.addAll(
       parsedDutyResponse
@@ -320,18 +375,7 @@ class DutyResolver {
     );
 
     if (driverNumber != null) {
-      final List<dynamic> annualLeaveResponse = await _supabase
-          .from(_annualLeavePeriodTableName)
-          .select(
-            'period_type, start_date, end_date, '
-            'annual_leave_allocations!inner('
-            'driver_number, surname, depot, source, is_confirmed, page_number'
-            ')',
-          )
-          .lte('start_date', databaseEnd)
-          .gte('end_date', databaseStart)
-          .eq('annual_leave_allocations.driver_number', driverNumber)
-          .eq('annual_leave_allocations.is_confirmed', true);
+      final List<dynamic> annualLeaveResponse = responses[1] as List<dynamic>;
 
       for (final Map<String, dynamic> row
           in annualLeaveResponse.whereType<Map<String, dynamic>>()) {
@@ -360,17 +404,7 @@ class DutyResolver {
       }
     }
 
-    final List<dynamic> grantedFloatingLeaveResponse = await _supabase
-        .from(_annualLeaveRequestTableName)
-        .select(
-          'id, leave_date, status, request_type, notes, requested_at, '
-          'decision_at',
-        )
-        .eq('user_id', user.id)
-        .eq('request_type', 'floating')
-        .eq('status', 'granted')
-        .gte('leave_date', databaseStart)
-        .lte('leave_date', databaseEnd);
+    final List<dynamic> grantedFloatingLeaveResponse = responses[2] as List<dynamic>;
 
     duties.addAll(
       grantedFloatingLeaveResponse.whereType<Map<String, dynamic>>().map(
@@ -378,29 +412,14 @@ class DutyResolver {
       ),
     );
 
-    final List<dynamic> blockOverrideResponse = await _supabase
-        .from(_annualLeaveBlockOverrideTableName)
-        .select(
-          'id, leave_year, period_type, '
-          'original_start_date, original_end_date, '
-          'override_start_date, override_end_date, '
-          'change_type, swap_driver_number, swap_reference, notes',
-        )
-        .eq('user_id', user.id)
-        .gte('leave_year', start.year)
-        .lte('leave_year', end.year);
+    final List<dynamic> blockOverrideResponse = responses[3] as List<dynamic>;
 
     final List<AnnualLeaveBlockOverride> blockOverrides = blockOverrideResponse
         .whereType<Map<String, dynamic>>()
         .map(AnnualLeaveBlockOverride.fromMap)
         .toList(growable: false);
 
-    final Set<String> officialBlockPeriodKeys =
-        await _getOfficialBlockPeriodKeys(
-          driverNumber: driverNumber,
-          startYear: start.year,
-          endYear: end.year,
-        );
+    final Set<String> officialBlockPeriodKeys = responses[5] as Set<String>;
 
     final List<AnnualLeaveBlockOverride> effectiveBlockOverrides =
         _effectiveBlockOverrides(
@@ -417,14 +436,7 @@ class DutyResolver {
       );
     }
 
-    final SundayAvailabilityService sundayAvailabilityService =
-        SundayAvailabilityService(supabase: _supabase);
-
-    final Set<String> explicitlyAvailableSundayDates =
-        await sundayAvailabilityService.getAvailableSundayDatesForRange(
-          start,
-          end,
-        );
+    final Set<String> explicitlyAvailableSundayDates = responses[6] as Set<String>;
 
     if (permanentlyUnavailableSundays) {
       final Set<String> sundayDates = _sundayDatesForRange(start, end);
@@ -451,15 +463,7 @@ class DutyResolver {
       }
     }
 
-    final List<dynamic> manualDutyResponse = await _supabase
-        .from(_manualDutyTableName)
-        .select(
-          'duty_date, duty_type, turn_number, book_on, book_off, '
-          'rostered_minutes, remarks, manual_change_type, updated_at',
-        )
-        .eq('user_id', user.id)
-        .gte('duty_date', databaseStart)
-        .lte('duty_date', databaseEnd);
+    final List<dynamic> manualDutyResponse = responses[4] as List<dynamic>;
 
     duties.addAll(
       _latestManualDutiesByDate(manualDutyResponse).map(_manualDutyFromRow),
