@@ -45,6 +45,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
 
   Map<String, dynamic>? _driverProfile;
   bool _loadingProfile = true;
+  bool _signingOut = false;
 
   Map<String, dynamic> get _metadata =>
       Supabase.instance.client.auth.currentUser?.userMetadata ?? {};
@@ -142,6 +143,22 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
     }
 
     return 'Commencement date and mutual swap';
+  }
+
+  Future<void> _signOut() async {
+    if (_signingOut) return;
+    setState(() => _signingOut = true);
+    try {
+      await widget.onSignOut();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not sign out. Check your connection and try again.'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _signingOut = false);
+    }
   }
 
   Future<void> _openProfile() async {
@@ -357,13 +374,11 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
               ),
               const SizedBox(height: 22),
               OutlinedButton.icon(
-                onPressed: () async {
-                  await widget.onSignOut();
-                },
+                onPressed: _signingOut ? null : _signOut,
                 icon: const Icon(Icons.logout, color: Colors.red),
-                label: const Text(
-                  'Sign out',
-                  style: TextStyle(
+                label: Text(
+                  _signingOut ? 'Signing out…' : 'Sign out',
+                  style: const TextStyle(
                     color: Colors.red,
                     fontWeight: FontWeight.w700,
                   ),

@@ -1,3 +1,4 @@
+import 'sign_out.dart';
 import '../../core/services/driver_email_identity.dart';
 import '../../core/formatters/roster_date_format.dart';
 import 'dart:async';
@@ -258,11 +259,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _signOut() async {
-    await Supabase.instance.client.auth.signOut();
-
-    if (!mounted) return;
-
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    await signOutAndResetNavigation(
+      context, signOut: () => Supabase.instance.client.auth.signOut(),
+    );
   }
 
   Future<void> _navigateFromChild(int destination) async {
