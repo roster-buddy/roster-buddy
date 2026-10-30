@@ -47,10 +47,12 @@ class _DocumentsPageState extends State<DocumentsPage> {
         _loading = false;
       });
     } catch (_) {
-      if (mounted) setState(() {
-        _loading = false;
-        _error = 'Could not load documents. Please try again.';
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Could not load documents. Please try again.';
+        });
+      }
     }
   }
 
@@ -94,8 +96,10 @@ class _DocumentsPageState extends State<DocumentsPage> {
         )),
       );
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Could not open this document. Please try again.')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not open this document. Please try again.')));
+      }
     } finally {
       if (mounted) setState(() => _opening = null);
     }
