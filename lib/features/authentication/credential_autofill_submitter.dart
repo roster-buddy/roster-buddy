@@ -17,7 +17,16 @@ class CredentialAutofillSubmitter {
 
   void passwordChanged(String value) {
     if (value == _password) return;
-    final inserted = value.length - _password.length;
+    var prefix = 0;
+    while (prefix < value.length && prefix < _password.length && value[prefix] == _password[prefix]) {
+      prefix++;
+    }
+    var suffix = 0;
+    while (suffix < value.length - prefix && suffix < _password.length - prefix &&
+        value[value.length - 1 - suffix] == _password[_password.length - 1 - suffix]) {
+      suffix++;
+    }
+    final inserted = value.length - prefix - suffix;
     _password = value;
     if (inserted > 1 && value.length >= 6) {
       _bulkFill = true;

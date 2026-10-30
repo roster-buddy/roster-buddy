@@ -29,6 +29,18 @@ void main() {
     submitter.dispose();
   });
 
+  testWidgets('choosing different saved credentials replaces a longer password', (tester) async {
+    var calls = 0;
+    final submitter = CredentialAutofillSubmitter(onReady: () => calls++);
+    submitter.emailChanged('driver@example.test');
+    submitter.passwordChanged('first-long-saved-password');
+    await tester.pump(const Duration(milliseconds: 450));
+    submitter.passwordChanged('second-saved');
+    await tester.pump(const Duration(milliseconds: 450));
+    expect(calls, 2);
+    submitter.dispose();
+  });
+
   testWidgets('normal typing does not submit an unfinished password', (tester) async {
     var calls = 0;
     final submitter = CredentialAutofillSubmitter(onReady: () => calls++);
