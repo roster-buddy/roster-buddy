@@ -26,4 +26,23 @@ void main() {
     ], payrollNumber: '52319', since: DateTime.utc(2026, 11, 2, 11));
     expect(notices, isEmpty);
   });
+  test('every amendment source warns for work on recorded leave and retains its document link', () {
+    final rows = [
+      for (final source in ['10_day', '7_day', '48_hour'])
+        {...row('2319', '2026-11-02T12:00:00Z', source: source),
+          'duty_type': 'working', 'document_id': 'sheet-$source'},
+    ];
+    final notices = RosterUpdateService.fromRows(rows, payrollNumber: '52319',
+      since: DateTime.utc(2026, 11, 2), annualLeaveDates: {'2026-11-05'});
+    expect(notices, hasLength(3));
+    expect(notices.every((n) => n.needsInvestigation && n.documentId != null), isTrue);
+  });
+  test('a leave-coded sheet or a day without recorded leave does not raise a conflict', () {
+    final leave = {...row('2319', '2026-11-02T12:00:00Z'), 'duty_type': 'annual_leave'};
+    expect(RosterUpdateService.fromRows([leave], payrollNumber: '52319',
+      since: DateTime.utc(2026, 11, 2), annualLeaveDates: {'2026-11-05'}).single.needsInvestigation, isFalse);
+    expect(RosterUpdateService.fromRows([{...leave, 'duty_type': 'working'}], payrollNumber: '52319',
+      since: DateTime.utc(2026, 11, 2)).single.needsInvestigation, isFalse);
+  });
+
 }

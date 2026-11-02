@@ -223,7 +223,9 @@ class _HomeScreenState extends State<HomeScreen> {
         final latest = rosterUpdates.first.receivedAt;
         if ((!_noticesInitialised || _lastRosterNotice == null || latest.isAfter(_lastRosterNotice!))) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Roster update: ${rosterUpdates.length} duty record(s) received. Open the bell for details.'),
+            content: Text(rosterUpdates.any((notice) => notice.needsInvestigation)
+                ? 'Annual leave conflict: a roster sheet lists you working. Investigation needed. Open the bell for the uploaded sheet.'
+                : 'Roster update: ${rosterUpdates.length} duty record(s) received. Open the bell for details.'),
             action: SnackBarAction(label: 'View', onPressed: _openPendingActions),
           ));
         }
@@ -631,6 +633,36 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  Future<void> _openRosterDocument(RosterUpdateNotice notice) async {
+    try {
+      final client = Supabase.instance.client;
+      final document = await client.from('roster_documents')
+          .select('storage_path, original_filename').eq('id', notice.documentId!).maybeSingle();
+      final path = document?['storage_path']?.toString();
+      if (path == null || path.isEmpty) throw StateError('Document access unavailable');
+      final signedUrl = await client.storage.from('roster-documents').createSignedUrl(path, 300);
+      if (!mounted) return;
+      await showModalBottomSheet<void>(context: context, showDragHandle: true,
+        builder: (sheetContext) => SafeArea(child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(document?['original_filename']?.toString() ?? 'Uploaded roster sheet',
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 16),
+            FilledButton.icon(icon: const Icon(Icons.open_in_new), label: const Text('Open document'),
+              onPressed: () async {
+                final opened = await launchUrl(Uri.parse(signedUrl), mode: LaunchMode.platformDefault, webOnlyWindowName: '_blank');
+                if (!opened && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open the document. Please retry.')));
+              }),
+          ]),
+        )),
+      );
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('This uploaded sheet is not currently accessible to your account.')));
+    }
   }
 
   String _dateLabel(DateTime date) {
@@ -1989,9 +2021,17 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                 const Text('Roster updates', style: TextStyle(color: navy, fontWeight: FontWeight.w900)),
                 for (final notice in _rosterUpdates)
                   Card(child: ListTile(
-                    leading: const Icon(Icons.update, color: Color(0xFF1769AA)),
-                    title: Text('Roster updated · ${displayDate(DateTime.parse(notice.date))}'),
-                    subtitle: Text(notice.detail),
+                    leading: Icon(notice.needsInvestigation ? Icons.warning_amber_rounded : Icons.update,
+                      color: notice.needsInvestigation ? leaveRed : const Color(0xFF1769AA)),
+                    title: Text('${notice.needsInvestigation ? 'Annual leave conflict — investigate' : 'Roster updated'} · ${displayDate(DateTime.parse(notice.date))}'),
+                    subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      if (notice.needsInvestigation)
+                        const Text('You have annual leave recorded, but this sheet lists you working. Your annual leave has been kept.'),
+                      Text(notice.detail),
+                      if (notice.documentId != null)
+                        TextButton.icon(onPressed: () => _openRosterDocument(notice),
+                          icon: const Icon(Icons.open_in_new), label: const Text('Open uploaded document')),
+                    ]),
                   )),
                 const SizedBox(height: 16),
               ],

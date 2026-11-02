@@ -29,9 +29,9 @@ class RosterJobSummary extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => Column(
+  Widget build(BuildContext context) => SizedBox(width: double.infinity, child: Column(
     mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.start,
+    crossAxisAlignment: CrossAxisAlignment.center,
     children: [
       for (final value in [
         _time(duty.bookOn),
@@ -40,10 +40,11 @@ class RosterJobSummary extends StatelessWidget {
       ])
         Text(
           value,
+          textAlign: TextAlign.center,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(color: foreground, fontSize: fontSize, fontWeight: FontWeight.w800, height: 1.25),
         ),
     ],
-  );
+  ));
 }

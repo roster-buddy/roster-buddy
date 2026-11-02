@@ -1,10 +1,14 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'printed_roster_identity.dart';
+import '../models/duty_type.dart';
+import 'duty_resolver.dart';
 
 class RosterUpdateNotice {
-  const RosterUpdateNotice(this.date, this.receivedAt, this.source, this.start, this.finish, this.turn);
+  const RosterUpdateNotice(this.date, this.receivedAt, this.source, this.start, this.finish, this.turn, {this.documentId, this.needsInvestigation = false});
   final String date, source, start, finish, turn;
   final DateTime receivedAt;
+  final String? documentId;
+  final bool needsInvestigation;
   String get detail => '$source · $start–$finish${turn.isEmpty ? '' : ' · Turn $turn'}';
 }
 
@@ -20,16 +24,26 @@ class RosterUpdateService {
     if (key == null) return [];
     final cutoff = since ?? DateTime.now().subtract(const Duration(days: 30));
     final rows = await client.from('document_duties')
-        .select('duty_date, source, payroll_number, book_on, book_off, turn_number, created_at')
+        .select('duty_date, source, payroll_number, duty_type, document_id, book_on, book_off, turn_number, created_at')
         .like('payroll_number', '%$key')
         .inFilter('source', ['10_day', '7_day', '48_hour'])
         .gt('created_at', cutoff.toUtc().toIso8601String())
         .order('created_at', ascending: false);
-    return fromRows(rows, payrollNumber: payroll, since: cutoff);
+    final dates = rows.map((row) => DateTime.tryParse(row['duty_date']?.toString() ?? ''))
+        .whereType<DateTime>().toList()..sort();
+    final annualLeaveDates = <String>{};
+    if (dates.isNotEmpty) {
+      final resolved = await DutyResolver().getResolvedDutiesForRange(dates.first, dates.last);
+      for (final entry in resolved.entries) {
+        if (entry.value.dutyType == DutyType.annualLeave) annualLeaveDates.add(entry.key);
+      }
+    }
+    return fromRows(rows, payrollNumber: payroll, since: cutoff, annualLeaveDates: annualLeaveDates);
   }
 
   static List<RosterUpdateNotice> fromRows(List<Map<String, dynamic>> rows, {
     required String? payrollNumber, required DateTime since,
+    Set<String> annualLeaveDates = const {},
   }) {
     final notices = <String, RosterUpdateNotice>{};
     const labels = {'10_day': '10D', '7_day': '7D', '48_hour': '48HR'};
@@ -43,7 +57,10 @@ class RosterUpdateService {
       final date = row['duty_date']?.toString() ?? '';
       final source = labels[row['source']];
       if (received == null || !received.isAfter(since) || source == null || DateTime.tryParse(date) == null) continue;
-      final notice = RosterUpdateNotice(date, received, source, clock(row['book_on']), clock(row['book_off']), row['turn_number']?.toString() ?? '');
+      final notice = RosterUpdateNotice(date, received, source, clock(row['book_on']), clock(row['book_off']), row['turn_number']?.toString() ?? '',
+        documentId: row['document_id']?.toString(),
+        needsInvestigation: annualLeaveDates.contains(date) && ['working', 'training', 'medical'].contains(row['duty_type']),
+      );
       final key = '$date|$source';
       if (notices[key] == null || received.isAfter(notices[key]!.receivedAt)) notices[key] = notice;
     }
