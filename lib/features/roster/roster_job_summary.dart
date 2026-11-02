@@ -8,11 +8,13 @@ class RosterJobSummary extends StatelessWidget {
     required this.duty,
     required this.foreground,
     this.fontSize = 9,
+    this.showTurn = true,
     super.key,
   });
   final Duty duty;
   final Color foreground;
   final double fontSize;
+  final bool showTurn;
 
   static bool appliesTo(Duty? duty) =>
       duty != null &&
@@ -34,7 +36,7 @@ class RosterJobSummary extends StatelessWidget {
       for (final value in [
         _time(duty.bookOn),
         _time(duty.bookOff),
-        duty.turnNumber?.trim().isNotEmpty == true ? duty.turnNumber!.trim() : '—',
+        if (showTurn) duty.turnNumber?.trim().isNotEmpty == true ? duty.turnNumber!.trim() : '—',
       ])
         Text(
           value,

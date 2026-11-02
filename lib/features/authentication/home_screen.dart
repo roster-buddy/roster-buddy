@@ -1,3 +1,4 @@
+import '../../core/services/roster_update_service.dart';
 import '../roster/roster_job_summary.dart';
 import 'sign_out.dart';
 import '../upload/upload_source_picker.dart';
@@ -103,6 +104,10 @@ class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
   int _dashboardRefreshVersion = 0;
   int _pendingActionCount = 0;
+  Timer? _rosterNoticeTimer;
+  bool _checkingNotices = false;
+  DateTime? _lastRosterNotice;
+  bool _noticesInitialised = false;
 
   final GlobalKey<_CalendarPageState> _calendarKey =
       GlobalKey<_CalendarPageState>();
@@ -115,9 +120,18 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _refreshPendingActionCount();
+    _rosterNoticeTimer = Timer.periodic(const Duration(seconds: 30), (_) => _refreshPendingActionCount());
+  }
+
+  @override
+  void dispose() {
+    _rosterNoticeTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _refreshPendingActionCount() async {
+    if (_checkingNotices) return;
+    _checkingNotices = true;
     try {
       final SupabaseClient supabase = Supabase.instance.client;
       final User? user = supabase.auth.currentUser;
@@ -199,16 +213,35 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
 
+      List<RosterUpdateNotice> rosterUpdates = [];
+      try {
+        rosterUpdates = await RosterUpdateService().load(since: lastSeen);
+      } catch (_) {
+        // A roster notice failure must not hide pending leave or swap actions.
+      }
+      if (mounted && rosterUpdates.isNotEmpty) {
+        final latest = rosterUpdates.first.receivedAt;
+        if ((!_noticesInitialised || _lastRosterNotice == null || latest.isAfter(_lastRosterNotice!))) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Roster update: ${rosterUpdates.length} duty record(s) received. Open the bell for details.'),
+            action: SnackBarAction(label: 'View', onPressed: _openPendingActions),
+          ));
+        }
+        _lastRosterNotice = latest;
+      }
+      _noticesInitialised = true;
       if (!mounted) {
         return;
       }
 
       setState(() {
         _pendingActionCount =
-            floatingRows.length + cancellationRows.length + blockRows.length + newShiftSwapCount;
+            floatingRows.length + cancellationRows.length + blockRows.length + newShiftSwapCount + rosterUpdates.length;
       });
     } catch (_) {
       // Badge loading must never prevent the main app from loading.
+    } finally {
+      _checkingNotices = false;
     }
   }
 
@@ -586,6 +619,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   final ManualDutyService _shiftSwapManualDutyService = ManualDutyService();
   final JobCardService _shiftSwapJobCardService = JobCardService();
 
+  List<RosterUpdateNotice> _rosterUpdates = [];
   bool _isLoading = true;
   String? _errorMessage;
   List<AnnualLeaveRequest> _requests = <AnnualLeaveRequest>[];
@@ -618,6 +652,8 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
 
       final List<ShiftSwap> shiftSwaps = await _shiftSwapService.getRequests();
 
+      List<RosterUpdateNotice> rosterUpdates = [];
+      try { rosterUpdates = await RosterUpdateService().load(); } catch (_) {}
       if (!mounted) {
         return;
       }
@@ -646,6 +682,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
             );
 
       setState(() {
+        _rosterUpdates = rosterUpdates;
         _requests = orderedRequests;
         _blockActions = orderedBlockActions;
         _shiftSwaps = orderedShiftSwaps;
@@ -1915,7 +1952,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
         foregroundColor: navy,
         elevation: 0,
         title: const Text(
-          'Pending Actions',
+          'Notifications & actions',
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
         actions: [
@@ -1948,6 +1985,16 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                 style: TextStyle(color: textGrey),
               ),
               const SizedBox(height: 16),
+              if (_rosterUpdates.isNotEmpty) ...[
+                const Text('Roster updates', style: TextStyle(color: navy, fontWeight: FontWeight.w900)),
+                for (final notice in _rosterUpdates)
+                  Card(child: ListTile(
+                    leading: const Icon(Icons.update, color: Color(0xFF1769AA)),
+                    title: Text('Roster updated · ${displayDate(DateTime.parse(notice.date))}'),
+                    subtitle: Text(notice.detail),
+                  )),
+                const SizedBox(height: 16),
+              ],
               if (_isLoading)
                 const Padding(
                   padding: EdgeInsets.only(top: 50),
@@ -5560,7 +5607,7 @@ class _CalendarPageState extends State<_CalendarPage> {
     );
 
     return List<DateTime>.generate(
-      42,
+      ((leadingDays + DateTime(_displayedMonth.year, _displayedMonth.month + 1, 0).day + 6) ~/ 7) * 7,
       (int index) => calendarStart.add(Duration(days: index)),
       growable: false,
     );
@@ -6723,11 +6770,6 @@ class _CalendarPageState extends State<_CalendarPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (!isGrantedAnnualLeave && RosterJobSummary.appliesTo(duty))
-                  Text(
-                    const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][date.weekday - 1],
-                    style: TextStyle(color: foreground, fontSize: 9, fontWeight: FontWeight.w700),
-                  ),
                 Row(
                   children: [
                     Expanded(
@@ -6740,6 +6782,32 @@ class _CalendarPageState extends State<_CalendarPage> {
                         ),
                       ),
                     ),
+                    if (duty != null || isGrantedAnnualLeave)
+                      Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: useDarkText
+                            ? railwayBlue.withValues(alpha: 0.12)
+                            : Colors.white.withValues(alpha: 0.22),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: Text(
+                        isGrantedAnnualLeave
+                            ? (leaveRequest?.requestType ==
+                                      AnnualLeaveRequestType.floating
+                                  ? 'ALD'
+                                  : 'AW')
+                            : _sourceLabel(duty!.source),
+                        style: TextStyle(
+                          color: foreground,
+                          fontSize: 7,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),)),
                     if (_restDayPicker != null && _restDayChoices.containsKey(_dateKey(date)))
                       SizedBox(width: 22, height: 22, child: Checkbox(
                         value: _restDaySelected.contains(_dateKey(date)),
@@ -6826,7 +6894,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                 const Spacer(),
                 if (duty != null || isGrantedAnnualLeave) ...[
                   if (!isGrantedAnnualLeave && RosterJobSummary.appliesTo(duty))
-                    RosterJobSummary(duty: duty!, foreground: foreground, fontSize: 9)
+                    RosterJobSummary(duty: duty!, foreground: foreground, fontSize: 10, showTurn: false)
                   else ...[
                   Text(
                     isGrantedAnnualLeave ? 'Leave' : duty?.remarks?.contains('awaiting allocation') == true ? 'Allocate duty' : _shortDutyLabel(duty!),
@@ -6853,35 +6921,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                   ],
 
                   ],
-                  const SizedBox(height: 3),
-                  Align(
-                    alignment: Alignment.bottomRight,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 1,
-                      ),
-                      decoration: BoxDecoration(
-                        color: useDarkText
-                            ? railwayBlue.withValues(alpha: 0.12)
-                            : Colors.white.withValues(alpha: 0.22),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      child: Text(
-                        isGrantedAnnualLeave
-                            ? (leaveRequest?.requestType ==
-                                      AnnualLeaveRequestType.floating
-                                  ? 'ALD'
-                                  : 'AW')
-                            : _sourceLabel(duty!.source),
-                        style: TextStyle(
-                          color: foreground,
-                          fontSize: 7,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                  ),
+
                 ],
               ],
             ),
