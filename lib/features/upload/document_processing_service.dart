@@ -106,9 +106,12 @@ class DocumentProcessingService {
         );
       }
 
-      await _supabase.from(_documentTableName).update({
-        'identified_dates': DocumentDateIndex.forResult(parseResult),
-      }).eq('id', documentId);
+      // Reviewed uploads were indexed when StorageService created the document.
+      if (reviewedResult == null) {
+        await _supabase.from(_documentTableName).update({
+          'identified_dates': DocumentDateIndex.forResult(parseResult),
+        }).eq('id', documentId);
+      }
 
       if (!parseResult.canImport) {
         throw DocumentProcessingException(_blockingWarningMessage(parseResult));
