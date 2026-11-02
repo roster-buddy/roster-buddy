@@ -1,4 +1,5 @@
 import 'sign_out.dart';
+import '../upload/upload_source_picker.dart';
 import '../../core/services/driver_email_identity.dart';
 import '../../core/formatters/roster_date_format.dart';
 import 'dart:async';
@@ -288,7 +289,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _pickDocument(UploadSource source) async {
     try {
-      final PickedUpload? picked = await UploadService.pickDocument(source);
+      final UploadSource? selectedSource = source == UploadSource.file
+          ? await chooseUploadSource(context)
+          : source;
+      if (selectedSource == null || !mounted) return;
+      final PickedUpload? picked = await UploadService.pickDocument(selectedSource);
 
       if (picked == null || !mounted) {
         return;
