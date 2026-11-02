@@ -169,4 +169,92 @@ void main() {
       isNull,
     );
   });
+  testWidgets('unreadable rows require an explicit exclusion choice', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScanReviewPage(
+          upload: upload,
+          readDocument: (_) async => pages,
+          parseDocument: (_, type, activation) async => parsed.copyWith(
+            warnings: const [
+              ParseWarning(
+                message:
+                    'A roster row could not be read safely on page 1: unreadable',
+                severity: ParseWarningSeverity.blocking,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Review records'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Import records'),
+          )
+          .onPressed,
+      isNull,
+    );
+    await tester.ensureVisible(find.byType(Checkbox));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Checkbox));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Import records'),
+          )
+          .onPressed,
+      isNotNull,
+    );
+  });
+
+  testWidgets('missing own shift can be entered and checked before import', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScanReviewPage(
+          upload: upload,
+          readDocument: (_) async => pages,
+          parseDocument: (_, type, activation) async => parsed.copyWith(
+            duties: parsed.duties
+                .map((d) => d.copyWith(payrollNumber: '1104'))
+                .toList(),
+            payrollNumber: '21910',
+            ownRecordCount: 0,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Review records'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Add missing shift'));
+    await tester.tap(find.text('Add missing shift'));
+    await tester.pumpAndSettle();
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), '05/11/2026');
+    await tester.enterText(fields.at(1), '21910');
+    await tester.enterText(fields.at(2), '213');
+    await tester.enterText(fields.at(3), '16:53');
+    await tester.enterText(fields.at(4), '01:11');
+    await tester.tap(find.text('Use these values'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('1 records match your calendar.'),
+      -100,
+    );
+    expect(find.text('1 records match your calendar.'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.textContaining('05/11/2026').first,
+      100,
+    );
+    expect(find.textContaining('16:53–01:11'), findsOneWidget);
+  });
 }

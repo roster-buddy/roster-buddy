@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import '../../core/formatters/roster_date_format.dart';
 import '../../core/models/document_type.dart';
 import '../../core/models/parse_result.dart';
+import '../../core/models/parse_warning.dart';
+import '../../core/models/duty.dart';
+import '../../core/models/roster_source.dart';
+import 'scan_duty_editor.dart';
 import '../../core/parser/document_classifier.dart';
 import '../upload/base_roster_activation_page.dart';
 import '../upload/document_processing_service.dart';
@@ -66,6 +70,67 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
   double? _progress;
   String? _error;
   bool _busy = true;
+  bool _excludeUnreadable = false;
+  bool get _daily => [
+    DocumentType.tenDayAmendment,
+    DocumentType.sevenDayAmendment,
+    DocumentType.fortyEightHourAmendment,
+  ].contains(_type);
+  bool _unreadable(ParseWarning w) =>
+      w.preventsImport &&
+      w.message.startsWith('A roster row could not be read safely');
+  ParseResult? get _effective {
+    final parsed = _parsed;
+    if (parsed == null || !_excludeUnreadable) return parsed;
+    return parsed.copyWith(
+      warnings: parsed.warnings
+          .map(
+            (w) => _unreadable(w)
+                ? ParseWarning(
+                    message: w.message,
+                    pageNumber: w.pageNumber,
+                    severity: ParseWarningSeverity.warning,
+                  )
+                : w,
+          )
+          .toList(),
+    );
+  }
+
+  Future<void> _editRecord([int? index]) async {
+    final parsed = _parsed!;
+    final source = switch (_type) {
+      DocumentType.tenDayAmendment => RosterSource.tenDay,
+      DocumentType.fortyEightHourAmendment => RosterSource.fortyEightHour,
+      _ => RosterSource.sevenDay,
+    };
+    final duty = await showDialog<Duty>(
+      context: context,
+      builder: (_) => ScanDutyEditor(
+        source: source,
+        initial: index == null ? null : parsed.duties[index],
+        date: parsed.duties.isEmpty ? null : parsed.duties.first.date,
+        payroll: parsed.payrollNumber,
+      ),
+    );
+    if (!mounted || duty == null) return;
+    final duties = List<Duty>.from(parsed.duties);
+    if (index != null) duties.removeAt(index);
+    duties.removeWhere(
+      (d) => d.payrollNumber == duty.payrollNumber && d.date == duty.date,
+    );
+    duties.insert(0, duty);
+    setState(
+      () => _parsed = parsed.copyWith(
+        duties: duties,
+        ownRecordCount: parsed.payrollNumber == null
+            ? null
+            : duties
+                  .where((d) => d.payrollNumber == parsed.payrollNumber)
+                  .length,
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -93,6 +158,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
       _busy = true;
       _error = null;
       _parsed = null;
+      _excludeUnreadable = false;
       _progress = null;
     });
     try {
@@ -186,7 +252,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
   }
 
   Widget _header() {
-    final parsed = _parsed;
+    final parsed = _effective;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -218,6 +284,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
               setState(() {
                 _type = type;
                 _parsed = null;
+                _excludeUnreadable = false;
                 _activation = null;
                 _error = null;
               });
@@ -276,6 +343,25 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(warning.message),
             ),
+          if (_daily) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => _editRecord(),
+              icon: const Icon(Icons.add),
+              label: const Text('Add missing shift'),
+            ),
+          ],
+          if (parsed.warnings.any(_unreadable) || _excludeUnreadable)
+            CheckboxListTile(
+              value: _excludeUnreadable,
+              onChanged: (value) =>
+                  setState(() => _excludeUnreadable = value ?? false),
+              title: const Text('Exclude unreadable rows'),
+              subtitle: const Text(
+                'Only the reviewed records below will be imported. Missing rows are not added or guessed.',
+              ),
+              controlAffinity: ListTileControlAffinity.leading,
+            ),
           if (!parsed.canImport)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
@@ -309,6 +395,11 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
           '${d.bookOn ?? "—"}–${d.bookOff ?? "—"}${d.remarks == null ? "" : "\n${d.remarks}"}',
         ),
         isThreeLine: true,
+        trailing: IconButton(
+          tooltip: 'Correct record',
+          icon: const Icon(Icons.edit_outlined),
+          onPressed: () => _editRecord(index),
+        ),
       );
     }
     index -= result.duties.length;
@@ -343,7 +434,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
 
   @override
   Widget build(BuildContext context) {
-    final parsed = _parsed;
+    final parsed = _effective;
     return Scaffold(
       appBar: AppBar(title: const Text('Scan and review')),
       body: SafeArea(
