@@ -687,7 +687,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
     try {
       final current = await DutyResolver().getDutyForDate(chosen.date);
       if (!mounted) return;
-      if (current == null || current.dutyType != DutyType.annualLeave) {
+      if (current == null) {
         await _load();
         return;
       }
@@ -696,6 +696,10 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
           request.requestType == AnnualLeaveRequestType.floating &&
           request.status == AnnualLeaveRequestStatus.granted).firstOrNull;
       if (!mounted) return;
+      if (current.dutyType != DutyType.annualLeave && floating == null) {
+        await _load();
+        return;
+      }
       if (floating != null) {
         final changed = await manageFloatingLeaveCancellation(
           context: context, requests: [floating],

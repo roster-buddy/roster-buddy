@@ -54,6 +54,13 @@ class RosterUpdateService {
         if (entry.value.dutyType == DutyType.annualLeave) annualLeaveDates.add(entry.key);
       }
     }
+    if (dates.isNotEmpty) {
+      final granted = await client.from('annual_leave_requests').select('leave_date')
+          .eq('user_id', user.id).eq('status', 'granted')
+          .gte('leave_date', dates.first.toIso8601String().substring(0, 10))
+          .lte('leave_date', dates.last.toIso8601String().substring(0, 10));
+      for (final row in granted) { annualLeaveDates.add(row['leave_date'] as String); }
+    }
     return fromRows(rows, payrollNumber: payroll, since: cutoff, annualLeaveDates: annualLeaveDates);
   }
 
