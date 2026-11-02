@@ -654,14 +654,18 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
             FilledButton.icon(icon: const Icon(Icons.open_in_new), label: const Text('Open document'),
               onPressed: () async {
                 final opened = await launchUrl(Uri.parse(signedUrl), mode: LaunchMode.platformDefault, webOnlyWindowName: '_blank');
-                if (!opened && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open the document. Please retry.')));
+                if (!opened && mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open the document. Please retry.')));
+                }
               }),
           ]),
         )),
       );
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('This uploaded sheet is not currently accessible to your account.')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('This uploaded sheet is not currently accessible to your account.')));
+      }
     }
   }
 
