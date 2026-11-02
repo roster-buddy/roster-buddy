@@ -99,8 +99,9 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}) {
   if (bytes.length > 40 * 1024 * 1024) throw new Error('Choose a document smaller than 40 MB.');
   const session = { cancelled: false, worker: null };
   active = session;
-  let pdf, loadingTask, timer;
+  let pdf, loadingTask, timer, failScan;
   const stopped = new Promise((_, reject) => {
+    failScan = reject;
     session.cancel = () => { session.cancelled = true; reject(new Error('Scan cancelled.')); };
     timer = setTimeout(() => {
       session.cancelled = true;
@@ -129,7 +130,9 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}) {
       corePath: new URL('core/', base).href,
       langPath: new URL('lang-best/', base).href.replace(/\/$/, ''),
       workerBlobURL: false,
-      cachePath: 'roster-buddy-eng-best-v1',
+      // HTTP caching retains the model without Safari IndexedDB worker locks.
+      cacheMethod: 'none',
+      errorHandler: error => failScan(new Error(error?.message || 'The reading engine stopped. Please retry.')),
       logger: m => {
         if (!session.cancelled && m.status === 'recognizing text') {
           report((session.sections ? 'Reading section ' : 'Reading page ') + (session.page || 1) + ' of ' + (session.total || 1),
