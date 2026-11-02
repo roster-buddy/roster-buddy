@@ -2,6 +2,7 @@
 // production row reconstruction, classification and amendment parser.
 import 'dart:convert';
 import 'dart:io';
+import 'package:roster_buddy/core/services/printed_roster_identity.dart';
 import 'package:roster_buddy/core/models/document_type.dart';
 import 'package:roster_buddy/core/parser/daily_amendment_parser.dart';
 import 'package:roster_buddy/core/parser/document_classifier.dart';
@@ -14,7 +15,7 @@ Future<void> main() async {
       .whereType<File>()
       .where((f) => f.path.endsWith('.json'))
       .toList();
-  if (fixtures.length != 4) {
+  if (fixtures.length != 6) {
     throw StateError('Expected photo and PDF OCR from both browsers');
   }
   for (final fixture in fixtures) {
@@ -38,16 +39,42 @@ Future<void> main() async {
     }).toList();
     final text = SmartScanPageTextReconstructor.reconstructPages(pages);
     final type = const DocumentClassifier().classify(text);
-    if (type != DocumentType.fortyEightHourAmendment) {
+    final portrait = fixture.path.contains('portrait');
+    if (type !=
+        (portrait
+            ? DocumentType.sevenDayAmendment
+            : DocumentType.fortyEightHourAmendment)) {
       throw StateError('Heading lost: ${fixture.path}');
     }
     final result = await DailyAmendmentParser(
       documentType: type,
     ).parse(pageText: text);
-    if (!result.canImport || result.duties.length != pages.length) {
+    if (!result.canImport ||
+        result.duties.length != (portrait ? 32 : pages.length)) {
       throw StateError(
         'OCR did not produce complete duties in ${fixture.path}:\n${text.join("\n")}\n${result.warnings.map((w) => w.message).join("\n")}',
       );
+    }
+    if (portrait) {
+      final linked = PrintedRosterIdentity.linkOwnRows(result.duties, {
+        'payroll_number': '21910',
+        'driver_number': '9999',
+        'display_name': 'Alex Tester',
+        'depot': 'Wolverhampton',
+      });
+      final own = linked.where((d) => d.payrollNumber == '21910').single;
+      if (own.bookOn != '16:53' ||
+          own.bookOff != '01:11' ||
+          own.turnNumber != '213' ||
+          own.date != DateTime(2026, 11, 5)) {
+        throw StateError(
+          'Portrait row did not reach the matching calendar correctly',
+        );
+      }
+      stdout.writeln(
+        'PASS wrapped portrait report → 32 records → matching full payroll and correct overnight shift',
+      );
+      continue;
     }
     for (var i = 0; i < result.duties.length; i++) {
       final d = result.duties[i];

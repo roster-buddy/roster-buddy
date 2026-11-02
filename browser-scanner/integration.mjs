@@ -61,16 +61,36 @@ try {
         ['MOORE','21910','WVH','204','04:25','12:58'].forEach((t,i)=>ctx.fillText(t,x[i],300));
         return [...new Uint8Array(await (await new Promise(r=>canvas.toBlob(r,'image/png'))).arrayBuffer())];
       });
-      for (const [filename,bytes,count] of [['photo.png',pngBytes,1],['roster.pdf',pdfBytes,2]]) {
+      const portraitBytes = await page.evaluate(async () => {
+        const canvas=document.createElement('canvas');
+        canvas.width=1100;canvas.height=1500;
+        const ctx=canvas.getContext('2d');
+        ctx.fillStyle='white';ctx.fillRect(0,0,1100,1500);
+        ctx.fillStyle='black';ctx.font='20px monospace';
+        ctx.fillText('Daily Roster Report',30,45);
+        ctx.fillText('7-DAY AMENDMENT',30,80);
+        ctx.fillText('Report for Thursday 05/11/26 in All Links',30,115);
+        const xs=[30,280,420,550,670,815,960];
+        ['Name','Pay','Depot Amend','Turn','Book','Book','Rostered'].forEach((t,i)=>ctx.fillText(t,xs[i],170));
+        ['','No.','Ind / Count','','On','Off','Hours'].forEach((t,i)=>ctx.fillText(t,xs[i],192));
+        for(let i=0;i<32;i++){
+          const own=i===31;
+          const row=[own?'A Tester':'A Driver',own?'1910':String(6000+i),'WOD ALLOC',
+            own?'213':String(200+i),own?'16:53':'04:25',own?'01:11':'12:58','8.45'];
+          row.forEach((t,c)=>ctx.fillText(t,xs[c],240+i*34));
+        }
+        return [...new Uint8Array(await (await new Promise(r=>canvas.toBlob(r,'image/png'))).arrayBuffer())];
+      });
+      for (const [filename,bytes,count] of [['photo.png',pngBytes,1],['roster.pdf',pdfBytes,2],['portrait.png',portraitBytes,1]]) {
         const pages = await page.evaluate(async ({bytes,filename}) => {
           const scanner = await import('/roster_scanner.mjs');
           return JSON.parse(await scanner.scanDocument(new Uint8Array(bytes),filename,filename.endsWith('.pdf')));
         }, {bytes,filename});
         assert.equal(pages.length,count);
         for (const p of pages) {
-          assert.match(p.fullText,/21910/);
-          assert.match(p.fullText,/04:25/);
-          assert.match(p.fullText,/12:58/);
+          assert.match(p.fullText,filename==='portrait.png' ? /1910/ : /21910/);
+          assert.match(p.fullText,filename==='portrait.png' ? /16:53/ : /04:25/);
+          assert.match(p.fullText,filename==='portrait.png' ? /01:11/ : /12:58/);
           assert.ok(p.lines.length>5);
         }
         await writeFile(path.join(output,engine.name()+'-'+filename+'.json'),JSON.stringify(pages));

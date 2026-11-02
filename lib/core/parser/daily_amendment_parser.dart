@@ -143,10 +143,21 @@ class DailyAmendmentParser implements BaseParser {
           continue;
         }
 
-        final duty = columnMap == null
+        final printed = _printedRow.firstMatch(row.rawText);
+        final duty = printed != null || columnMap == null
             ? _parseFallbackRow(row: row, date: dutyDate)
             : _parseMappedRow(row: row, date: dutyDate, columnMap: columnMap);
 
+        if (printed != null && duty == null) {
+          warnings.add(
+            ParseWarning(
+              message:
+                  'A roster row could not be read safely on page $pageNumber: ${row.rawText}',
+              pageNumber: pageNumber,
+              severity: ParseWarningSeverity.blocking,
+            ),
+          );
+        }
         if (duty != null && seenKeys.add(duty.uniqueKey)) {
           duties.add(duty);
         }
@@ -173,6 +184,8 @@ class DailyAmendmentParser implements BaseParser {
   }
 
   bool _isHeaderRow(ExtractedTableRow row, AmendmentColumnMap? columnMap) {
+    // "Amended Turn" is a remark on real data rows, not a table heading.
+    if (_printedRow.hasMatch(row.rawText)) return false;
     if (row.isLikelyHeader) {
       return true;
     }
@@ -263,60 +276,102 @@ class DailyAmendmentParser implements BaseParser {
     );
   }
 
+  // Printed Daily Roster Reports have wrapped headings and blank columns.
+  // Match the name/pay/depot prefix, then read clocks ONLY after the depot.
+  static final _printedRow = RegExp(
+    r'^([^0-9]+?)\s+([0-9]{4,8})\s+([A-Za-z]{2,5})\b(.*)$',
+  );
+  static final _printedClock = RegExp(
+    r'(?<![0-9])([0-2]?[0-9])[:;]([0-5][0-9])(?![0-9])',
+  );
+
   Duty? _parseFallbackRow({
     required ExtractedTableRow row,
     required DateTime date,
   }) {
-    final payrollNumber = _findFallbackPayrollNumber(row);
-
-    if (!_isPlausiblePayrollNumber(payrollNumber)) {
+    final match = _printedRow.firstMatch(row.rawText);
+    if (match == null) return null;
+    final name = match.group(1)!.trim();
+    if (!RegExp(r'[A-Za-z]{2,}').hasMatch(name) ||
+        name.toLowerCase().contains('vacancy')) {
       return null;
     }
-
-    final times = ParserUtils.extractTimes(row.rawText);
-    final bookOn = times.isNotEmpty ? times.first : null;
-    final bookOff = times.length > 1 ? times[1] : null;
-
-    final turnNumber = _findFallbackTurnNumber(row);
-    final amendmentCode = _findFallbackAmendmentCode(row);
-
-    if (!_hasDutyInformation(
-      turnNumber: turnNumber,
-      amendmentCode: amendmentCode,
-      bookOn: bookOn,
-      bookOff: bookOff,
-    )) {
-      return null;
+    final payroll = match.group(2)!;
+    final depot = match.group(3)!.toUpperCase();
+    final tail = match.group(4)!.trim();
+    final clocks = _printedClock.allMatches(tail).toList();
+    final prefix = clocks.isEmpty
+        ? tail
+        : tail.substring(0, clocks.first.start);
+    final tokens = prefix
+        .toUpperCase()
+        .split(RegExp(r'\s+'))
+        .where((v) => v.isNotEmpty)
+        .toList();
+    String? code;
+    String? turn;
+    for (final token in tokens) {
+      if (RegExp(r'^(?:WO)?[0-9]{2,4}$').hasMatch(token)) {
+        turn = token.replaceFirst(RegExp(r'^WO'), '');
+      } else if (token == 'ALLOC' || DutyCodeLibrary.contains(token)) {
+        code ??= token;
+      }
     }
-
-    final codeDefinition = DutyCodeLibrary.find(amendmentCode);
-    final dutyType = _determineDutyType(
-      codeDefinition: codeDefinition,
-      rawText: row.rawText,
-      hasTimes: bookOn != null || bookOff != null,
+    final definition = DutyCodeLibrary.find(code);
+    final type = _determineDutyType(
+      codeDefinition: definition,
+      rawText: ' $tail ',
+      hasTimes: clocks.length >= 2,
     );
-
-    final calculatedMinutes = bookOn != null && bookOff != null
-        ? ParserUtils.calculateDutyMinutes(bookOn, bookOff)
-        : 0;
-
+    final nonWorking =
+        type == DutyType.annualLeave ||
+        type == DutyType.restDay ||
+        type == DutyType.sick ||
+        type == DutyType.unavailable ||
+        type == DutyType.publicHoliday;
+    if (!nonWorking && clocks.length != 2) return null;
+    if (nonWorking && code == null) return null;
+    final on = nonWorking
+        ? null
+        : ParserUtils.normaliseTime(clocks[0].group(0));
+    final off = nonWorking
+        ? null
+        : ParserUtils.normaliseTime(clocks[1].group(0));
+    if (!nonWorking && (on == null || off == null)) return null;
+    final remaining = clocks.length >= 2 ? tail.substring(clocks[1].end) : '';
+    final duration = RegExp(
+      r'^\s*([0-9]{1,2}[.:][0-9]{2})\b',
+    ).firstMatch(remaining);
     return Duty(
       date: date,
       source: rosterSource,
-      dutyType: dutyType,
-      turnNumber: turnNumber,
-      bookOn: bookOn,
-      bookOff: bookOff,
-      rosteredMinutes: calculatedMinutes > 0 ? calculatedMinutes : null,
-      payrollNumber: payrollNumber,
-      amendmentCode: amendmentCode,
+      dutyType: type,
+      turnNumber: nonWorking ? null : turn,
+      bookOn: on,
+      bookOff: off,
+      rosteredMinutes: nonWorking
+          ? null
+          : ParserUtils.parseRosteredMinutes(duration?.group(1)) ??
+                ParserUtils.calculateDutyMinutes(on!, off!),
+      payrollNumber: payroll,
+      driverName: name,
+      depot: depot,
+      amendmentCode: code,
       pageNumber: row.pageNumber,
       rawText: row.rawText,
-      remarks: codeDefinition?.preferredMeaning,
+      remarks: definition?.preferredMeaning,
     );
   }
 
   DateTime? _extractPageDate(String pageText) {
+    final report = RegExp(
+      r'REPORT\s+FOR[^\n]*',
+      caseSensitive: false,
+    ).firstMatch(pageText);
+    final headingDates = report == null
+        ? <DateTime>[]
+        : ParserUtils.extractDates(report.group(0)!);
+    if (headingDates.isNotEmpty) return headingDates.first;
     final dates = ParserUtils.extractDates(pageText);
 
     if (dates.isEmpty) {
@@ -324,79 +379,6 @@ class DailyAmendmentParser implements BaseParser {
     }
 
     return dates.first;
-  }
-
-  String? _findFallbackPayrollNumber(ExtractedTableRow row) {
-    for (final column in row.columns) {
-      final payrollNumber = ParserUtils.normalisePayrollNumber(column);
-
-      if (_isPlausiblePayrollNumber(payrollNumber)) {
-        return payrollNumber;
-      }
-    }
-
-    final matches = RegExp(r'\b\d{4,8}\b').allMatches(row.rawText);
-
-    for (final match in matches) {
-      final payrollNumber = ParserUtils.normalisePayrollNumber(match.group(0));
-
-      if (_isPlausiblePayrollNumber(payrollNumber)) {
-        return payrollNumber;
-      }
-    }
-
-    return null;
-  }
-
-  String? _findFallbackTurnNumber(ExtractedTableRow row) {
-    final labelledMatch = RegExp(
-      r'\b(?:WO|W0|WQ|TURN|DUTY)\s*[-:]?\s*\d{2,4}\b',
-      caseSensitive: false,
-    ).firstMatch(row.rawText);
-
-    if (labelledMatch != null) {
-      return ParserUtils.normaliseTurnNumber(labelledMatch.group(0));
-    }
-
-    for (final column in row.columns) {
-      final upper = column.toUpperCase();
-
-      if (upper.contains('WO') ||
-          upper.contains('W0') ||
-          upper.contains('WQ') ||
-          upper.contains('TURN') ||
-          upper.contains('DUTY')) {
-        final turnNumber = ParserUtils.normaliseTurnNumber(column);
-
-        if (turnNumber != null) {
-          return turnNumber;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  String? _findFallbackAmendmentCode(ExtractedTableRow row) {
-    for (final column in row.columns) {
-      final candidate = _normaliseAmendmentCode(column);
-
-      if (DutyCodeLibrary.contains(candidate)) {
-        return candidate;
-      }
-    }
-
-    for (final match in RegExp(
-      r'\b[A-Z]{1,3}\d?\b',
-    ).allMatches(row.rawText.toUpperCase())) {
-      final candidate = _normaliseAmendmentCode(match.group(0));
-
-      if (DutyCodeLibrary.contains(candidate)) {
-        return candidate;
-      }
-    }
-
-    return null;
   }
 
   String? _normaliseAmendmentCode(String? value) {

@@ -10,11 +10,19 @@ export function canvasSize(width, height) {
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 
-export function normaliseRecognition(data) {
+export function normaliseRecognition(data, region) {
   const lines = [];
+  const rowTexts = [];
   for (const block of data.blocks || []) {
     for (const paragraph of block.paragraphs || []) {
       for (const line of paragraph.lines || []) {
+        const offset = region?.offset || 0;
+        const scale = region?.scale || 1;
+        if (region) {
+          const centre = ((line.bbox.y0 + line.bbox.y1) / 2) / scale + offset;
+          if (centre < region.start || centre >= region.end) continue;
+        }
+        rowTexts.push(line.text || (line.words || []).map(w=>w.text).join(' '));
         // Keep words inside a cell together (e.g. "BOOK ON"), while retaining
         // large column gaps for the shared row reconstructor.
         const words = (line.words || []).filter(w => w.text?.trim() && w.bbox)
@@ -26,19 +34,26 @@ export function normaliseRecognition(data) {
           const gap = cell ? b.x0 - cell.right : Infinity;
           const threshold = Math.max((b.y1 - b.y0) * 0.6, charWidth * 2);
           if (!cell || gap > threshold) {
-            cell = {text: word.text, left: b.x0, top: b.y0, right: b.x1, bottom: b.y1};
+            cell = {text: word.text, left: b.x0, top: line.bbox?.y0 ?? b.y0, right: b.x1, bottom: line.bbox?.y1 ?? b.y1};
             lines.push(cell);
           } else {
             cell.text += ' ' + word.text;
             cell.right = b.x1;
-            cell.top = Math.min(cell.top, b.y0);
-            cell.bottom = Math.max(cell.bottom, b.y1);
+            cell.top = Math.min(cell.top, line.bbox?.y0 ?? b.y0);
+            cell.bottom = Math.max(cell.bottom, line.bbox?.y1 ?? b.y1);
           }
         }
       }
     }
   }
-  return { fullText: data.text || '', lines, confidence: Number(data.confidence) || 0 };
+  if (region) {
+    for (const line of lines) {
+      line.left /= region.scale; line.right /= region.scale;
+      line.top = line.top / region.scale + region.offset;
+      line.bottom = line.bottom / region.scale + region.offset;
+    }
+  }
+  return { fullText: region ? rowTexts.join('\n') : data.text || '', lines, confidence: Number(data.confidence) || 0 };
 }
 
 function loadTesseract(base) {
@@ -112,11 +127,12 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}) {
     const worker = await Tesseract.createWorker('eng', 1, {
       workerPath: new URL('worker.min.js', base).href,
       corePath: new URL('core/', base).href,
-      langPath: new URL('lang/', base).href.replace(/\/$/, ''),
+      langPath: new URL('lang-best/', base).href.replace(/\/$/, ''),
       workerBlobURL: false,
+      cachePath: 'roster-buddy-eng-best-v1',
       logger: m => {
         if (!session.cancelled && m.status === 'recognizing text') {
-          report('Reading page ' + (session.page || 1) + ' of ' + (session.total || 1),
+          report((session.sections ? 'Reading section ' : 'Reading page ') + (session.page || 1) + ' of ' + (session.total || 1),
             ((session.page || 1) - 1 + m.progress) / (session.total || 1));
         }
       },
@@ -125,7 +141,44 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}) {
     if (session.cancelled) { await worker.terminate(); check(); }
     await worker.setParameters({tessedit_pageseg_mode: '3', preserve_interword_spaces: '1'});
     check();
-    if (!isPdf) return [await recognise(await imageCanvas(bytes, name), 1, 1)];
+    if (!isPdf) {
+      const image = await imageCanvas(bytes, name);
+      // Small typewritten portrait sheets lose lower rows in whole-page OCR.
+      // Read overlapping bands at twice the resolution, keeping each line in
+      // exactly one band. This avoids both dropped columns and duplicate rows.
+      if (image.height > 1000 && image.height > image.width * 1.15) {
+        try {
+          const first = Math.round(image.height * 0.16);
+          const step = Math.round(image.width * 0.28);
+          const pad = Math.round(image.width * 0.07);
+          const bounds = [0, first];
+          while (bounds.at(-1) < image.height) bounds.push(Math.min(image.height, bounds.at(-1) + step));
+          const results = [];
+          session.sections = true;
+          await worker.setParameters({tessedit_pageseg_mode: '6'});
+          for (let i=0; i<bounds.length-1; i++) {
+            check();
+            session.page=i+1; session.total=bounds.length-1;
+            const start=bounds[i], end=bounds[i+1];
+            const top=Math.max(0,start-pad), bottom=Math.min(image.height,end+pad);
+            const scale=Math.min(2,3000/image.width,Math.sqrt(4800000/(image.width*(bottom-top))));
+            const tile=document.createElement('canvas');
+            tile.width=Math.round(image.width*scale); tile.height=Math.round((bottom-top)*scale);
+            tile.getContext('2d').drawImage(image,0,top,image.width,bottom-top,0,0,tile.width,tile.height);
+            try {
+              const {data}=await worker.recognize(tile,{}, {text:true,blocks:true});
+              check();
+              results.push(normaliseRecognition(data,{scale,offset:top,start,end}));
+            } finally {tile.width=1;tile.height=1;}
+          }
+          const fullText=results.map(r=>r.fullText).join('\n');
+          if(!fullText.trim()) throw new Error('No readable text was found. Try a clearer photo.');
+          return [{fullText,lines:results.flatMap(r=>r.lines),
+            confidence:results.reduce((n,r)=>n+r.confidence,0)/results.length}];
+        } finally {image.width=1;image.height=1;}
+      }
+      return [await recognise(image, 1, 1)];
+    }
 
     const pdfjs = await import(new URL('pdf.mjs', base).href);
     pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdf.worker.mjs', base).href;

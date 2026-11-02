@@ -11,6 +11,7 @@ class ParseResult {
     this.annualLeaveAllocations = const [],
     this.jobCards = const [],
     this.driverFound = false,
+    this.ownRecordCount,
     this.driverNumber,
     this.payrollNumber,
     this.pagesProcessed = 0,
@@ -41,6 +42,7 @@ class ParseResult {
   /// This is not required for shared amendment, annual-leave or Job Card
   /// uploads because those documents are processed for all applicable users.
   final bool driverFound;
+  final int? ownRecordCount;
   final String? driverNumber;
   final String? payrollNumber;
 
@@ -83,6 +85,7 @@ class ParseResult {
     List<AnnualLeaveAllocation>? annualLeaveAllocations,
     List<JobCard>? jobCards,
     bool? driverFound,
+    int? ownRecordCount,
     String? driverNumber,
     String? payrollNumber,
     int? pagesProcessed,
@@ -97,6 +100,7 @@ class ParseResult {
           annualLeaveAllocations ?? this.annualLeaveAllocations,
       jobCards: jobCards ?? this.jobCards,
       driverFound: driverFound ?? this.driverFound,
+      ownRecordCount: ownRecordCount ?? this.ownRecordCount,
       driverNumber: driverNumber ?? this.driverNumber,
       payrollNumber: payrollNumber ?? this.payrollNumber,
       pagesProcessed: pagesProcessed ?? this.pagesProcessed,

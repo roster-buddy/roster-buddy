@@ -28,6 +28,13 @@ class SmartScanPageTextReconstructor {
           return first.left.compareTo(second.left);
         });
 
+    final heights =
+        sortedLines
+            .map((line) => math.max(1.0, line.bottom - line.top))
+            .toList()
+          ..sort();
+    final typicalHeight = heights.isEmpty ? 12.0 : heights[heights.length ~/ 2];
+
     final List<List<SmartScanTextLine>> rows = <List<SmartScanTextLine>>[];
 
     for (final SmartScanTextLine line in sortedLines) {
@@ -50,7 +57,10 @@ class SmartScanPageTextReconstructor {
 
       final double lineHeight = math.max(1, line.bottom - line.top);
 
-      final double tolerance = math.max(10, lineHeight * 0.65);
+      final double tolerance = math.max(
+        10,
+        math.min(lineHeight, typicalHeight) * 0.65,
+      );
 
       if ((line.top - currentTop).abs() <= tolerance) {
         currentRow.add(line);

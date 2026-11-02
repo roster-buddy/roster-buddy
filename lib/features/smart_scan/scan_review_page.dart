@@ -262,6 +262,12 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 8),
+          if (parsed.ownRecordCount != null)
+            Text('${parsed.ownRecordCount} records match your calendar.'),
+          if (parsed.ownRecordCount == 0)
+            const Text(
+              'No rows matched your profile. This import will not update your own shifts.',
+            ),
           const Text(
             'Check these records against your document. Shared sheets include records for other drivers; each calendar uses its matching driver or payroll number.',
           ),

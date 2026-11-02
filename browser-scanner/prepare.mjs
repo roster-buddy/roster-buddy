@@ -6,7 +6,7 @@ const modules = path.join(root, 'node_modules');
 const dest = path.join(root, '..', 'web', 'scan_vendor', 't7-p6');
 await rm(dest, {recursive: true, force: true});
 await mkdir(path.join(dest, 'core'), {recursive: true});
-await mkdir(path.join(dest, 'lang'), {recursive: true});
+await mkdir(path.join(dest, 'lang-best'), {recursive: true});
 for (const name of ['tesseract.min.js', 'worker.min.js']) {
   await cp(path.join(modules, 'tesseract.js', 'dist', name), path.join(dest, name));
 }
@@ -15,8 +15,8 @@ for (const name of await readdir(path.join(modules, 'tesseract.js-core'))) {
     await cp(path.join(modules, 'tesseract.js-core', name), path.join(dest, 'core', name));
   }
 }
-await cp(path.join(modules, '@tesseract.js-data/eng/4.0.0/eng.traineddata.gz'),
-  path.join(dest, 'lang/eng.traineddata.gz'));
+await cp(path.join(modules, '@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz'),
+  path.join(dest, 'lang-best/eng.traineddata.gz'));
 for (const name of ['pdf.mjs', 'pdf.worker.mjs']) {
   await cp(path.join(modules, 'pdfjs-dist', 'legacy/build', name), path.join(dest, name));
 }

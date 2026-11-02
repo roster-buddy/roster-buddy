@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/models/annual_leave_allocation.dart';
 import '../../core/models/document_type.dart';
 import '../../core/models/duty.dart';
+import '../../core/services/printed_roster_identity.dart';
 import '../../core/models/job_card.dart';
 import '../../core/models/duty_type.dart';
 import '../../core/models/parse_result.dart';
@@ -173,7 +174,8 @@ class DocumentProcessingService {
         status: DocumentProcessingStatus.processed,
         recordsInserted: importableDuties.length,
         message:
-            '${importableDuties.length} duty records were processed successfully.',
+            '${importableDuties.length} duty records were imported.'
+            '${parseResult.ownRecordCount == null ? "" : " ${parseResult.ownRecordCount} matched your calendar."}',
       );
     } catch (error) {
       try {
@@ -262,11 +264,31 @@ class DocumentProcessingService {
       parseResult = await parser.parse(pageText: reconstructedPageText);
     }
 
-    return parseResult.copyWith(
-      duties: parseResult.duties
-          .where((duty) => duty.hasDriverIdentity)
-          .toList(growable: false),
-    );
+    var duties = parseResult.duties
+        .where((duty) => duty.hasDriverIdentity)
+        .toList(growable: false);
+    int? ownRecords;
+    if (_isDailyAmendment(documentType)) {
+      final user = _supabase.auth.currentUser;
+      if (user != null) {
+        final profile = await _supabase
+            .from('driver_profiles')
+            .select('payroll_number, driver_number, display_name, depot')
+            .eq('user_id', user.id)
+            .maybeSingle();
+        if (profile != null) {
+          duties = PrintedRosterIdentity.linkOwnRows(duties, profile);
+          ownRecords = duties
+              .where((d) => d.payrollNumber == profile['payroll_number'])
+              .length;
+          duties = [
+            ...duties.where((d) => d.payrollNumber == profile['payroll_number']),
+            ...duties.where((d) => d.payrollNumber != profile['payroll_number']),
+          ];
+        }
+      }
+    }
+    return parseResult.copyWith(duties: duties, ownRecordCount: ownRecords);
   }
 
   static Future<String?> _currentRosterNumber() async {
