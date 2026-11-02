@@ -1,3 +1,4 @@
+import '../../core/services/printed_roster_identity.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/formatters/roster_date_format.dart';
@@ -126,7 +127,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
         ownRecordCount: parsed.payrollNumber == null
             ? null
             : duties
-                  .where((d) => d.payrollNumber == parsed.payrollNumber)
+                  .where((d) => PrintedRosterIdentity.payrollMatches(d.payrollNumber, parsed.payrollNumber))
                   .length,
       ),
     );

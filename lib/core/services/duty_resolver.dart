@@ -1,3 +1,4 @@
+import 'printed_roster_identity.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/annual_leave_block_override.dart';
@@ -1035,7 +1036,7 @@ class DutyResolver {
 
     return payrollNumber != null &&
         rowPayrollNumber != null &&
-        payrollNumber == rowPayrollNumber;
+        PrintedRosterIdentity.payrollMatches(payrollNumber, rowPayrollNumber);
   }
 
   static Duty _floatingAnnualLeaveDutyFromRow(Map<String, dynamic> row) {

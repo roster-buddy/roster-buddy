@@ -8,26 +8,7 @@ class PrintedRosterIdentity {
     Map<String, dynamic> profile,
   ) {
     final payroll = (profile['payroll_number'] ?? '').toString().trim();
-    final name = (profile['display_name'] ?? '')
-        .toString()
-        .trim()
-        .toUpperCase();
-    final surname = name.split(RegExp(r'\s+')).last;
-    final depot = _depot((profile['depot'] ?? '').toString());
-    bool matches(Duty d) {
-      final printed = d.payrollNumber ?? '';
-      final names = (d.driverName ?? '')
-          .toUpperCase()
-          .replaceAll(RegExp(r"[^A-Z -]"), '')
-          .split(RegExp(r'\s+'));
-      return printed.length == 4 &&
-          payroll.length > 4 &&
-          payroll.endsWith(printed) &&
-          surname.isNotEmpty &&
-          names.contains(surname) &&
-          depot.isNotEmpty &&
-          _depot(d.depot ?? '') == depot;
-    }
+    bool matches(Duty d) => payrollMatches(d.payrollNumber, payroll);
 
     return duties
         .map((d) {
@@ -48,8 +29,15 @@ class PrintedRosterIdentity {
         .toList(growable: false);
   }
 
-  static String _depot(String value) {
-    final v = value.toUpperCase().replaceAll(RegExp('[^A-Z]'), '');
-    return v == 'WOD' || v == 'WOLVERHAMPTON' ? 'WOLVERHAMPTON' : v;
+  // Preserve leading zeros; payroll identifiers are strings, not quantities.
+  static String? payrollKey(String? value) {
+    final digits = value?.trim() ?? '';
+    if (!RegExp(r'^\d{4,}$').hasMatch(digits)) return null;
+    return digits.substring(digits.length - 4);
+  }
+
+  static bool payrollMatches(String? first, String? second) {
+    final key = payrollKey(first);
+    return key != null && key == payrollKey(second);
   }
 }

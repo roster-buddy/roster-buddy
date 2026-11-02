@@ -26,7 +26,7 @@ void main() {
     bookOff: '01:11',
   );
   test(
-    'short printed pay number links only with matching surname and depot',
+    'short printed pay number links to the full profile payroll',
     () {
       final linked = PrintedRosterIdentity.linkOwnRows([row()], profile).single;
       expect(linked.payrollNumber, '52319');
@@ -34,10 +34,8 @@ void main() {
       expect(linked.remarks, contains('2319'));
     },
   );
-  test('surname, depot and identifier mismatches do not link', () {
+  test('different or incomplete payroll numbers do not link', () {
     for (final duty in [
-      row(name: 'A Else'),
-      row(depot: 'BHM'),
       row(payroll: '2419'),
       row(payroll: '319'),
     ]) {
@@ -46,6 +44,16 @@ void main() {
         duty.payrollNumber,
       );
     }
+  });
+  test('payroll matching uses the last four digits without OCR name dependency', () {
+    expect(PrintedRosterIdentity.payrollMatches('52319', '2319'), isTrue);
+    expect(PrintedRosterIdentity.payrollMatches('52319', '12319'), isTrue);
+    expect(PrintedRosterIdentity.payrollMatches('10049', '0049'), isTrue);
+    expect(PrintedRosterIdentity.payrollMatches('0049', '49'), isFalse);
+    expect(PrintedRosterIdentity.payrollMatches(null, null), isFalse);
+    expect(PrintedRosterIdentity.payrollMatches('52319', '2318'), isFalse);
+    final linked = PrintedRosterIdentity.linkOwnRows([row(name: 'Unreadable', depot: '')], profile).single;
+    expect(linked.payrollNumber, '52319');
   });
   test('ambiguous same-day rows do not link automatically', () {
     final linked = PrintedRosterIdentity.linkOwnRows([row(), row()], profile);

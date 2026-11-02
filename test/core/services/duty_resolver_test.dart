@@ -256,6 +256,15 @@ void blockAnnualLeaveTests() {
 
 void profileMatchingTests() {
   group('DutyResolver.matchesProfile', () {
+    test('matches shortened payroll numbers across amendment sources', () {
+      for (final source in ['10_day', '7_day', '48_hour']) {
+        expect(DutyResolver.matchesProfile(
+          row: {'source': source, 'payroll_number': '2319'},
+          payrollNumber: '52319', rosterNumber: null,
+        ), isTrue);
+      }
+    });
+
     test('matches a daily amendment by payroll number', () {
       final matches = DutyResolver.matchesProfile(
         row: {
