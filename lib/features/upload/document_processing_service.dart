@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -24,11 +23,6 @@ class DocumentProcessingService {
   static final SupabaseClient _supabase = Supabase.instance.client;
 
   static const String _documentTableName = 'roster_documents';
-  static const String _dutyTableName = 'document_duties';
-  static const String _annualLeaveAllocationTableName =
-      'annual_leave_allocations';
-  static const String _annualLeavePeriodTableName = 'annual_leave_periods';
-  static const String _jobCardTableName = 'job_cards';
 
   static Future<DocumentProcessingResult> processUploadedDocument({
     required String documentId,
@@ -51,8 +45,7 @@ class DocumentProcessingService {
       return const DocumentProcessingResult(
         status: DocumentProcessingStatus.pending,
         recordsInserted: 0,
-        message:
-            'This document type will be processed when its dedicated parser is connected.',
+        message: 'This document type will be processed when its dedicated parser is connected.',
       );
     }
 
@@ -66,12 +59,11 @@ class DocumentProcessingService {
       return const DocumentProcessingResult(
         status: DocumentProcessingStatus.pending,
         recordsInserted: 0,
-        message:
-            'The document was uploaded. Smart Scan will run on the native iPhone or Android app.',
+        message: 'The document was uploaded. Smart Scan will run on the native iPhone or Android app.',
       );
     }
 
-    await _updateProcessingStatus(documentId, 'processing');
+    await _updateProcessingStatus(documentId, 'scanning');
 
     try {
       final List<SmartScanResult> scanResults;
@@ -160,8 +152,6 @@ class DocumentProcessingService {
           cards: cards,
         );
 
-        await _updateProcessingStatus(documentId, 'processed');
-
         return DocumentProcessingResult(
           status: DocumentProcessingStatus.processed,
           recordsInserted: insertedCards,
@@ -183,8 +173,6 @@ class DocumentProcessingService {
           documentId: documentId,
           allocations: allocations,
         );
-
-        await _updateProcessingStatus(documentId, 'processed');
 
         return DocumentProcessingResult(
           status: DocumentProcessingStatus.processed,
@@ -210,8 +198,6 @@ class DocumentProcessingService {
         documentId: documentId,
         duties: importableDuties,
       );
-
-      await _updateProcessingStatus(documentId, 'processed');
 
       return DocumentProcessingResult(
         status: DocumentProcessingStatus.processed,
@@ -284,16 +270,9 @@ class DocumentProcessingService {
     required String documentId,
     required List<AnnualLeaveAllocation> allocations,
   }) async {
-    await _supabase
-        .from(_annualLeaveAllocationTableName)
-        .delete()
-        .eq('document_id', documentId);
-
-    for (final AnnualLeaveAllocation allocation in allocations) {
-      final Map<String, dynamic> insertedAllocation = await _supabase
-          .from(_annualLeaveAllocationTableName)
-          .insert({
-            'document_id': documentId,
+    final rows = allocations
+        .map(
+          (allocation) => <String, dynamic>{
             'leave_year': allocation.leaveYear,
             'depot': allocation.depot.trim(),
             'driver_number': allocation.driverNumber.trim(),
@@ -307,29 +286,19 @@ class DocumentProcessingService {
             'is_confirmed': allocation.isConfirmed,
             'page_number': allocation.pageNumber,
             'unique_key': allocation.uniqueKey,
-          })
-          .select('id')
-          .single();
-
-      final String allocationId = insertedAllocation['id'].toString();
-
-      if (allocation.periods.isEmpty) {
-        continue;
-      }
-
-      final List<Map<String, dynamic>> periodRows = allocation.periods
-          .map(
-            (AnnualLeavePeriod period) => {
-              'allocation_id': allocationId,
-              'period_type': _databaseAnnualLeavePeriodType(period.type),
-              'start_date': _databaseDate(period.startDate),
-              'end_date': _databaseDate(period.endDate),
-            },
-          )
-          .toList(growable: false);
-
-      await _supabase.from(_annualLeavePeriodTableName).insert(periodRows);
-    }
+            'periods': allocation.periods
+                .map(
+                  (period) => <String, dynamic>{
+                    'period_type': _databaseAnnualLeavePeriodType(period.type),
+                    'start_date': _databaseDate(period.startDate),
+                    'end_date': _databaseDate(period.endDate),
+                  },
+                )
+                .toList(growable: false),
+          },
+        )
+        .toList(growable: false);
+    await _commitImport(documentId, 'annual_leave', rows);
   }
 
   static String _databaseAnnualLeaveSource(AnnualLeaveAllocationSource source) {
@@ -372,44 +341,28 @@ class DocumentProcessingService {
       growable: false,
     );
 
-    await _supabase
-        .from(_jobCardTableName)
-        .delete()
-        .eq('document_id', documentId);
+    final List<Map<String, dynamic>> rows = cardsToInsert
+        .map(
+          (JobCard card) => <String, dynamic>{
+            'document_id': documentId,
+            'turn_number': card.turnNumber.trim(),
+            'original_turn_code': card.originalTurnCode.trim(),
+            'day_code': card.dayCode.trim(),
+            'plan_type': card.planType.name,
+            'valid_from': _databaseDate(card.validFrom),
+            'valid_to': _databaseDate(card.validTo),
+            'book_on': _databaseTime(card.bookOn),
+            'book_off': _databaseTime(card.bookOff),
+            'rostered_minutes': card.rosteredMinutes,
+            'page_number': card.pageNumber,
+            'raw_text': _cleanValue(card.rawText),
+            'instructions': card.instructions,
+            'unique_key': card.uniqueKey,
+          },
+        )
+        .toList(growable: false);
 
-    if (cardsToInsert.isEmpty) {
-      return 0;
-    }
-
-    const int batchSize = 250;
-
-    for (int start = 0; start < cardsToInsert.length; start += batchSize) {
-      final int end = math.min(start + batchSize, cardsToInsert.length);
-
-      final List<Map<String, dynamic>> rows = cardsToInsert
-          .sublist(start, end)
-          .map(
-            (JobCard card) => <String, dynamic>{
-              'document_id': documentId,
-              'turn_number': card.turnNumber.trim(),
-              'original_turn_code': card.originalTurnCode.trim(),
-              'day_code': card.dayCode.trim(),
-              'plan_type': card.planType.name,
-              'valid_from': _databaseDate(card.validFrom),
-              'valid_to': _databaseDate(card.validTo),
-              'book_on': _databaseTime(card.bookOn),
-              'book_off': _databaseTime(card.bookOff),
-              'rostered_minutes': card.rosteredMinutes,
-              'page_number': card.pageNumber,
-              'raw_text': _cleanValue(card.rawText),
-              'instructions': card.instructions,
-              'unique_key': card.uniqueKey,
-            },
-          )
-          .toList(growable: false);
-
-      await _supabase.from(_jobCardTableName).insert(rows);
-    }
+    await _commitImport(documentId, 'job_cards', rows);
 
     return cardsToInsert.length;
   }
@@ -418,20 +371,28 @@ class DocumentProcessingService {
     required String documentId,
     required List<Duty> duties,
   }) async {
-    await _supabase.from(_dutyTableName).delete().eq('document_id', documentId);
+    final rows = duties
+        .map((duty) => _dutyRow(documentId: documentId, duty: duty))
+        .toList(growable: false);
+    await _commitImport(documentId, 'duties', rows);
+  }
 
-    const int batchSize = 250;
-
-    for (var start = 0; start < duties.length; start += batchSize) {
-      final int end = math.min(start + batchSize, duties.length);
-
-      final List<Map<String, dynamic>> rows = duties
-          .sublist(start, end)
-          .map((duty) => _dutyRow(documentId: documentId, duty: duty))
-          .toList(growable: false);
-
-      await _supabase.from(_dutyTableName).insert(rows);
+  // No client-side delete/insert fallback: the server commits all rows and
+  // the processed status together, or preserves the previous import.
+  static Future<void> _commitImport(
+    String documentId,
+    String kind,
+    List<Map<String, dynamic>> rows,
+  ) async {
+    if (rows.isEmpty) {
+      throw const DocumentProcessingException(
+        'No complete records were detected. The existing roster was kept.',
+      );
     }
+    await _supabase.rpc(
+      'replace_document_import',
+      params: {'p_document_id': documentId, 'p_kind': kind, 'p_rows': rows},
+    );
   }
 
   static Map<String, dynamic> _dutyRow({
@@ -467,7 +428,10 @@ class DocumentProcessingService {
     await _supabase
         .from(_documentTableName)
         .update({'processing_status': status})
-        .eq('id', documentId);
+        .eq('id', documentId)
+        // A failed retry (including a lost success response) must not hide a
+        // previously committed roster.
+        .neq('processing_status', 'processed');
   }
 
   static String _blockingWarningMessage(ParseResult result) {
