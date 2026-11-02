@@ -14,7 +14,9 @@ async function startRosterBuddy() {
       const scope = new URL('.', document.baseURI).href;
       const registrations = await navigator.serviceWorker.getRegistrations();
       await Promise.all(registrations
-        .filter(registration => registration.scope === scope)
+        .filter(registration => registration.scope === scope &&
+          [registration.active, registration.waiting, registration.installing]
+            .some(worker => worker?.scriptURL.includes('flutter_service_worker.js')))
         .map(registration => registration.unregister()));
     } catch (error) {
       console.warn('Could not retire the old app worker', error);

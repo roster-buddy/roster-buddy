@@ -42,6 +42,7 @@ jobs:
         run: |
           npm ci --prefix browser-scanner
           npm test --prefix browser-scanner
+          node --test browser-scanner/push.test.mjs
           npm run prepare-assets --prefix browser-scanner
           cd browser-scanner
           npx playwright install --with-deps chromium webkit
@@ -71,6 +72,9 @@ jobs:
           scanner = f'roster_scanner.{version}.mjs'
           (root / scanner).write_bytes((root / 'roster_scanner.mjs').read_bytes())
           index = index.replace('src="roster_scanner.mjs"', f'src="{scanner}"')
+          push = f'roster_push.{version}.mjs'
+          (root / push).write_bytes((root / 'roster_push.mjs').read_bytes())
+          index = index.replace('src="roster_push.mjs"', f'src="{push}"')
           (root / 'index.html').write_text(index)
           PY
 

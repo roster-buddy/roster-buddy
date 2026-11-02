@@ -1,3 +1,4 @@
+import '../notifications/push_notification_settings.dart';
 import '../smart_scan/scan_duty_editor.dart';
 import '../upload/roster_update_card.dart';
 import '../upload/day_document_links.dart';
@@ -124,6 +125,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _refreshPendingActionCount();
+    if (Uri.base.queryParameters['notifications'] == '1') {
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _openPendingActions(); });
+    }
     _rosterNoticeTimer = Timer.periodic(const Duration(seconds: 30), (_) => _refreshPendingActionCount());
   }
 
@@ -2063,6 +2067,8 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                 'block leave changes with the Union.',
                 style: TextStyle(color: textGrey),
               ),
+              const SizedBox(height: 16),
+              const PushNotificationSettings(),
               const SizedBox(height: 16),
               if (_rosterUpdates.isNotEmpty) ...[
                 const Text('Roster updates', style: TextStyle(color: navy, fontWeight: FontWeight.w900)),
