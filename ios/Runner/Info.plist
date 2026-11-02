@@ -24,6 +24,10 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Photograph rosters and job cards so Roster Buddy can read their text.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Select roster and job card photos to scan and upload.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
