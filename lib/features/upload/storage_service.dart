@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/models/parse_result.dart';
 import '../../core/models/document_type.dart';
 import 'document_processing_service.dart';
 
@@ -144,6 +145,7 @@ class StorageService {
     required String detectedType,
     required bool manuallyLabelled,
     BaseRosterActivation? baseRosterActivation,
+    ParseResult? reviewedResult,
   }) async {
     final User? user = _supabase.auth.currentUser;
 
@@ -226,6 +228,7 @@ class StorageService {
             bytes: bytes,
             originalFilename: originalFilename,
             documentType: documentType,
+            reviewedResult: reviewedResult,
             baseRosterCommencementDate: baseRosterActivation?.commencementDate,
             baseRosterSwapPartnerRosterNumber:
                 baseRosterActivation?.hasMutualSwap == true

@@ -27,10 +27,8 @@ import '../../core/services/job_card_service.dart';
 import '../../core/services/manual_duty_service.dart';
 import '../../core/services/sunday_availability_service.dart';
 import '../../core/services/shift_swap_service.dart';
-import '../upload/base_roster_activation_page.dart';
-import '../upload/storage_service.dart';
 import '../upload/upload_service.dart';
-import '../smart_scan/smart_scan_debug_page.dart';
+import '../smart_scan/scan_review_page.dart';
 import '../settings/settings_page.dart';
 
 Uri _rosterBuddyMailUri({required String subject, required String body}) {
@@ -311,181 +309,20 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  String? _detectDocumentType(String fileName) {
-    final String name = fileName.toLowerCase();
-
-    if (name.contains('annual') && name.contains('leave')) {
-      return 'Annual Leave Roster';
-    }
-
-    if (name.contains('job') && name.contains('card')) {
-      return 'Job Card';
-    }
-
-    if (name.contains('48')) {
-      return '48-Hour Amendment';
-    }
-
-    if (name.contains('10')) {
-      return '10-Day Amendment';
-    }
-
-    if (name.contains('7')) {
-      return '7-Day Amendment';
-    }
-
-    if (name.contains('base')) {
-      return 'Base Roster';
-    }
-
-    return null;
-  }
-
   Future<void> _showSmartScanDialog(PickedUpload picked) async {
-    final String fileName = picked.fileName;
-
-    const List<String> documentTypes = [
-      'Base Roster',
-      '10-Day Amendment',
-      '7-Day Amendment',
-      '48-Hour Amendment',
-      'Job Card',
-      'Annual Leave Roster',
-    ];
-
-    final String? detectedType = _detectDocumentType(fileName);
-    String? selectedType = detectedType;
-
-    final String? confirmedType = await showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Row(
-                children: [
-                  Icon(
-                    detectedType == null
-                        ? Icons.help_outline
-                        : Icons.auto_awesome_outlined,
-                    color: railwayBlue,
-                  ),
-                  const SizedBox(width: 10),
-                  const Expanded(child: Text('Smart Scan')),
-                ],
-              ),
-              content: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 440),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      fileName,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      detectedType == null
-                          ? 'Smart Scan is not certain what type of document this is. Please label it manually.'
-                          : 'Smart Scan thinks this is a $detectedType. Confirm or change the document type.',
-                    ),
-                    const SizedBox(height: 18),
-                    DropdownButtonFormField<String>(
-                      initialValue: selectedType,
-                      decoration: const InputDecoration(
-                        labelText: 'Document type',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: documentTypes
-                          .map(
-                            (type) => DropdownMenuItem<String>(
-                              value: type,
-                              child: Text(type),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        setDialogState(() {
-                          selectedType = value;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                  },
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: selectedType == null
-                      ? null
-                      : () {
-                          Navigator.pop(dialogContext, selectedType);
-                        },
-                  child: const Text('Confirm'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+    final reviewed = await Navigator.of(context).push<ReviewedDocument>(
+      MaterialPageRoute(builder: (_) => ScanReviewPage(upload: picked)),
     );
-
-    if (confirmedType == null || !mounted) return;
-
-    final bool manuallyLabelled =
-        detectedType == null || confirmedType != detectedType;
-
-    final bool? continueAfterScan = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (context) => SmartScanDebugPage(
-          bytes: picked.bytes,
-          fileName: picked.fileName,
-          documentType: confirmedType,
-        ),
-      ),
+    if (reviewed == null || !mounted) return;
+    final uploaded = await UploadService.uploadPickedDocument(
+      context, picked,
+      detectedType: reviewed.type.scanLabel,
+      manuallyLabelled: true,
+      baseRosterActivation: reviewed.activation,
+      reviewedResult: reviewed.result,
     );
-
-    if (continueAfterScan != true || !mounted) {
-      return;
-    }
-
-    BaseRosterActivation? baseRosterActivation;
-
-    if (confirmedType == 'Base Roster') {
-      baseRosterActivation = await Navigator.of(context)
-          .push<BaseRosterActivation>(
-            MaterialPageRoute(
-              builder: (context) =>
-                  BaseRosterActivationPage(fileName: picked.fileName),
-            ),
-          );
-
-      if (baseRosterActivation == null || !mounted) {
-        return;
-      }
-    }
-
-    final bool uploaded = await UploadService.uploadPickedDocument(
-      context,
-      picked,
-      detectedType: confirmedType,
-      manuallyLabelled: manuallyLabelled,
-      baseRosterActivation: baseRosterActivation,
-    );
-
     if (!uploaded || !mounted) return;
-
-    setState(() {
-      _dashboardRefreshVersion++;
-      _selectedIndex = 0;
-    });
+    setState(() { _dashboardRefreshVersion++; _selectedIndex = 0; });
   }
 
   void _openUploadPage() {

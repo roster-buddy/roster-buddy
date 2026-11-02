@@ -1,13 +1,8 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
 
 import 'upload_service.dart';
 
-Future<UploadSource?> chooseUploadSource(
-  BuildContext context, {
-  bool isWeb = kIsWeb,
-}) {
-  if (isWeb) return Future.value(UploadSource.file);
+Future<UploadSource?> chooseUploadSource(BuildContext context) {
   return showCupertinoModalPopup<UploadSource>(
     context: context,
     builder: (sheetContext) => CupertinoActionSheet(

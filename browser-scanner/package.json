@@ -1,0 +1,24 @@
+{
+  "name": "browser-scanner",
+  "version": "1.0.0",
+  "description": "Pinned browser OCR/PDF assets for Roster Buddy",
+  "scripts": {
+    "prepare-assets": "node prepare.mjs",
+    "test": "node --test scanner.test.mjs",
+    "test-browser": "node integration.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@tesseract.js-data/eng": "1.0.0",
+    "pdfjs-dist": "6.5.438",
+    "tesseract.js": "7.0.0"
+  },
+  "private": true,
+  "devDependencies": {
+    "pdf-lib": "1.17.1",
+    "playwright": "1.56.1"
+  }
+}

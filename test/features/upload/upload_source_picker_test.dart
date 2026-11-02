@@ -12,7 +12,7 @@ void main() {
           builder: (context) {
             return TextButton(
               onPressed: () async {
-                selected = await chooseUploadSource(context, isWeb: false);
+                selected = await chooseUploadSource(context);
               },
               child: const Text('Upload'),
             );
@@ -29,7 +29,9 @@ void main() {
     expect(selected, UploadSource.camera);
   });
 
-  testWidgets('web upload keeps the direct file picker route', (tester) async {
+  testWidgets('upload can choose a file without opening the camera', (
+    tester,
+  ) async {
     UploadSource? selected;
     await tester.pumpWidget(
       MaterialApp(
@@ -37,7 +39,7 @@ void main() {
           builder: (context) {
             return TextButton(
               onPressed: () async {
-                selected = await chooseUploadSource(context, isWeb: true);
+                selected = await chooseUploadSource(context);
               },
               child: const Text('Upload'),
             );
@@ -47,7 +49,8 @@ void main() {
     );
     await tester.tap(find.text('Upload'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Choose File'));
+    await tester.pumpAndSettle();
     expect(selected, UploadSource.file);
-    expect(find.text('Take Photo'), findsNothing);
   });
 }

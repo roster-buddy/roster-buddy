@@ -14,11 +14,14 @@ class SmartScanException implements Exception {
 class SmartScanEngine {
   SmartScanEngine._();
 
+  static void cancel() {}
+
   static bool get isSupported => false;
 
   static Future<SmartScanResult> recogniseImage({
     required Uint8List bytes,
     required String fileName,
+    void Function(String, double?)? onProgress,
   }) {
     throw const SmartScanException(
       'OCR is currently supported only on iPhone and Android.',
@@ -28,6 +31,7 @@ class SmartScanEngine {
   static Future<List<SmartScanResult>> recognisePdf({
     required Uint8List bytes,
     required String fileName,
+    void Function(String, double?)? onProgress,
   }) {
     throw const SmartScanException(
       'PDF OCR is currently supported only on iPhone and Android.',

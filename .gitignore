@@ -45,3 +45,8 @@ app.*.map.json
 /android/app/release
 
 supabase/.temp/
+
+# Generated browser scanner assets
+browser-scanner/node_modules/
+web/scan_vendor/
+browser-scanner/.results/

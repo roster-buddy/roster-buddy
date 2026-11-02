@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../core/models/parse_result.dart';
 import 'storage_service.dart';
 
 enum UploadSource { camera, photoLibrary, file }
@@ -65,6 +66,7 @@ class UploadService {
     required String detectedType,
     required bool manuallyLabelled,
     BaseRosterActivation? baseRosterActivation,
+    ParseResult? reviewedResult,
   }) async {
     if (_uploadInProgress) {
       ScaffoldMessenger.of(context)
@@ -90,6 +92,7 @@ class UploadService {
             detectedType: detectedType,
             manuallyLabelled: manuallyLabelled,
             baseRosterActivation: baseRosterActivation,
+            reviewedResult: reviewedResult,
           );
 
       if (!context.mounted) {

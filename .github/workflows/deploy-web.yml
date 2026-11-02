@@ -38,6 +38,17 @@ jobs:
       - name: Run tests
         run: flutter test
 
+      - name: Prepare browser scanner
+        run: |
+          npm ci --prefix browser-scanner
+          npm test --prefix browser-scanner
+          npm run prepare-assets --prefix browser-scanner
+          cd browser-scanner
+          npx playwright install --with-deps chromium webkit
+          npm run test-browser
+          cd ..
+          dart run browser-scanner/validate.dart
+
       - name: Build web app
         run: flutter build web --release --base-href "/roster-buddy/" --no-wasm-dry-run
 
@@ -57,6 +68,9 @@ jobs:
           (root / f'main.{version}.dart.js').write_bytes((root / 'main.dart.js').read_bytes())
           index = (root / 'index.html').read_text().replace('src="flutter_bootstrap.js"', f'src="{versioned_bootstrap}"')
           assert versioned_bootstrap in index
+          scanner = f'roster_scanner.{version}.mjs'
+          (root / scanner).write_bytes((root / 'roster_scanner.mjs').read_bytes())
+          index = index.replace('src="roster_scanner.mjs"', f'src="{scanner}"')
           (root / 'index.html').write_text(index)
           PY
 

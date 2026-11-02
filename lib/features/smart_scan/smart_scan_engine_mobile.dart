@@ -23,11 +23,14 @@ class SmartScanEngine {
   static const int maximumPdfPages = 60;
   static const double maximumRenderedWidth = 2400;
 
+  static void cancel() {}
+
   static bool get isSupported => Platform.isIOS || Platform.isAndroid;
 
   static Future<SmartScanResult> recogniseImage({
     required Uint8List bytes,
     required String fileName,
+    void Function(String, double?)? onProgress,
   }) async {
     _ensureSupported();
 
@@ -66,6 +69,7 @@ class SmartScanEngine {
   static Future<List<SmartScanResult>> recognisePdf({
     required Uint8List bytes,
     required String fileName,
+    void Function(String, double?)? onProgress,
   }) async {
     _ensureSupported();
 

@@ -15,8 +15,13 @@ class SmartScanTextLine {
 }
 
 class SmartScanResult {
-  const SmartScanResult({required this.fullText, required this.lines});
+  const SmartScanResult({
+    required this.fullText,
+    required this.lines,
+    this.confidence,
+  });
 
+  final double? confidence;
   final String fullText;
   final List<SmartScanTextLine> lines;
 

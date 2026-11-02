@@ -32,6 +32,7 @@ class DocumentProcessingService {
     DateTime? baseRosterCommencementDate,
     String? baseRosterSwapPartnerRosterNumber,
     bool baseRosterStartsWithPartner = false,
+    ParseResult? reviewedResult,
   }) async {
     final bool isBaseRoster = documentType == DocumentType.baseRoster;
     final bool isAnnualLeaveRoster =
@@ -45,7 +46,8 @@ class DocumentProcessingService {
       return const DocumentProcessingResult(
         status: DocumentProcessingStatus.pending,
         recordsInserted: 0,
-        message: 'This document type will be processed when its dedicated parser is connected.',
+        message:
+            'This document type will be processed when its dedicated parser is connected.',
       );
     }
 
@@ -55,83 +57,51 @@ class DocumentProcessingService {
       );
     }
 
-    if (!SmartScanEngine.isSupported) {
+    if (reviewedResult != null && reviewedResult.documentType != documentType) {
+      throw const DocumentProcessingException(
+        'The reviewed document type has changed. Scan it again.',
+      );
+    }
+
+    if (reviewedResult == null && !SmartScanEngine.isSupported) {
       return const DocumentProcessingResult(
         status: DocumentProcessingStatus.pending,
         recordsInserted: 0,
-        message: 'The document was uploaded. Smart Scan will run on the native iPhone or Android app.',
+        message:
+            'The document was uploaded. Smart Scan will run on the native iPhone or Android app.',
       );
     }
 
     await _updateProcessingStatus(documentId, 'scanning');
 
     try {
-      final List<SmartScanResult> scanResults;
-
-      if (_isPdf(originalFilename)) {
-        scanResults = await SmartScanEngine.recognisePdf(
-          bytes: bytes,
-          fileName: originalFilename,
-        );
+      final ParseResult parseResult;
+      if (reviewedResult != null) {
+        parseResult = reviewedResult;
       } else {
-        scanResults = <SmartScanResult>[
-          await SmartScanEngine.recogniseImage(
+        final List<SmartScanResult> scanResults;
+
+        if (_isPdf(originalFilename)) {
+          scanResults = await SmartScanEngine.recognisePdf(
             bytes: bytes,
             fileName: originalFilename,
-          ),
-        ];
-      }
-
-      final List<String> reconstructedPageText =
-          SmartScanPageTextReconstructor.reconstructPages(scanResults);
-
-      if (reconstructedPageText.isEmpty) {
-        throw const DocumentProcessingException(
-          'No readable text was detected in the selected document.',
-        );
-      }
-
-      final ParseResult parseResult;
-
-      if (isBaseRoster) {
-        final String? rosterNumber = await _currentRosterNumber();
-
-        if (rosterNumber == null || rosterNumber.trim().isEmpty) {
-          throw const DocumentProcessingException(
-            'Add your Roster Number in Settings before processing this Base Roster.',
           );
+        } else {
+          scanResults = <SmartScanResult>[
+            await SmartScanEngine.recogniseImage(
+              bytes: bytes,
+              fileName: originalFilename,
+            ),
+          ];
         }
 
-        if (baseRosterCommencementDate == null) {
-          throw const DocumentProcessingException(
-            'The Base Roster commencement Sunday is missing.',
-          );
-        }
-
-        final BaseRosterParser parser = BaseRosterParser(
-          commencementDate: baseRosterCommencementDate,
-          rosterNumber: rosterNumber,
-          swapPartnerRosterNumber: baseRosterSwapPartnerRosterNumber,
-          initialLine: baseRosterStartsWithPartner
-              ? BaseRosterInitialLine.swapPartner
-              : BaseRosterInitialLine.driver,
-        );
-
-        parseResult = await parser.parse(pageText: reconstructedPageText);
-      } else if (isAnnualLeaveRoster) {
-        const AnnualLeaveRosterParser parser = AnnualLeaveRosterParser();
-
-        parseResult = await parser.parse(pageText: reconstructedPageText);
-      } else if (isJobCard) {
-        const JobCardParser parser = JobCardParser();
-
-        parseResult = await parser.parse(pageText: reconstructedPageText);
-      } else {
-        final DailyAmendmentParser parser = DailyAmendmentParser(
+        parseResult = await parseScanResults(
+          scanResults: scanResults,
           documentType: documentType,
+          baseRosterCommencementDate: baseRosterCommencementDate,
+          baseRosterSwapPartnerRosterNumber: baseRosterSwapPartnerRosterNumber,
+          baseRosterStartsWithPartner: baseRosterStartsWithPartner,
         );
-
-        parseResult = await parser.parse(pageText: reconstructedPageText);
       }
 
       if (!parseResult.canImport) {
@@ -228,6 +198,75 @@ class DocumentProcessingService {
         'Roster Buddy could not process this document.',
       );
     }
+  }
+
+  static Future<ParseResult> parseScanResults({
+    required List<SmartScanResult> scanResults,
+    required DocumentType documentType,
+    DateTime? baseRosterCommencementDate,
+    String? baseRosterSwapPartnerRosterNumber,
+    bool baseRosterStartsWithPartner = false,
+  }) async {
+    final isBaseRoster = documentType == DocumentType.baseRoster;
+    final isAnnualLeaveRoster = documentType == DocumentType.annualLeaveRoster;
+    final isJobCard = documentType == DocumentType.jobCard;
+    final List<String> reconstructedPageText =
+        SmartScanPageTextReconstructor.reconstructPages(scanResults);
+
+    if (reconstructedPageText.isEmpty) {
+      throw const DocumentProcessingException(
+        'No readable text was detected in the selected document.',
+      );
+    }
+
+    final ParseResult parseResult;
+
+    if (isBaseRoster) {
+      final String? rosterNumber = await _currentRosterNumber();
+
+      if (rosterNumber == null || rosterNumber.trim().isEmpty) {
+        throw const DocumentProcessingException(
+          'Add your Roster Number in Settings before processing this Base Roster.',
+        );
+      }
+
+      if (baseRosterCommencementDate == null) {
+        throw const DocumentProcessingException(
+          'The Base Roster commencement Sunday is missing.',
+        );
+      }
+
+      final BaseRosterParser parser = BaseRosterParser(
+        commencementDate: baseRosterCommencementDate,
+        rosterNumber: rosterNumber,
+        swapPartnerRosterNumber: baseRosterSwapPartnerRosterNumber,
+        initialLine: baseRosterStartsWithPartner
+            ? BaseRosterInitialLine.swapPartner
+            : BaseRosterInitialLine.driver,
+      );
+
+      parseResult = await parser.parse(pageText: reconstructedPageText);
+    } else if (isAnnualLeaveRoster) {
+      const AnnualLeaveRosterParser parser = AnnualLeaveRosterParser();
+
+      parseResult = await parser.parse(pageText: reconstructedPageText);
+    } else if (isJobCard) {
+      const JobCardParser parser = JobCardParser();
+
+      parseResult = await parser.parse(pageText: reconstructedPageText);
+    } else {
+      final DailyAmendmentParser parser = DailyAmendmentParser(
+        documentType: documentType,
+      );
+
+      parseResult = await parser.parse(pageText: reconstructedPageText);
+    }
+
+    return parseResult.copyWith(
+      duties: parseResult.duties
+          .where((duty) => duty.hasDriverIdentity)
+          .toList(growable: false),
+    );
   }
 
   static Future<String?> _currentRosterNumber() async {
