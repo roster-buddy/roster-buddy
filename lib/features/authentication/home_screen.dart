@@ -1,3 +1,5 @@
+import '../smart_scan/scan_duty_editor.dart';
+import '../upload/roster_update_card.dart';
 import '../upload/day_document_links.dart';
 import '../upload/document_opener.dart';
 import '../../core/services/roster_update_service.dart';
@@ -654,12 +656,23 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   }
 
   Future<void> _useRosteredShift(RosterUpdateNotice notice) async {
-    final selected = notice.rosteredDuty;
-    if (selected == null) return;
+    var selected = notice.rosteredDuty;
+    if (selected == null) {
+      final date = DateTime.tryParse(notice.date);
+      if (date == null) return;
+      selected = await showDialog<Duty>(context: context, builder: (_) => ScanDutyEditor(
+        source: const {'10D': RosterSource.tenDay, '7D': RosterSource.sevenDay, '48HR': RosterSource.fortyEightHour}[notice.source] ?? RosterSource.sevenDay,
+        initial: Duty(date: date, source: RosterSource.sevenDay, dutyType: DutyType.working,
+          bookOn: notice.start == '—' ? null : notice.start,
+          bookOff: notice.finish == '—' ? null : notice.finish, turnNumber: notice.turn),
+      ));
+    }
+    if (selected == null || !mounted) return;
+    final chosen = selected;
     final confirmed = await showRosterDecisionSheet<bool>(context: context,
       builder: (dialogContext) => RosterDecisionSheet(
         title: const Text('Use this rostered shift?'),
-        content: Text('Replace your annual-leave entry on ${displayDate(selected.date)} with ${notice.detail}? Only continue if the annual leave was entered in error.'),
+        content: Text('Replace your annual-leave entry on ${displayDate(chosen.date)} with ${notice.detail}? Only continue if the annual leave was entered in error.'),
         actions: [
           CupertinoDialogAction(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Keep annual leave')),
           CupertinoDialogAction(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Use rostered shift')),
@@ -668,13 +681,13 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
     );
     if (confirmed != true || !mounted) return;
     try {
-      final current = await DutyResolver().getDutyForDate(selected.date);
+      final current = await DutyResolver().getDutyForDate(chosen.date);
       if (!mounted) return;
       if (current == null || current.dutyType != DutyType.annualLeave) {
         await _load();
         return;
       }
-      final requests = await widget.annualLeaveService.getRequestsForRange(selected.date, selected.date);
+      final requests = await widget.annualLeaveService.getRequestsForRange(chosen.date, chosen.date);
       final floating = requests.values.where((request) =>
           request.requestType == AnnualLeaveRequestType.floating &&
           request.status == AnnualLeaveRequestStatus.granted).firstOrNull;
@@ -682,11 +695,11 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
       if (floating != null) {
         final changed = await manageFloatingLeaveCancellation(
           context: context, requests: [floating],
-          historyRestore: DutyHistoryService.restorationPayload(selected, current),
+          historyRestore: DutyHistoryService.restorationPayload(chosen, current),
         );
         if (!changed || !mounted) return;
       } else {
-        await DutyHistoryService().revert(selected, current);
+        await DutyHistoryService().revert(chosen, current);
       }
       if (!mounted) return;
       widget.onChanged();
@@ -2054,22 +2067,9 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
               if (_rosterUpdates.isNotEmpty) ...[
                 const Text('Roster updates', style: TextStyle(color: navy, fontWeight: FontWeight.w900)),
                 for (final notice in _rosterUpdates)
-                  Card(child: ListTile(
-                    leading: Icon(notice.needsInvestigation ? Icons.warning_amber_rounded : Icons.update,
-                      color: notice.needsInvestigation ? leaveRed : const Color(0xFF1769AA)),
-                    title: Text('${notice.needsInvestigation ? 'Annual leave conflict — investigate' : 'Roster updated'} · ${displayDate(DateTime.parse(notice.date))}'),
-                    subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      if (notice.needsInvestigation)
-                        const Text('You have annual leave recorded, but this sheet lists you working. Your annual leave has been kept.'),
-                      Text(notice.detail),
-                      if (notice.documentId != null)
-                        TextButton.icon(onPressed: () => _openRosterDocument(notice),
-                          icon: const Icon(Icons.open_in_new), label: const Text('Open uploaded document')),
-                      if (notice.needsInvestigation && notice.rosteredDuty != null)
-                        FilledButton.icon(onPressed: () => _useRosteredShift(notice),
-                          icon: const Icon(Icons.work_outline), label: const Text('Use rostered shift')),
-                    ]),
-                  )),
+                  RosterUpdateCard(notice: notice,
+                    onOpenDocument: () => _openRosterDocument(notice),
+                    onUseShift: () => _useRosteredShift(notice)),
                 const SizedBox(height: 16),
               ],
               if (_isLoading)
