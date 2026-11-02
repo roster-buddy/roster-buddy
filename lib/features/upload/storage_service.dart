@@ -1,3 +1,4 @@
+import '../../core/services/document_date_index.dart';
 import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -196,6 +197,7 @@ class StorageService {
             'detection_confidence': manuallyLabelled ? null : 1.0,
             'manually_labelled': manuallyLabelled,
             'processing_status': 'uploaded',
+            'identified_dates': DocumentDateIndex.forResult(reviewedResult),
           })
           .select('id')
           .single();

@@ -1,3 +1,4 @@
+import '../../core/services/document_date_index.dart';
 import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -104,6 +105,10 @@ class DocumentProcessingService {
           baseRosterStartsWithPartner: baseRosterStartsWithPartner,
         );
       }
+
+      await _supabase.from(_documentTableName).update({
+        'identified_dates': DocumentDateIndex.forResult(parseResult),
+      }).eq('id', documentId);
 
       if (!parseResult.canImport) {
         throw DocumentProcessingException(_blockingWarningMessage(parseResult));
@@ -298,6 +303,7 @@ class DocumentProcessingService {
       duties: duties,
       ownRecordCount: ownRecords,
       payrollNumber: ownPayroll,
+      identifiedDates: DocumentDateIndex.fromText(reconstructedPageText),
     );
   }
 

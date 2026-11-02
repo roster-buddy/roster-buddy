@@ -1,14 +1,30 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'printed_roster_identity.dart';
 import '../models/duty_type.dart';
+import '../models/duty.dart';
+import '../models/roster_source.dart';
 import 'duty_resolver.dart';
 
 class RosterUpdateNotice {
-  const RosterUpdateNotice(this.date, this.receivedAt, this.source, this.start, this.finish, this.turn, {this.documentId, this.needsInvestigation = false});
+  const RosterUpdateNotice(this.date, this.receivedAt, this.source, this.start, this.finish, this.turn, {this.documentId, this.needsInvestigation = false, this.dutyType = 'working'});
   final String date, source, start, finish, turn;
   final DateTime receivedAt;
   final String? documentId;
   final bool needsInvestigation;
+  final String dutyType;
+  Duty? get rosteredDuty {
+    final dateValue = DateTime.tryParse(date);
+    final sourceValue = const {'10D': RosterSource.tenDay, '7D': RosterSource.sevenDay, '48HR': RosterSource.fortyEightHour}[source];
+    final typeValue = const {'working': DutyType.working, 'training': DutyType.training, 'medical': DutyType.medical}[dutyType];
+    final clock = RegExp(r'^(?:[01][0-9]|2[0-3]):[0-5][0-9]$');
+    if (dateValue == null || sourceValue == null || typeValue == null || !clock.hasMatch(start) || !clock.hasMatch(finish)) return null;
+    int minutes(String value) => int.parse(value.substring(0, 2)) * 60 + int.parse(value.substring(3));
+    return Duty(date: dateValue, source: sourceValue, dutyType: typeValue,
+      bookOn: start, bookOff: finish, turnNumber: turn.isEmpty ? null : turn,
+      rosteredMinutes: (minutes(finish) - minutes(start) + 1440) % 1440,
+      remarks: 'Allocated from uploaded $source sheet after reviewing annual leave conflict');
+  }
+
   String get detail => '$source · $start–$finish${turn.isEmpty ? '' : ' · Turn $turn'}';
 }
 
@@ -59,6 +75,7 @@ class RosterUpdateService {
       if (received == null || !received.isAfter(since) || source == null || DateTime.tryParse(date) == null) continue;
       final notice = RosterUpdateNotice(date, received, source, clock(row['book_on']), clock(row['book_off']), row['turn_number']?.toString() ?? '',
         documentId: row['document_id']?.toString(),
+        dutyType: row['duty_type']?.toString() ?? 'working',
         needsInvestigation: annualLeaveDates.contains(date) && ['working', 'training', 'medical'].contains(row['duty_type']),
       );
       final key = '$date|$source';

@@ -8,6 +8,7 @@ class ParseResult {
   const ParseResult({
     required this.documentType,
     this.duties = const [],
+    this.identifiedDates = const [],
     this.annualLeaveAllocations = const [],
     this.jobCards = const [],
     this.driverFound = false,
@@ -27,6 +28,7 @@ class ParseResult {
   /// Shared documents may contain duties for many drivers. Matching those
   /// duties to user accounts happens after parsing.
   final List<Duty> duties;
+  final List<DateTime> identifiedDates;
 
   /// All driver allocations extracted from an Annual Leave Roster.
   final List<AnnualLeaveAllocation> annualLeaveAllocations;
@@ -82,6 +84,7 @@ class ParseResult {
   ParseResult copyWith({
     DocumentType? documentType,
     List<Duty>? duties,
+    List<DateTime>? identifiedDates,
     List<AnnualLeaveAllocation>? annualLeaveAllocations,
     List<JobCard>? jobCards,
     bool? driverFound,
@@ -96,6 +99,7 @@ class ParseResult {
     return ParseResult(
       documentType: documentType ?? this.documentType,
       duties: duties ?? this.duties,
+      identifiedDates: identifiedDates ?? this.identifiedDates,
       annualLeaveAllocations:
           annualLeaveAllocations ?? this.annualLeaveAllocations,
       jobCards: jobCards ?? this.jobCards,

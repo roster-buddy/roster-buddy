@@ -1,3 +1,4 @@
+import 'package:roster_buddy/core/models/duty_type.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:roster_buddy/core/services/roster_update_service.dart';
 
@@ -43,6 +44,20 @@ void main() {
       since: DateTime.utc(2026, 11, 2), annualLeaveDates: {'2026-11-05'}).single.needsInvestigation, isFalse);
     expect(RosterUpdateService.fromRows([{...leave, 'duty_type': 'working'}], payrollNumber: '52319',
       since: DateTime.utc(2026, 11, 2)).single.needsInvestigation, isFalse);
+  });
+
+  test('allocating a conflict retains the sheet type, turn and overnight hours', () {
+    final notice = RosterUpdateNotice('2026-11-05', DateTime.utc(2026, 11, 2), '7D',
+      '16:53', '01:11', '213', dutyType: 'training');
+    final duty = notice.rosteredDuty!;
+    expect(duty.date, DateTime(2026, 11, 5));
+    expect(duty.dutyType, DutyType.training);
+    expect(duty.turnNumber, '213');
+    expect(duty.bookOn, '16:53');
+    expect(duty.bookOff, '01:11');
+    expect(duty.rosteredMinutes, 498);
+    expect(RosterUpdateNotice('2026-11-05', DateTime.utc(2026, 11, 2), '7D',
+      '—', '01:11', '213').rosteredDuty, isNull);
   });
 
 }

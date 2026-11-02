@@ -1,3 +1,5 @@
+import '../upload/day_document_links.dart';
+import '../upload/document_opener.dart';
 import '../../core/services/roster_update_service.dart';
 import '../roster/roster_job_summary.dart';
 import 'sign_out.dart';
@@ -637,34 +639,62 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
 
   Future<void> _openRosterDocument(RosterUpdateNotice notice) async {
     try {
-      final client = Supabase.instance.client;
-      final document = await client.from('roster_documents')
-          .select('storage_path, original_filename').eq('id', notice.documentId!).maybeSingle();
-      final path = document?['storage_path']?.toString();
-      if (path == null || path.isEmpty) throw StateError('Document access unavailable');
-      final signedUrl = await client.storage.from('roster-documents').createSignedUrl(path, 300);
-      if (!mounted) return;
-      await showModalBottomSheet<void>(context: context, showDragHandle: true,
-        builder: (sheetContext) => SafeArea(child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text(document?['original_filename']?.toString() ?? 'Uploaded roster sheet',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 16),
-            FilledButton.icon(icon: const Icon(Icons.open_in_new), label: const Text('Open document'),
-              onPressed: () async {
-                final opened = await launchUrl(Uri.parse(signedUrl), mode: LaunchMode.platformDefault, webOnlyWindowName: '_blank');
-                if (!opened && mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open the document. Please retry.')));
-                }
-              }),
-          ]),
-        )),
-      );
+      await openUploadedDocument(() async {
+        final client = Supabase.instance.client;
+        final document = await client.from('roster_documents')
+            .select('storage_path').eq('id', notice.documentId!).single();
+        return client.storage.from('roster-documents').createSignedUrl(document['storage_path'] as String, 300);
+      });
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('This uploaded sheet is not currently accessible to your account.')));
+          content: Text('Could not open the uploaded sheet. Please retry.')));
+      }
+    }
+  }
+
+  Future<void> _useRosteredShift(RosterUpdateNotice notice) async {
+    final selected = notice.rosteredDuty;
+    if (selected == null) return;
+    final confirmed = await showRosterDecisionSheet<bool>(context: context,
+      builder: (dialogContext) => RosterDecisionSheet(
+        title: const Text('Use this rostered shift?'),
+        content: Text('Replace your annual-leave entry on ${displayDate(selected.date)} with ${notice.detail}? Only continue if the annual leave was entered in error.'),
+        actions: [
+          CupertinoDialogAction(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Keep annual leave')),
+          CupertinoDialogAction(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Use rostered shift')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      final current = await DutyResolver().getDutyForDate(selected.date);
+      if (!mounted) return;
+      if (current == null || current.dutyType != DutyType.annualLeave) {
+        await _load();
+        return;
+      }
+      final requests = await widget.annualLeaveService.getRequestsForRange(selected.date, selected.date);
+      final floating = requests.values.where((request) =>
+          request.requestType == AnnualLeaveRequestType.floating &&
+          request.status == AnnualLeaveRequestStatus.granted).firstOrNull;
+      if (!mounted) return;
+      if (floating != null) {
+        final changed = await manageFloatingLeaveCancellation(
+          context: context, requests: [floating],
+          historyRestore: DutyHistoryService.restorationPayload(selected, current),
+        );
+        if (!changed || !mounted) return;
+      } else {
+        await DutyHistoryService().revert(selected, current);
+      }
+      if (!mounted) return;
+      widget.onChanged();
+      await _load();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not allocate the rostered shift. Check the day and try again.')));
       }
     }
   }
@@ -2035,6 +2065,9 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                       if (notice.documentId != null)
                         TextButton.icon(onPressed: () => _openRosterDocument(notice),
                           icon: const Icon(Icons.open_in_new), label: const Text('Open uploaded document')),
+                      if (notice.needsInvestigation && notice.rosteredDuty != null)
+                        FilledButton.icon(onPressed: () => _useRosteredShift(notice),
+                          icon: const Icon(Icons.work_outline), label: const Text('Use rostered shift')),
                     ]),
                   )),
                 const SizedBox(height: 16),
@@ -3237,6 +3270,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                   ),
                 ),
                 const SizedBox(height: 14),
+                DayDocumentLinks(date: date),
                 if (duty == null && !isGrantedAnnualLeave)
                   const Text(
                     'No roster information is available for this date.',
@@ -7683,6 +7717,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                   ),
                 ),
                 const SizedBox(height: 14),
+                DayDocumentLinks(date: date),
                 if (duty == null && !isGrantedAnnualLeave)
                   const Text(
                     'No roster information is available for this date.',
