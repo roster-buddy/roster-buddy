@@ -1,7 +1,6 @@
-import 'dart:typed_data';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -160,7 +159,7 @@ class UploadService {
   static Future<PickedUpload?> _pickCameraImage() async {
     final XFile? image = await _imagePicker.pickImage(
       source: ImageSource.camera,
-      imageQuality: 100,
+      imageQuality: kIsWeb ? null : 100,
     );
 
     if (image == null) {
@@ -179,7 +178,7 @@ class UploadService {
 
   static Future<PickedUpload?> _pickPhotoLibraryImages() async {
     final List<XFile> images = await _imagePicker.pickMultiImage(
-      imageQuality: 100,
+      imageQuality: kIsWeb ? null : 100,
     );
 
     if (images.isEmpty) {
