@@ -1,8 +1,12 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 
 import 'upload_service.dart';
 
-Future<UploadSource?> chooseUploadSource(BuildContext context) {
+Future<UploadSource?> chooseUploadSource(BuildContext context, {bool isWeb = kIsWeb}) {
+  // Safari already presents its own Photos / Camera / Files source chooser.
+  // A second app sheet cannot force its Photos or Files destination.
+  if (isWeb) return Future<UploadSource?>.value(UploadSource.file);
   return showCupertinoModalPopup<UploadSource>(
     context: context,
     builder: (sheetContext) => CupertinoActionSheet(
