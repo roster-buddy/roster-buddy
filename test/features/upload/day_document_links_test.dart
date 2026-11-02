@@ -13,7 +13,7 @@ void main() {
         return [{'id': 'sheet', 'detected_type': '7_day_amendment', 'original_filename': 'roster.jpg', 'storage_path': 'shared/roster.jpg'}];
       },
       openDocument: (_) async { opened++; },
-    )))));
+    ))));
     await tester.pumpAndSettle();
     expect(requested, DateTime(2026, 11, 5));
     expect(find.text('7-day sheet'), findsOneWidget);
