@@ -1,3 +1,4 @@
+import '../roster/roster_job_summary.dart';
 import 'sign_out.dart';
 import '../upload/upload_source_picker.dart';
 import '../../core/services/driver_email_identity.dart';
@@ -2748,6 +2749,9 @@ class _DashboardPageState extends State<_DashboardPage> {
                 ),
               ),
               const SizedBox(height: 5),
+              if (!isGrantedAnnualLeave && RosterJobSummary.appliesTo(duty))
+                RosterJobSummary(duty: duty!, foreground: foreground, fontSize: 9)
+              else ...[
               Text(
                 isGrantedAnnualLeave
                     ? 'Leave'
@@ -2775,6 +2779,8 @@ class _DashboardPageState extends State<_DashboardPage> {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
+              ],
+
               ],
               if (duty != null || isGrantedAnnualLeave) ...[
                 const SizedBox(height: 4),
@@ -6601,7 +6607,7 @@ class _CalendarPageState extends State<_CalendarPage> {
         crossAxisCount: 7,
         crossAxisSpacing: 5,
         mainAxisSpacing: 5,
-        childAspectRatio: 0.78,
+        childAspectRatio: 0.62,
       ),
       itemBuilder: (BuildContext context, int index) {
         final DateTime date = dates[index];
@@ -6717,6 +6723,11 @@ class _CalendarPageState extends State<_CalendarPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (!isGrantedAnnualLeave && RosterJobSummary.appliesTo(duty))
+                  Text(
+                    const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][date.weekday - 1],
+                    style: TextStyle(color: foreground, fontSize: 9, fontWeight: FontWeight.w700),
+                  ),
                 Row(
                   children: [
                     Expanded(
@@ -6814,6 +6825,9 @@ class _CalendarPageState extends State<_CalendarPage> {
                 ],
                 const Spacer(),
                 if (duty != null || isGrantedAnnualLeave) ...[
+                  if (!isGrantedAnnualLeave && RosterJobSummary.appliesTo(duty))
+                    RosterJobSummary(duty: duty!, foreground: foreground, fontSize: 9)
+                  else ...[
                   Text(
                     isGrantedAnnualLeave ? 'Leave' : duty?.remarks?.contains('awaiting allocation') == true ? 'Allocate duty' : _shortDutyLabel(duty!),
                     maxLines: 1,
@@ -6836,6 +6850,8 @@ class _CalendarPageState extends State<_CalendarPage> {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
+                  ],
+
                   ],
                   const SizedBox(height: 3),
                   Align(

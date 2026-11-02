@@ -210,7 +210,8 @@ class UploadService {
 
   static Future<PickedUpload?> _pickFiles() async {
     final FilePickerResult? result = await FilePicker.pickFiles(
-      type: FileType.any,
+      type: FileType.custom,
+      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'heic', 'heif'],
       allowMultiple: true,
       withData: true,
     );
