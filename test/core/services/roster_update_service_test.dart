@@ -70,4 +70,15 @@ void main() {
     expect(notices.single.detail, '7D 1653–0111 T213');
   });
 
+  test('viewed routine updates stay cleared but new updates and conflicts remain', () {
+    final result = RosterUpdateService.fromRows([
+      {...row('2319', '2026-11-02T10:00:00Z'), 'duty_date': '2026-11-03', 'duty_type': 'working'},
+      {...row('2319', '2026-11-02T11:00:00Z'), 'duty_date': '2026-11-04', 'duty_type': 'working'},
+      {...row('2319', '2026-11-02T12:00:00Z'), 'duty_date': '2026-11-05', 'duty_type': 'working'},
+    ], payrollNumber: '52319', since: DateTime.utc(2026,11,1),
+      seenAt: DateTime.utc(2026,11,2,11), annualLeaveDates: {'2026-11-03'});
+    expect(result.map((notice) => notice.date), ['2026-11-05', '2026-11-03']);
+    expect(result.last.needsInvestigation, isTrue);
+  });
+
 }

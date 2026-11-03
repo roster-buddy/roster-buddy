@@ -1,3 +1,4 @@
+import '../upload/roster_updates_section.dart';
 import '../notifications/push_notification_settings.dart';
 import '../smart_scan/scan_duty_editor.dart';
 import '../upload/roster_update_card.dart';
@@ -223,7 +224,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       List<RosterUpdateNotice> rosterUpdates = [];
       try {
-        rosterUpdates = await RosterUpdateService().load(since: lastSeen);
+        rosterUpdates = await RosterUpdateService().load();
       } catch (_) {
         // A roster notice failure must not hide pending leave or swap actions.
       }
@@ -641,6 +642,16 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  Future<void> _viewedRosterUpdates(List<RosterUpdateNotice> viewed) async {
+    await RosterUpdateService().markViewed(viewed);
+    if (!mounted) return;
+    final latest = viewed.map((notice) => notice.receivedAt)
+        .reduce((a, b) => a.isAfter(b) ? a : b);
+    setState(() => _rosterUpdates.removeWhere((notice) =>
+        !notice.needsInvestigation && !notice.receivedAt.isAfter(latest)));
+    widget.onChanged();
   }
 
   Future<void> _openRosterDocument(RosterUpdateNotice notice) async {
@@ -2058,7 +2069,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
             children: [
               const Text(
-                'Annual Leave',
+                'Notifications',
                 style: TextStyle(
                   color: navy,
                   fontSize: 20,
@@ -2067,16 +2078,21 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
               ),
               const SizedBox(height: 4),
               const Text(
-                'Record decisions from Rosters or confirm outstanding '
-                'block leave changes with the Union.',
+                'View roster updates or review outstanding annual leave '
+                'and shift-swap actions.',
                 style: TextStyle(color: textGrey),
               ),
               const SizedBox(height: 16),
               const PushNotificationSettings(),
               const SizedBox(height: 16),
-              if (_rosterUpdates.isNotEmpty) ...[
-                const Text('Roster updates', style: TextStyle(color: navy, fontWeight: FontWeight.w900)),
-                for (final notice in _rosterUpdates)
+              RosterUpdatesSection(
+                notices: _rosterUpdates.where((notice) => !notice.needsInvestigation).toList(),
+                onViewed: _viewedRosterUpdates,
+                onOpenDocument: _openRosterDocument,
+              ),
+              if (_rosterUpdates.any((notice) => notice.needsInvestigation)) ...[
+                const Text('Needs investigation', style: TextStyle(color: navy, fontWeight: FontWeight.w900)),
+                for (final notice in _rosterUpdates.where((notice) => notice.needsInvestigation))
                   RosterUpdateCard(notice: notice,
                     onOpenDocument: () => _openRosterDocument(notice),
                     onUseShift: () => _useRosteredShift(notice)),

@@ -37,7 +37,7 @@ class RosterUpdateService {
     final client = Supabase.instance.client;
     final user = client.auth.currentUser;
     if (user == null) return [];
-    final profile = await client.from('driver_profiles').select('payroll_number')
+    final profile = await client.from('driver_profiles').select('payroll_number, roster_updates_seen_at')
         .eq('user_id', user.id).maybeSingle();
     final payroll = profile?['payroll_number']?.toString();
     final key = PrintedRosterIdentity.payrollKey(payroll);
@@ -73,13 +73,28 @@ class RosterUpdateService {
       for (final event in events)
         '${event['document_id']}|${event['duty_date']}': event['kind'] as String,
     };
-    return fromRows(rows, payrollNumber: payroll, since: cutoff, annualLeaveDates: annualLeaveDates, eventKinds: kinds);
+    return fromRows(rows, payrollNumber: payroll, since: cutoff, annualLeaveDates: annualLeaveDates, eventKinds: kinds, seenAt: DateTime.tryParse(profile?['roster_updates_seen_at']?.toString() ?? ''));
+  }
+
+  Future<void> markViewed(List<RosterUpdateNotice> viewed) async {
+    final updates = viewed.where((notice) => !notice.needsInvestigation).toList();
+    if (updates.isEmpty) return;
+    final seenAt = updates.map((notice) => notice.receivedAt.toUtc())
+        .reduce((a, b) => a.isAfter(b) ? a : b).toIso8601String();
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    if (user == null) throw StateError('Sign in to mark updates viewed.');
+    // A slower device must not move the account's watermark backwards.
+    await client.from('driver_profiles').update({'roster_updates_seen_at': seenAt})
+        .eq('user_id', user.id)
+        .or('roster_updates_seen_at.is.null,roster_updates_seen_at.lt.$seenAt');
   }
 
   static List<RosterUpdateNotice> fromRows(List<Map<String, dynamic>> rows, {
     required String? payrollNumber, required DateTime since,
     Set<String> annualLeaveDates = const {},
     Map<String, String> eventKinds = const {},
+    DateTime? seenAt,
   }) {
     final notices = <String, RosterUpdateNotice>{};
     const labels = {'10_day': '10D', '7_day': '7D', '48_hour': '48HR'};
@@ -100,6 +115,7 @@ class RosterUpdateService {
         kind: eventKinds['${row['document_id']}|$date'] ?? 'allocated',
         needsInvestigation: annualLeaveDates.contains(date) && ['working', 'training', 'medical'].contains(row['duty_type']),
       );
+      if (!notice.needsInvestigation && seenAt != null && !received.isAfter(seenAt)) continue;
       final key = '$date|$source';
       if (notices[key] == null || received.isAfter(notices[key]!.receivedAt)) notices[key] = notice;
     }
