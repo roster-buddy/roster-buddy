@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../core/formatters/roster_date_format.dart';
 import '../../core/services/roster_update_service.dart';
 
 class RosterUpdateCard extends StatelessWidget {
@@ -11,7 +10,7 @@ class RosterUpdateCard extends StatelessWidget {
   Widget build(BuildContext context) => Card(child: Padding(
     padding: const EdgeInsets.all(16),
     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text('${notice.needsInvestigation ? 'Annual leave conflict — investigate' : 'Roster updated'} · ${displayDate(DateTime.parse(notice.date))}',
+      Text(notice.title,
         style: TextStyle(fontWeight: FontWeight.w800, color: notice.needsInvestigation ? const Color(0xFFD64545) : const Color(0xFF102A43))),
       const SizedBox(height: 8),
       if (notice.needsInvestigation)

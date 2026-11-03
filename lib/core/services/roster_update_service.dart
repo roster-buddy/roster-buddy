@@ -1,3 +1,4 @@
+import 'roster_notification_text.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'printed_roster_identity.dart';
 import '../models/duty_type.dart';
@@ -6,12 +7,15 @@ import '../models/roster_source.dart';
 import 'duty_resolver.dart';
 
 class RosterUpdateNotice {
-  const RosterUpdateNotice(this.date, this.receivedAt, this.source, this.start, this.finish, this.turn, {this.documentId, this.needsInvestigation = false, this.dutyType = 'working'});
+  const RosterUpdateNotice(this.date, this.receivedAt, this.source, this.start, this.finish, this.turn, {this.documentId, this.needsInvestigation = false, this.dutyType = 'working', this.amendmentCode, this.kind = 'allocated'});
   final String date, source, start, finish, turn;
   final DateTime receivedAt;
   final String? documentId;
   final bool needsInvestigation;
   final String dutyType;
+  final String? amendmentCode;
+  final String kind;
+  String get title => RosterNotificationText.title(date, amendmentCode, dutyType, needsInvestigation ? 'leave_conflict' : kind);
   Duty? get rosteredDuty {
     final dateValue = DateTime.tryParse(date);
     final sourceValue = const {'10D': RosterSource.tenDay, '7D': RosterSource.sevenDay, '48HR': RosterSource.fortyEightHour}[source];
@@ -25,7 +29,7 @@ class RosterUpdateNotice {
       remarks: 'Allocated from uploaded $source sheet after reviewing annual leave conflict');
   }
 
-  String get detail => '$source · $start–$finish${turn.isEmpty ? '' : ' · Turn $turn'}';
+  String get detail => RosterNotificationText.detail(source, start, finish, turn);
 }
 
 class RosterUpdateService {
@@ -40,7 +44,7 @@ class RosterUpdateService {
     if (key == null) return [];
     final cutoff = since ?? DateTime.now().subtract(const Duration(days: 30));
     final rows = await client.from('document_duties')
-        .select('duty_date, source, payroll_number, duty_type, document_id, book_on, book_off, turn_number, created_at')
+        .select('duty_date, source, payroll_number, duty_type, document_id, book_on, book_off, turn_number, amendment_code, created_at')
         .like('payroll_number', '%$key')
         .inFilter('source', ['10_day', '7_day', '48_hour'])
         .gt('created_at', cutoff.toUtc().toIso8601String())
@@ -61,12 +65,21 @@ class RosterUpdateService {
           .lte('leave_date', dates.last.toIso8601String().substring(0, 10));
       for (final row in granted) { annualLeaveDates.add(row['leave_date'] as String); }
     }
-    return fromRows(rows, payrollNumber: payroll, since: cutoff, annualLeaveDates: annualLeaveDates);
+    final events = await client.from('roster_push_events')
+        .select('document_id, duty_date, kind').eq('user_id', user.id)
+        .gt('created_at', cutoff.toUtc().toIso8601String())
+        .order('created_at', ascending: true);
+    final kinds = <String, String>{
+      for (final event in events)
+        '${event['document_id']}|${event['duty_date']}': event['kind'] as String,
+    };
+    return fromRows(rows, payrollNumber: payroll, since: cutoff, annualLeaveDates: annualLeaveDates, eventKinds: kinds);
   }
 
   static List<RosterUpdateNotice> fromRows(List<Map<String, dynamic>> rows, {
     required String? payrollNumber, required DateTime since,
     Set<String> annualLeaveDates = const {},
+    Map<String, String> eventKinds = const {},
   }) {
     final notices = <String, RosterUpdateNotice>{};
     const labels = {'10_day': '10D', '7_day': '7D', '48_hour': '48HR'};
@@ -83,6 +96,8 @@ class RosterUpdateService {
       final notice = RosterUpdateNotice(date, received, source, clock(row['book_on']), clock(row['book_off']), row['turn_number']?.toString() ?? '',
         documentId: row['document_id']?.toString(),
         dutyType: row['duty_type']?.toString() ?? 'working',
+        amendmentCode: row['amendment_code']?.toString(),
+        kind: eventKinds['${row['document_id']}|$date'] ?? 'allocated',
         needsInvestigation: annualLeaveDates.contains(date) && ['working', 'training', 'medical'].contains(row['duty_type']),
       );
       final key = '$date|$source';

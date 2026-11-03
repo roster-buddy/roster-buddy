@@ -18,7 +18,7 @@ void main() {
     ], payrollNumber: '52319', since: DateTime.utc(2026, 11, 2));
     expect(notices, hasLength(1));
     expect(notices.single.receivedAt, DateTime.utc(2026, 11, 2, 11));
-    expect(notices.single.detail, '7D · 16:53–01:11 · Turn 213');
+    expect(notices.single.detail, '7D 1653–0111 T213');
   });
   test('seen or invalid identifiers do not create another alert', () {
     final notices = RosterUpdateService.fromRows([
@@ -58,6 +58,16 @@ void main() {
     expect(duty.rosteredMinutes, 498);
     expect(RosterUpdateNotice('2026-11-05', DateTime.utc(2026, 11, 2), '7D',
       '—', '01:11', '213').rosteredDuty, isNull);
+  });
+
+  test('notice keeps the code label and server change kind', () {
+    final notices = RosterUpdateService.fromRows([{
+      ...row('2319', '2026-11-02T12:00:00Z'),
+      'document_id': 'sheet', 'duty_type': 'training', 'amendment_code': 'TS',
+    }], payrollNumber: '52319', since: DateTime.utc(2026, 11, 2),
+      eventKinds: {'sheet|2026-11-05': 'changed'});
+    expect(notices.single.title, 'Safety brief updated on 5/11/26');
+    expect(notices.single.detail, '7D 1653–0111 T213');
   });
 
 }
