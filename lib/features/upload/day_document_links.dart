@@ -14,6 +14,7 @@ class DayDocumentLinks extends StatefulWidget {
 class _DayDocumentLinksState extends State<DayDocumentLinks> {
   late Future<List<Map<String, dynamic>>> _documents;
   String? _opening;
+  bool _expanded = false;
   @override
   void initState() { super.initState(); _documents = _load(); }
 
@@ -71,8 +72,16 @@ class _DayDocumentLinksState extends State<DayDocumentLinks> {
       final rows = snapshot.data ?? [];
       if (rows.isEmpty) return const SizedBox.shrink();
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Text('Uploaded documents', style: TextStyle(fontWeight: FontWeight.w800)),
-        for (final row in rows)
+        Row(children: [
+          const Expanded(child: Text('Uploaded documents', style: TextStyle(fontWeight: FontWeight.w800))),
+          if (rows.length > 1)
+            IconButton(
+              tooltip: _expanded ? 'Show latest upload only' : 'Show all uploads (${rows.length})',
+              onPressed: () => setState(() => _expanded = !_expanded),
+              icon: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
+            ),
+        ]),
+        for (final row in (_expanded ? rows : rows.take(1)))
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.description_outlined),
