@@ -5,6 +5,54 @@ import 'package:roster_buddy/core/models/roster_source.dart';
 import 'package:roster_buddy/core/parser/daily_amendment_parser.dart';
 
 void main() {
+  test('cropped report date overrides screenshot timestamp and numeric initial survives', () async {
+    final parser = DailyAmendmentParser(documentType: DocumentType.sevenDayAmendment);
+    final result = await parser.parse(pageText: const ['''
+03/11/2026, 09:40
+Daily Roster Report
+rt for Friday 06/11/26 in All Links
+Name Pay Depot Amend Turn Book Book
+8 Example 5678 WOD 215 17:11
+01:31 8.20 Amended Turn
+G Sample 6789 WOD ALD ALD
+08:45
+''']);
+    expect(result.hasBlockingWarnings, isFalse);
+    expect(result.duties, hasLength(2));
+    final shift = result.duties.first;
+    expect(shift.payrollNumber, '5678');
+    expect(shift.date, DateTime(2026, 11, 6));
+    expect(shift.turnNumber, '215');
+    expect(shift.bookOn, '17:11');
+    expect(shift.bookOff, '01:31');
+    expect(result.identifiedDates, [DateTime(2026, 11, 6)]);
+    expect(result.duties.last.dutyType, DutyType.annualLeave);
+    expect(result.duties.last.bookOn, isNull);
+  });
+
+  test('numeric noise in initial does not turn payroll into a clock', () async {
+    final parser = DailyAmendmentParser(documentType: DocumentType.sevenDayAmendment);
+    final result = await parser.parse(pageText: const ['''
+Report for Friday 06/11/26
+i 0 Example 5678 WOD ALLOC 211 15:11 00:58 8.45 Amended Turn
+''']);
+    expect(result.duties.single.payrollNumber, '5678');
+    expect(result.duties.single.bookOn, '15:11');
+    expect(result.hasBlockingWarnings, isFalse);
+  });
+
+  test('damaged clocks remain excluded instead of inferred from duration', () async {
+    final parser = DailyAmendmentParser(documentType: DocumentType.sevenDayAmendment);
+    final result = await parser.parse(pageText: const ['''
+Report for Friday 06/11/26
+R Example 5678 WOD ALLOC 301.00.25 12:55 0.45 Amended Turn
+B Sample 6789 WOD 215 17:11 01:31 8.20
+''']);
+    expect(result.duties, hasLength(1));
+    expect(result.duties.single.payrollNumber, '6789');
+    expect(result.hasBlockingWarnings, isTrue);
+  });
+
   group('DailyAmendmentParser header-aware parsing', () {
     test('parses a mapped 10-Day amendment row', () async {
       final parser = DailyAmendmentParser(

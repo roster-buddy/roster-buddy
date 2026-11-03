@@ -352,17 +352,6 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
               label: const Text('Add missing shift'),
             ),
           ],
-          if (parsed.warnings.any(_unreadable) || _excludeUnreadable)
-            CheckboxListTile(
-              value: _excludeUnreadable,
-              onChanged: (value) =>
-                  setState(() => _excludeUnreadable = value ?? false),
-              title: const Text('Exclude unreadable rows'),
-              subtitle: const Text(
-                'Only the reviewed records below will be imported. Missing rows are not added or guessed.',
-              ),
-              controlAffinity: ListTileControlAffinity.leading,
-            ),
           if (!parsed.canImport)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
@@ -484,6 +473,24 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
                           : _record(index - 1),
                     ),
             ),
+            if (parsed != null && !parsed.canImport)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  parsed.warnings.any(_unreadable)
+                    ? 'Import paused: some rows are unreadable. Check them above, then exclude those rows or add a corrected shift.'
+                    : 'Import paused: check the warnings above.',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            if (parsed != null && (parsed.warnings.any(_unreadable) || _excludeUnreadable))
+              CheckboxListTile(
+                value: _excludeUnreadable,
+                onChanged: (value) => setState(() => _excludeUnreadable = value ?? false),
+                title: const Text('Import reviewed records only'),
+                subtitle: const Text('Exclude unreadable rows. Missing shifts will not be guessed.'),
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
             Padding(
               padding: const EdgeInsets.all(16),
               child: Row(

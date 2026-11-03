@@ -306,7 +306,9 @@ class DocumentProcessingService {
       duties: duties,
       ownRecordCount: ownRecords,
       payrollNumber: ownPayroll,
-      identifiedDates: DocumentDateIndex.fromText(reconstructedPageText),
+      identifiedDates: _isDailyAmendment(documentType)
+          ? parseResult.identifiedDates
+          : DocumentDateIndex.fromText(reconstructedPageText),
     );
   }
 
