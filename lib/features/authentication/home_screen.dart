@@ -11200,9 +11200,9 @@ class _DayShiftSummaryState extends State<_DayShiftSummary> {
       Text(nextDay ? '+1 day' : '', style: const TextStyle(color: Color(0xFF52667A))),
     ]));
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text('${weekdays[date.weekday-1]} ${date.day} ${months[date.month-1]} ${date.year}',
+      if (!_editing) Text('${weekdays[date.weekday-1]} ${date.day} ${months[date.month-1]} ${date.year}',
         style: const TextStyle(color: navy, fontSize: 20, fontWeight: FontWeight.w900)),
-      const SizedBox(height: 8),
+      if (!_editing) const SizedBox(height: 8),
       Row(children: [
         Expanded(child: Text(type, style: TextStyle(color: colour, fontWeight: FontWeight.w800))),
         if (!annualLeave && duty != null) _RosterSourceBadge(source: duty!.source),
@@ -11220,14 +11220,16 @@ class _DayShiftSummaryState extends State<_DayShiftSummary> {
             Expanded(child: Text(duty?.turnNumber?.trim().isNotEmpty == true ? 'Turn ${duty!.turnNumber}' : '',
               textAlign: TextAlign.center, style: const TextStyle(color: navy, fontWeight: FontWeight.w800))),
             Expanded(child: DateUtils.isSameDay(date, DateTime.now()) && duty?.dutyType.countsAsWorking == true
-              ? TextButton(onPressed: _saving ? null : _editing ? _save : () => setState(() { _start.text = _savedStart.replaceAll(':', ''); _finish.text = _savedFinish.replaceAll(':', ''); _editing = true; }),
-                  child: Text(_saving ? 'Saving…' : _editing ? 'Save times' : 'Edit times'))
+              ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                if (_editing) IconButton(tooltip: 'Cancel time edit', onPressed: _saving ? null : () {
+                  FocusScope.of(context).unfocus();
+                  setState(() { _editing = false; _error = null; _start.text = _savedStart; _finish.text = _savedFinish; });
+                }, icon: const Icon(Icons.close, size: 18)),
+                Flexible(child: TextButton(onPressed: _saving ? null : _editing ? _save : () => setState(() { _start.text = _savedStart.replaceAll(':', ''); _finish.text = _savedFinish.replaceAll(':', ''); _editing = true; }),
+                  child: Text(_saving ? 'Saving…' : _editing ? 'Save' : 'Edit times'))),
+              ])
               : const SizedBox.shrink()),
           ]),
-          if (_editing) TextButton(onPressed: _saving ? null : () {
-            FocusScope.of(context).unfocus();
-            setState(() { _editing = false; _error = null; _start.text = _savedStart; _finish.text = _savedFinish; });
-          }, child: const Text('Cancel')),
           if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
 
         ]),
