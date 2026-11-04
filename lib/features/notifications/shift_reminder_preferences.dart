@@ -76,14 +76,18 @@ class _ShiftReminderSettingsPageState extends State<ShiftReminderSettingsPage> {
       if (user == null) throw StateError('Sign in required');
       final row = await client.from('driver_profiles')
           .select('shift_reminder_minutes').eq('user_id', user.id).single();
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _selected = readShiftReminderMinutes(row['shift_reminder_minutes']);
         _loading = false; _loaded = true; _error = null;
-      });
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _loading = false; _error = 'Could not load reminder preferences. Please retry.';
-      });
+        });
+      }
     }
   }
 
@@ -96,8 +100,10 @@ class _ShiftReminderSettingsPageState extends State<ShiftReminderSettingsPage> {
       await client.from('driver_profiles')
           .update({'shift_reminder_minutes': _selected.toList()..sort()})
           .eq('user_id', user.id).select('user_id').single();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Shift reminders saved.')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Shift reminders saved.')));
+      }
     } catch (_) {
       if (mounted) setState(() => _error = 'Could not save reminders. Please retry.');
     } finally {
