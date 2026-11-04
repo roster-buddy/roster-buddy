@@ -12,17 +12,25 @@ void main() {
     addTearDown(tester.view.resetViewInsets);
     var saved = 0;
     await tester.pumpWidget(MaterialApp(home: Scaffold(
-      body: Align(alignment: Alignment.bottomCenter,
-        child: DayDetailsPanel(
-          summary: SizedBox(height: 230, child: Column(children: [
-            const TextField(key: Key('time')),
-            TextButton(onPressed: () { saved++; }, child: const Text('Save')),
-          ])),
-          body: List.generate(12, (i) => Text('Document $i')),
-          actions: const [Text('Request annual leave')],
+      body: Builder(builder: (context) => TextButton(
+        onPressed: () => showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          enableDrag: false,
+          builder: (_) => DayDetailsPanel(
+            summary: SizedBox(height: 230, child: Column(children: [
+              const TextField(key: Key('time')),
+              TextButton(onPressed: () { saved++; }, child: const Text('Save')),
+            ])),
+            body: List.generate(12, (i) => Text('Document $i')),
+            actions: const [Text('Request annual leave')],
+          ),
         ),
-      ),
+        child: const Text('Open day'),
+      )),
     )));
+    await tester.tap(find.text('Open day'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('time')));
     tester.view.viewInsets = const FakeViewPadding(bottom: 340);
     await tester.pumpAndSettle();
