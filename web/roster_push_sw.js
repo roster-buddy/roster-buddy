@@ -14,8 +14,8 @@ self.addEventListener('push',event=>{
  event.waitUntil(self.registration.showNotification(data.title || 'Roster Buddy update',{
    body:data.body || 'Open Roster Buddy to view your roster updates.',
    tag:data.tag || 'roster-update',
-   icon:new URL('icons/Icon-192.png',self.registration.scope).href,
-   badge:new URL('icons/Icon-192.png',self.registration.scope).href,
+   icon:new URL('icons/roster-train-192.png',self.registration.scope).href,
+   badge:new URL('icons/roster-train-192.png',self.registration.scope).href,
    data:{url:notificationTarget(data.url)},
  }));
 });

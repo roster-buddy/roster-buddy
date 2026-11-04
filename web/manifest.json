@@ -3,30 +3,30 @@
   "short_name": "Roster Buddy",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#0175C2",
-  "theme_color": "#0175C2",
+  "background_color": "#FFFFFF",
+  "theme_color": "#1769AA",
   "description": "Your roster, leave and shift swaps in one place.",
   "orientation": "portrait-primary",
   "prefer_related_applications": false,
   "icons": [
     {
-      "src": "icons/Icon-192.png",
+      "src": "icons/roster-train-192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "icons/Icon-512.png",
+      "src": "icons/roster-train-512.png",
       "sizes": "512x512",
       "type": "image/png"
     },
     {
-      "src": "icons/Icon-maskable-192.png",
+      "src": "icons/roster-train-maskable-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "icons/Icon-maskable-512.png",
+      "src": "icons/roster-train-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
