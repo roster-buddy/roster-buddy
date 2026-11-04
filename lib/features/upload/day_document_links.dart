@@ -3,8 +3,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'document_opener.dart';
 
 class DayDocumentLinks extends StatefulWidget {
-  const DayDocumentLinks({required this.date, this.loadDocuments, this.openDocument, super.key});
+  const DayDocumentLinks({required this.date, this.loadDocuments, this.openDocument, this.compact = false, super.key});
   final DateTime date;
+  final bool compact;
   final Future<List<Map<String, dynamic>>> Function(DateTime)? loadDocuments;
   final Future<void> Function(Map<String, dynamic>)? openDocument;
   @override
@@ -71,6 +72,23 @@ class _DayDocumentLinksState extends State<DayDocumentLinks> {
       }
       final rows = snapshot.data ?? [];
       if (rows.isEmpty) return const SizedBox.shrink();
+      if (widget.compact) {
+        return Column(children: [
+          ListTile(contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.description_outlined),
+            title: Text('Documents (${rows.length})'),
+            trailing: Icon(_expanded ? Icons.expand_less : Icons.chevron_right),
+            onTap: () => setState(() => _expanded = !_expanded)),
+          if (_expanded) for (final row in rows)
+            ListTile(contentPadding: const EdgeInsets.only(left: 12),
+              title: Text(_label(row['detected_type'])),
+              subtitle: Text(row['original_filename']?.toString() ?? 'Uploaded document',
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+              trailing: const Icon(Icons.open_in_new),
+              onTap: _opening == null ? () => _open(row) : null),
+          const Divider(height: 1),
+        ]);
+      }
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           const Expanded(child: Text('Uploaded documents', style: TextStyle(fontWeight: FontWeight.w800))),

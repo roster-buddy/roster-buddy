@@ -3284,7 +3284,7 @@ class _DashboardPageState extends State<_DashboardPage> {
         return _PinnedDayPanel(
           summary: _DayShiftSummary(date: date, duty: duty, annualLeave: isGrantedAnnualLeave),
           children: [
-                DayDocumentLinks(date: date),
+                DayDocumentLinks(date: date, compact: true),
                 if (duty != null || isGrantedAnnualLeave) ...[
                   _DutyHistorySection(
                     future: DutyHistoryService().load(date, _dutyResolver.getDutiesForDate(date)),
@@ -7607,7 +7607,7 @@ class _CalendarPageState extends State<_CalendarPage> {
         return _PinnedDayPanel(
           summary: _DayShiftSummary(date: date, duty: duty, annualLeave: isGrantedAnnualLeave),
           children: [
-                DayDocumentLinks(date: date),
+                DayDocumentLinks(date: date, compact: true),
                 if (duty != null || isGrantedAnnualLeave) ...[
                   _DutyHistorySection(
                     future: DutyHistoryService().load(date, _dutyResolver.getDutiesForDate(date)),
