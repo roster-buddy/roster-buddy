@@ -1,3 +1,4 @@
+import '../../core/widgets/day_details_panel.dart';
 import 'package:flutter/services.dart';
 import '../upload/roster_updates_section.dart';
 import '../notifications/push_notification_settings.dart';
@@ -11086,38 +11087,11 @@ class _PinnedDayPanel extends StatelessWidget {
   final Widget summary;
   final List<Widget> children;
   @override
-  Widget build(BuildContext context) {
-    final footer = children.whereType<_PinnedDayAction>().toList();
-    return SafeArea(child: SizedBox(
-      height: (MediaQuery.sizeOf(context).height - MediaQuery.viewInsetsOf(context).bottom) * 0.88,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Padding(padding: const EdgeInsets.fromLTRB(20, 8, 12, 12),
-          child: Row(children: [
-            const Expanded(child: Text('Day details', style: TextStyle(fontWeight: FontWeight.w800))),
-            IconButton(tooltip: 'Close day details', onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.close)),
-          ])),
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: summary),
-        const SizedBox(height: 8),
-        Expanded(child: SingleChildScrollView(
-          physics: const ClampingScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: children.where((child) => child is! _PinnedDayAction).toList()),
-        )),
-        Container(
-          decoration: const BoxDecoration(border: Border(top: BorderSide(color: Color(0xFFE0E5EA)))),
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            for (var i = 0; i < footer.length; i++) ...[
-              if (i > 0) const SizedBox(height: 8),
-              footer[i],
-            ],
-          ]),
-        ),
-      ]),
-    ));
-  }
+  Widget build(BuildContext context) => DayDetailsPanel(
+    summary: summary,
+    body: children.where((child) => child is! _PinnedDayAction).toList(),
+    actions: children.whereType<_PinnedDayAction>().toList(),
+  );
 }
 
 class _DayShiftSummary extends StatefulWidget {
