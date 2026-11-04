@@ -1,3 +1,4 @@
+import '../notifications/shift_reminder_preferences.dart';
 import 'documents_page.dart';
 import '../../core/formatters/roster_date_format.dart';
 // ignore_for_file: deprecated_member_use
@@ -328,6 +329,15 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                         Icons.notifications_outlined,
                         color: railwayBlue,
                       ),
+                      title: const Text('Shift reminders'),
+                      subtitle: const Text('Before book-on and the fixed book-off check'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push<void>(
+                        MaterialPageRoute<void>(builder: (_) => const ShiftReminderSettingsPage())),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.notifications_outlined, color: railwayBlue),
                       title: const Text('Notifications'),
                       subtitle: const Text(
                         'Pending requests, approvals and allocations',

@@ -1,3 +1,5 @@
+import vm from 'node:vm';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { endpointAllowed, subscriptionValid } from '../supabase/functions/roster-push/push-common.mjs';
@@ -40,4 +42,25 @@ test('permission starts from the tap, saved subscriptions are account-bound, and
  assert.ok(events.includes('unsubscribe'));
  navigator.userAgent='iPhone';globalThis.matchMedia=()=>({matches:false});
  assert.equal((await api.status('driver-a')).state,'install');
+});
+
+
+test('shift notifications open their actual date and reject external links',async()=>{
+ const listeners={};let shown,opened;
+ const scope='https://roster-buddy.github.io/roster-buddy/';
+ const self={registration:{scope,async showNotification(title,value){shown={title,...value};}},
+   addEventListener:(name,callback)=>listeners[name]=callback,
+   clients:{async matchAll(){return [];},async openWindow(url){opened=url;}}};
+ vm.runInNewContext(readFileSync(new URL('../web/roster_push_sw.js',import.meta.url),'utf8'),{self,URL});
+ let pending;
+ listeners.push({data:{json:()=>({title:'Check your book-off time',url:'?shift=2026-11-04&bookOff=1'})},
+   waitUntil:value=>pending=value});
+ await pending;
+ assert.equal(shown.data.url,scope+'?shift=2026-11-04&bookOff=1');
+ listeners.notificationclick({notification:{data:shown.data,close(){}},waitUntil:value=>pending=value});
+ await pending;
+ assert.equal(opened,scope+'?shift=2026-11-04&bookOff=1');
+ listeners.push({data:{json:()=>({url:'https://evil.example/steal'})},waitUntil:value=>pending=value});
+ await pending;
+ assert.equal(shown.data.url,scope+'?notifications=1');
 });

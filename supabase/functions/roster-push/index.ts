@@ -35,8 +35,8 @@ async function sendPending(cfg: any) {
      if(!endpointAllowed(item.subscription?.endpoint)) throw new Error('Invalid push endpoint');
      await webPush.sendNotification(item.subscription, JSON.stringify({
        title:item.title, body:item.body, tag:'roster-'+item.event_id,
-       url:'?notifications=1',
-     }), {TTL:3600,urgency:'high',timeout:10000,vapidDetails:{
+       url:item.target_url || '?notifications=1',
+     }), {TTL:item.ttl || 3600,urgency:'high',timeout:10000,vapidDetails:{
        subject,publicKey:cfg.vapid.publicKey,privateKey:cfg.vapid.privateKey,
      }});
      const result = await db.from('roster_push_deliveries').update({status:'sent',sent_at:new Date().toISOString(),last_error:null}).in('id',item.delivery_ids);
@@ -50,7 +50,7 @@ async function sendPending(cfg: any) {
          status:item.attempts>=5?'failed':'pending',
          next_attempt_at:new Date(Date.now()+Math.min(3600,60*(2**item.attempts))*1000).toISOString(),
          last_error:error?.statusCode ? 'Push provider HTTP '+error.statusCode : 'Push delivery failed',
-       }).eq('id',item.delivery_id);
+       }).in('id',item.delivery_ids);
      }
      failed++;
    }

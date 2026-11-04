@@ -1,3 +1,4 @@
+import '../notifications/shift_reminder_preferences.dart';
 import '../../core/formatters/roster_date_format.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -51,6 +52,8 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
   final List<DateTime> _confirmedFloatingLeaveDates = <DateTime>[];
 
   bool _permanentlyUnavailableSundays = false;
+  Set<int> _shiftReminderMinutes = {30};
+  bool _reminderPreferencesTouched = false;
 
   int get _currentLeaveYear => DateTime.now().year;
 
@@ -80,7 +83,10 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
     final user = client.auth.currentUser;
     if (user == null) return;
     try {
-      final profile = await client.from('driver_profiles').select('driver_number, roster_number').eq('user_id', user.id).maybeSingle();
+      final profile = await client.from('driver_profiles').select('driver_number, roster_number, shift_reminder_minutes').eq('user_id', user.id).maybeSingle();
+      if (mounted && !_reminderPreferencesTouched && profile != null) {
+        setState(() => _shiftReminderMinutes = readShiftReminderMinutes(profile['shift_reminder_minutes']));
+      }
       if (mounted && _driverNumberController.text == initial && profile?['driver_number'] != null) {
         _driverNumberController.text = profile!['driver_number'].toString();
       }
@@ -386,6 +392,7 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
         'base_roster_starts_with_line': _hasMutualRosterSwap
             ? _baseRosterStartingLine
             : 'mine',
+        'shift_reminder_minutes': _shiftReminderMinutes.toList()..sort(),
         'setup_completed': false,
       }, onConflict: 'user_id');
 
@@ -1001,6 +1008,16 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
             ),
           ),
         ),
+        const SizedBox(height: 18),
+        Card(child: Padding(padding: const EdgeInsets.all(16),
+          child: ShiftReminderPreferences(
+            selected: _shiftReminderMinutes, enabled: !_saving,
+            onChanged: (value) => setState(() {
+              _reminderPreferencesTouched = true;
+              _shiftReminderMinutes = value;
+            }),
+          ),
+        )),
         const SizedBox(height: 28),
         _backAndContinue(onContinue: _continueFromWorkPreferences),
       ],
@@ -1096,6 +1113,10 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
                   '${_confirmedFloatingLeaveDates.length}',
                 ),
                 const Divider(height: 24),
+                _reviewRow('Before book-on',
+                  _shiftReminderMinutes.isEmpty ? 'No advance reminders' :
+                    ((_shiftReminderMinutes.toList()..sort()).map(shiftReminderLabel).join(', '))),
+                _reviewRow('After book-off', '5 minutes (always included)'),
                 _reviewRow(
                   'Sunday availability',
                   _permanentlyUnavailableSundays

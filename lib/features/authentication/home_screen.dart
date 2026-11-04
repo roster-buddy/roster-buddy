@@ -1,3 +1,4 @@
+import '../notifications/shift_reminder_link.dart';
 import '../../core/widgets/day_details_panel.dart';
 import 'package:flutter/services.dart';
 import '../upload/roster_updates_section.dart';
@@ -128,7 +129,14 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _refreshPendingActionCount();
-    if (Uri.base.queryParameters['notifications'] == '1') {
+    final reminderDate = shiftReminderDate(Uri.base);
+    if (reminderDate != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _selectedIndex = 1);
+        _openCalendarAction(reminderDate, _CalendarDayAction.viewDay);
+      });
+    } else if (Uri.base.queryParameters['notifications'] == '1') {
       WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _openPendingActions(); });
     }
     _rosterNoticeTimer = Timer.periodic(const Duration(seconds: 30), (_) => _refreshPendingActionCount());
@@ -5384,7 +5392,7 @@ class _CalendarPageState extends State<_CalendarPage> {
         date: date,
         duty: cachedDuty,
         action: action,
-        resolveFresh: false,
+        resolveFresh: action == _CalendarDayAction.viewDay,
       );
       return;
     }
@@ -8095,6 +8103,9 @@ class _CalendarPageState extends State<_CalendarPage> {
     }
 
     switch (action) {
+      case _CalendarDayAction.viewDay:
+        _showDayDetails(date: date, duty: effectiveDuty);
+        return;
       case _CalendarDayAction.editTimes:
         if (effectiveDuty == null) {
           _showCalendarMessage(
@@ -9269,6 +9280,8 @@ class _CalendarPageState extends State<_CalendarPage> {
 
   String _dayActionLabel(_CalendarDayAction action) {
     switch (action) {
+      case _CalendarDayAction.viewDay:
+        return 'View day';
       case _CalendarDayAction.editTimes:
         return 'Edit book-on/off time';
       case _CalendarDayAction.selectTurnNumber:
@@ -10605,6 +10618,7 @@ enum _CalendarDayAction {
   manageAnnualLeave,
   allocateShift,
   makeSundayAvailable,
+  viewDay,
 }
 
 class _CalendarLegendItem extends StatelessWidget {
@@ -11317,7 +11331,7 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
           Row(children: [
             Expanded(child: Text(duty?.turnNumber?.trim().isNotEmpty == true ? 'Turn ${duty!.turnNumber}' : '',
               textAlign: TextAlign.center, style: const TextStyle(color: navy, fontWeight: FontWeight.w800))),
-            Expanded(child: DateUtils.isSameDay(date, DateTime.now()) && duty?.dutyType.countsAsWorking == true
+            Expanded(child: canEditShiftTimes(date, on, off, DateTime.now()) && duty?.dutyType.countsAsWorking == true
               ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 if (_editing) IconButton(tooltip: 'Cancel time edit', onPressed: _saving ? null : () {
                   FocusScope.of(context).unfocus();
