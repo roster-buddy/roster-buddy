@@ -856,7 +856,7 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
             decoration: const InputDecoration(
               labelText: 'Floating days remaining now',
               helperText: 'Enter the balance you genuinely have left today.',
-              prefixIcon: Icon(Icons.beach_access_outlined),
+              prefixIcon: Icon(Icons.flight_takeoff),
               border: OutlineInputBorder(),
             ),
             validator: _floatingBalanceValidator,

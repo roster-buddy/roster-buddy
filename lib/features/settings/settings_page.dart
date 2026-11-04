@@ -775,8 +775,8 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                   label: 'Upload',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.beach_access_outlined),
-                  selectedIcon: Icon(Icons.beach_access),
+                  icon: Icon(Icons.flight_takeoff),
+                  selectedIcon: Icon(Icons.flight),
                   label: 'Annual Leave',
                 ),
                 NavigationDestination(
@@ -840,7 +840,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
           const ListTile(
             leading: CircleAvatar(
               backgroundColor: Color(0x1A1769AA),
-              child: Icon(Icons.beach_access_outlined, color: railwayBlue),
+              child: Icon(Icons.flight_takeoff, color: railwayBlue),
             ),
             title: Text(
               'Floating days left',
@@ -1150,7 +1150,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                               ? 'Use your actual remaining balance if joining '
                                     'Roster Buddy part way through the year.'
                               : 'Normally 14 at the start of a new leave year.',
-                          prefixIcon: const Icon(Icons.beach_access_outlined),
+                          prefixIcon: const Icon(Icons.flight_takeoff),
                           border: const OutlineInputBorder(),
                         ),
                       ),

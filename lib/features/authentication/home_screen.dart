@@ -588,8 +588,8 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Upload',
           ),
           NavigationDestination(
-            icon: Icon(Icons.beach_access_outlined),
-            selectedIcon: Icon(Icons.beach_access),
+            icon: Icon(Icons.flight_takeoff),
+            selectedIcon: Icon(Icons.flight),
             label: 'Annual Leave',
           ),
           NavigationDestination(
@@ -1960,7 +1960,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
           children: [
             Row(
               children: [
-                const Icon(Icons.beach_access_outlined, color: leaveRed),
+                const Icon(Icons.flight_takeoff, color: leaveRed),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -2160,7 +2160,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
               else ...[
                 const Row(
                   children: [
-                    Icon(Icons.beach_access_outlined, color: leaveRed),
+                    Icon(Icons.flight_takeoff, color: leaveRed),
                     SizedBox(width: 8),
                     Text(
                       'Floating annual leave',
@@ -2312,8 +2312,8 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
             label: 'Upload',
           ),
           NavigationDestination(
-            icon: Icon(Icons.beach_access_outlined),
-            selectedIcon: Icon(Icons.beach_access),
+            icon: Icon(Icons.flight_takeoff),
+            selectedIcon: Icon(Icons.flight),
             label: 'Annual Leave',
           ),
           NavigationDestination(
@@ -3376,7 +3376,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                           },
                         );
                       },
-                      icon: const Icon(Icons.beach_access_outlined),
+                      icon: const Icon(Icons.flight_takeoff),
                       label: const Text('Request annual leave'),
                       style: FilledButton.styleFrom(backgroundColor: leaveRed),
                     ),
@@ -4778,7 +4778,7 @@ class _DashboardPageState extends State<_DashboardPage> {
 
       case DutyType.annualLeave:
         return _DutyPresentation(
-          icon: Icons.beach_access_outlined,
+          icon: Icons.flight_takeoff,
           colour: leaveRed,
           title: dateTitle,
           description: 'Annual leave',
@@ -7772,7 +7772,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                               action: _CalendarDayAction.requestAnnualLeave,
                             );
                           },
-                          icon: const Icon(Icons.beach_access_outlined),
+                          icon: const Icon(Icons.flight_takeoff),
                           label: const Text('Request annual leave'),
                           style: FilledButton.styleFrom(
                             backgroundColor: leaveRed,
@@ -11168,16 +11168,51 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
     const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     final on = _start.text.trim();
     final off = _finish.text.trim();
-    final timed = !annualLeave && (on.isNotEmpty || off.isNotEmpty);
+    final onLeave = annualLeave || duty?.dutyType == DutyType.annualLeave;
+    final timed = !onLeave && duty?.dutyType.countsAsWorking == true &&
+        (on.isNotEmpty || off.isNotEmpty);
+    final needsReview = !onLeave && duty != null &&
+        (duty!.dutyType == DutyType.unknown ||
+         (duty!.dutyType.countsAsWorking &&
+          (_clock(on) == null || _clock(off) == null)));
     final overnight = timed && off.compareTo(on) < 0;
-    final type = annualLeave ? 'Annual leave' : duty == null ? 'No roster information' :
+    final type = onLeave ? 'Annual leave' : duty == null ? 'No roster information' :
       duty!.dutyType.countsAsWorking ? (duty!.dutyType == DutyType.training ? 'Training' : duty!.dutyType == DutyType.medical ? 'Medical' : 'Working') : switch (duty!.dutyType) {
         DutyType.restDay => 'Rest day', DutyType.sick => 'Sick',
         DutyType.publicHoliday => 'Bank holiday', DutyType.unavailable => 'Unavailable',
         DutyType.annualLeave => 'Annual leave', _ => 'Review duty',
       };
-    final colour = annualLeave ? const Color(0xFFD64545) :
-      duty?.dutyType.countsAsWorking == true ? const Color(0xFF2E7D32) : const Color(0xFF52667A);
+    final colour = duty == null && !onLeave ? const Color(0xFF52667A) :
+      onLeave ? const Color(0xFFD64545) :
+      needsReview ? const Color(0xFF1769AA) :
+      switch (duty!.dutyType) {
+        DutyType.working || DutyType.training || DutyType.medical => const Color(0xFF2E7D32),
+        DutyType.restDay || DutyType.unavailable => const Color(0xFFB88700),
+        DutyType.sick || DutyType.publicHoliday => const Color(0xFFD64545),
+        _ => const Color(0xFF1769AA),
+      };
+    final statusIcon = onLeave ? Icons.flight_takeoff :
+      switch (duty?.dutyType) {
+        DutyType.restDay => Icons.free_breakfast_outlined,
+        DutyType.unavailable => Icons.block_outlined,
+        DutyType.sick => Icons.sick_outlined,
+        DutyType.publicHoliday => Icons.event_available_outlined,
+        _ => Icons.info_outline,
+      };
+    final statusDetail = onLeave ? 'Annual leave recorded' :
+      switch (duty?.dutyType) {
+        DutyType.restDay => 'No shift allocated',
+        DutyType.unavailable => 'Not available for work',
+        DutyType.sick => 'Sickness recorded',
+        DutyType.publicHoliday => 'Non-working day',
+        null => 'No shift has been recorded for this date.',
+        _ => '',
+      };
+    final reviewDetail = duty?.remarks?.trim().isNotEmpty == true
+        ? duty!.remarks!.trim()
+        : duty?.dutyType.countsAsWorking == true
+          ? 'Start or finish time is missing or unclear. Check the uploaded document and use More day actions to correct it.'
+          : 'Duty details need checking. Open Documents to check the source, then use More day actions to correct this day.';
     Widget clock(String label, String? value, bool nextDay) => Expanded(child: Column(children: [
       Text(label, style: const TextStyle(color: navy, fontWeight: FontWeight.w700)),
       const SizedBox(height: 4),
@@ -11209,11 +11244,66 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
       if (!_editing) Text('${weekdays[date.weekday-1]} ${date.day} ${months[date.month-1]} ${date.year}',
         style: const TextStyle(color: navy, fontSize: 20, fontWeight: FontWeight.w900)),
       if (!_editing) const SizedBox(height: 8),
-      Row(children: [
-        Expanded(child: Text(type, style: TextStyle(color: colour, fontWeight: FontWeight.w800))),
-        if (!annualLeave && duty != null) _RosterSourceBadge(source: duty!.source),
-      ]),
-      const SizedBox(height: 10),
+      if (timed) ...[
+        Row(children: [
+          Expanded(child: Text(type, style: TextStyle(color: colour, fontWeight: FontWeight.w800))),
+          if (!annualLeave && duty != null) _RosterSourceBadge(source: duty!.source),
+        ]),
+        const SizedBox(height: 10),
+      ] else ...[
+        Container(
+          key: const ValueKey('day-status-card'),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: colour.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(16),
+            border: Border(left: BorderSide(color: colour, width: 5)),
+          ),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: colour.withValues(alpha: 0.12), shape: BoxShape.circle),
+              child: Icon(statusIcon, color: colour, size: 26),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(type, style: const TextStyle(color: navy, fontSize: 20, fontWeight: FontWeight.w800)),
+              if (statusDetail.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(statusDetail, style: const TextStyle(color: navy)),
+              ],
+            ])),
+            if (!annualLeave && duty != null) ...[
+              const SizedBox(width: 8),
+              _RosterSourceBadge(source: duty!.source),
+            ],
+          ]),
+        ),
+        const SizedBox(height: 10),
+      ],
+      if (needsReview) Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Semantics(
+          liveRegion: true,
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1769AA).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Row(children: [
+                Icon(Icons.info_outline, color: Color(0xFF1769AA), size: 20),
+                SizedBox(width: 8),
+                Text('Needs review', style: TextStyle(color: navy, fontWeight: FontWeight.w800)),
+              ]),
+              const SizedBox(height: 6),
+              Text(reviewDetail, style: const TextStyle(color: navy)),
+            ]),
+          ),
+        ),
+      ),
       // Keep Save in the fields' tap region: dismissing focus on pointer-down
       // can move the sheet before the button receives pointer-up on iOS web.
       if (timed) TextFieldTapRegion(child: Container(
