@@ -11108,13 +11108,31 @@ class _DayShiftSummaryState extends State<_DayShiftSummary> {
   late final TextEditingController _finish = TextEditingController(text: widget.duty?.bookOff ?? '');
   late String _savedStart = widget.duty?.bookOn ?? '';
   late String _savedFinish = widget.duty?.bookOff ?? '';
+  final FocusNode _startFocus = FocusNode();
+  final FocusNode _finishFocus = FocusNode();
   bool _editing = false, _saving = false;
   String? _error;
   Duty? get duty => widget.duty;
   DateTime get date => widget.date;
   bool get annualLeave => widget.annualLeave;
   @override
-  void dispose() { _start.dispose(); _finish.dispose(); super.dispose(); }
+  void dispose() {
+    _startFocus.dispose(); _finishFocus.dispose();
+    _start.dispose(); _finish.dispose(); super.dispose();
+  }
+  void _beginEdit() {
+    setState(() {
+      _start.text = _savedStart.replaceAll(':', '');
+      _finish.text = _savedFinish.replaceAll(':', '');
+      _error = null;
+      _editing = true;
+    });
+    // The field is already mounted, so focus is requested in the user's tap.
+    // Deferring this until another frame can lose keyboard activation on iOS.
+    _finish.selection = TextSelection(baseOffset: 0, extentOffset: _finish.text.length);
+    _finishFocus.canRequestFocus = true;
+    _finishFocus.requestFocus();
+  }
   String? _clock(String text) {
     final digits = text.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.length != 4) return null;
@@ -11163,16 +11181,28 @@ class _DayShiftSummaryState extends State<_DayShiftSummary> {
     Widget clock(String label, String? value, bool nextDay) => Expanded(child: Column(children: [
       Text(label, style: const TextStyle(color: navy, fontWeight: FontWeight.w700)),
       const SizedBox(height: 4),
-      if (_editing) TextField(
+      TextField(
         controller: label == 'Start' ? _start : _finish,
+        focusNode: label == 'Start' ? _startFocus : _finishFocus,
+        canRequestFocus: _editing && !_saving,
+        readOnly: _saving,
+        showCursor: _editing,
+        enableInteractiveSelection: _editing,
         keyboardType: TextInputType.number,
         inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)],
         onTap: () { final controller = label == 'Start' ? _start : _finish; controller.selection = TextSelection(baseOffset: 0, extentOffset: controller.text.length); },
-        textAlign: TextAlign.center, enabled: !_saving,
-        decoration: InputDecoration(hintText: 'HHMM', semanticCounterText: label),
-        style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: navy),
-      ) else FittedBox(child: Text(value?.isNotEmpty == true ? value! : '—',
-        style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w900, color: navy))),
+        textAlign: TextAlign.center,
+        decoration: InputDecoration(
+          hintText: _editing ? 'HHMM' : '—',
+          semanticCounterText: label,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(vertical: 8),
+          border: _editing ? const UnderlineInputBorder() : InputBorder.none,
+          enabledBorder: _editing ? const UnderlineInputBorder() : InputBorder.none,
+          focusedBorder: _editing ? const UnderlineInputBorder() : InputBorder.none,
+        ),
+        style: TextStyle(fontSize: _editing ? 30 : 34, fontWeight: FontWeight.w900, color: navy),
+      ),
       Text(nextDay ? '+1 day' : '', style: const TextStyle(color: Color(0xFF52667A))),
     ]));
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -11203,7 +11233,7 @@ class _DayShiftSummaryState extends State<_DayShiftSummary> {
                   FocusScope.of(context).unfocus();
                   setState(() { _editing = false; _error = null; _start.text = _savedStart; _finish.text = _savedFinish; });
                 }, icon: const Icon(Icons.close, size: 18)),
-                Flexible(child: TextButton(onPressed: _saving ? null : _editing ? _save : () => setState(() { _start.text = _savedStart.replaceAll(':', ''); _finish.text = _savedFinish.replaceAll(':', ''); _editing = true; }),
+                Flexible(child: TextButton(onPressed: _saving ? null : _editing ? _save : _beginEdit,
                   child: Text(_saving ? 'Saving…' : _editing ? 'Save' : 'Edit times'))),
               ])
               : const SizedBox.shrink()),
