@@ -870,8 +870,6 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                     controller: controller,
                     autofocus: true,
                     keyboardType: TextInputType.number,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)],
-        onTap: () { final controller = label == 'Start' ? _start : _finish; controller.selection = TextSelection(baseOffset: 0, extentOffset: controller.text.length); },
                     decoration: InputDecoration(
                       labelText: 'Queue position',
                       hintText: 'For example 3',
@@ -11192,6 +11190,8 @@ class _DayShiftSummaryState extends State<_DayShiftSummary> {
       if (_editing) TextField(
         controller: label == 'Start' ? _start : _finish,
         keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)],
+        onTap: () { final controller = label == 'Start' ? _start : _finish; controller.selection = TextSelection(baseOffset: 0, extentOffset: controller.text.length); },
         textAlign: TextAlign.center, enabled: !_saving,
         decoration: InputDecoration(hintText: 'HHMM', semanticCounterText: label),
         style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: navy),
