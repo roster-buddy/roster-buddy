@@ -1,3 +1,4 @@
+import '../notifications/push_notification_settings.dart';
 import '../notifications/shift_reminder_preferences.dart';
 import '../../core/formatters/roster_date_format.dart';
 import 'package:flutter/material.dart';
@@ -1018,6 +1019,8 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
             }),
           ),
         )),
+        const SizedBox(height: 12),
+        const PushNotificationSettings(),
         const SizedBox(height: 28),
         _backAndContinue(onContinue: _continueFromWorkPreferences),
       ],
