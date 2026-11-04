@@ -3277,112 +3277,15 @@ class _DashboardPageState extends State<_DashboardPage> {
 
     await showModalBottomSheet<void>(
       context: context,
-      showDragHandle: true,
+      showDragHandle: false,
+      enableDrag: false,
       isScrollControlled: true,
       builder: (BuildContext sheetContext) {
-        return SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _fullDate(date),
-                  style: const TextStyle(
-                    color: navy,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 14),
+        return _PinnedDayPanel(
+          summary: _DayShiftSummary(date: date, duty: duty, annualLeave: isGrantedAnnualLeave),
+          children: [
                 DayDocumentLinks(date: date),
-                if (duty == null && !isGrantedAnnualLeave)
-                  const Text(
-                    'No roster information is available for this date.',
-                    style: TextStyle(color: textGrey),
-                  )
-                else ...[
-                  Row(
-                    children: [
-                      Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: isGrantedAnnualLeave
-                              ? leaveRed
-                              : _dashboardWeekColour(duty),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          isGrantedAnnualLeave
-                              ? 'Annual Leave'
-                              : _dashboardWeekStatus(duty!),
-                          style: const TextStyle(
-                            color: navy,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      if (isGrantedAnnualLeave)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: leaveRed.withValues(alpha: 0.10),
-                            borderRadius: BorderRadius.circular(7),
-                          ),
-                          child: Text(
-                            isFloatingAnnualLeave ? 'ALD' : 'AW',
-                            style: const TextStyle(
-                              color: leaveRed,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        )
-                      else
-                        _RosterSourceBadge(source: duty!.source),
-                    ],
-                  ),
-                  if (!isGrantedAnnualLeave &&
-                      (duty?.bookOn?.trim().isNotEmpty == true ||
-                          duty?.bookOff?.trim().isNotEmpty == true)) ...[
-                    const SizedBox(height: 14),
-                    Text(
-                      _timeDescription(duty!),
-                      style: const TextStyle(
-                        color: navy,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                  if (!isGrantedAnnualLeave &&
-                      duty?.turnNumber?.trim().isNotEmpty == true) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      'Turn ${duty!.turnNumber!.trim()}',
-                      style: const TextStyle(
-                        color: navy,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                  if (!isGrantedAnnualLeave &&
-                      duty?.remarks?.trim().isNotEmpty == true) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      displayDatesInText(duty!.remarks!.trim()),
-                      style: const TextStyle(color: textGrey, height: 1.35),
-                    ),
-                  ],
-                  const SizedBox(height: 22),
+                if (duty != null || isGrantedAnnualLeave) ...[
                   _DutyHistorySection(
                     future: DutyHistoryService().load(date, _dutyResolver.getDutiesForDate(date)),
                     onChanged: () { widget.onRosterChanged(); _loadDashboardDuties(); },
@@ -3453,7 +3356,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                         },
                   ),
                   const SizedBox(height: 12),
-                  SizedBox(
+                  _PinnedDayAction(child: SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
                       onPressed: () {
@@ -3477,7 +3380,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                       label: const Text('Request annual leave'),
                       style: FilledButton.styleFrom(backgroundColor: leaveRed),
                     ),
-                  ),
+                  )),
                   const SizedBox(height: 12),
                 ],
                 if (leaveRequest != null &&
@@ -3485,7 +3388,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                             AnnualLeaveRequestStatus.requested ||
                         leaveRequest.status ==
                             AnnualLeaveRequestStatus.abeyance)) ...[
-                  SizedBox(
+                  _PinnedDayAction(child: SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
                       onPressed: () {
@@ -3509,11 +3412,11 @@ class _DashboardPageState extends State<_DashboardPage> {
                       label: const Text('Action annual leave'),
                       style: FilledButton.styleFrom(backgroundColor: leaveRed),
                     ),
-                  ),
+                  )),
                   const SizedBox(height: 12),
                 ],
                 if (isGrantedAnnualLeave && leaveRequest != null) ...[
-                  SizedBox(
+                  _PinnedDayAction(child: SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: () {
@@ -3539,10 +3442,10 @@ class _DashboardPageState extends State<_DashboardPage> {
                         foregroundColor: leaveRed,
                       ),
                     ),
-                  ),
+                  )),
                   const SizedBox(height: 12),
                 ],
-                SizedBox(
+                _PinnedDayAction(child: SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     onPressed: () {
@@ -3562,10 +3465,8 @@ class _DashboardPageState extends State<_DashboardPage> {
                     icon: const Icon(Icons.more_horiz),
                     label: const Text('More day actions'),
                   ),
-                ),
-              ],
-            ),
-          ),
+                )),
+          ],
         );
       },
     );
@@ -5112,37 +5013,12 @@ class _DutyHistorySection extends StatelessWidget {
           return const SizedBox.shrink();
         }
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            InkWell(onTap: () => _showTurnHistory(context, duties), child: const Row(
-              children: [
-                Icon(Icons.update, size: 20, color: Color(0xFF102A43)),
-                SizedBox(width: 8),
-                Text(
-                  'Latest roster entry',
-                  style: TextStyle(
-                    color: Color(0xFF102A43),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            )),
-            const SizedBox(height: 10),
-            InkWell(onTap: () => _showTurnHistory(context, duties), child: _DutyHistoryEntry(duty: duties.first, isCurrent: true)),
-            ...[
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => _showTurnHistory(context, duties),
-                  icon: const Icon(Icons.history),
-                  label: const Text('Roster history'),
-                ),
-              ),
-            ],
-          ],
+        return ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.history),
+          title: const Text('Roster history'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showTurnHistory(context, duties),
         );
       },
     );
@@ -7724,109 +7600,15 @@ class _CalendarPageState extends State<_CalendarPage> {
 
     showModalBottomSheet<void>(
       context: context,
-      showDragHandle: true,
+      showDragHandle: false,
+      enableDrag: false,
       isScrollControlled: true,
       builder: (BuildContext sheetContext) {
-        return SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _fullDate(date),
-                  style: const TextStyle(
-                    color: navy,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 14),
+        return _PinnedDayPanel(
+          summary: _DayShiftSummary(date: date, duty: duty, annualLeave: isGrantedAnnualLeave),
+          children: [
                 DayDocumentLinks(date: date),
-                if (duty == null && !isGrantedAnnualLeave)
-                  const Text(
-                    'No roster information is available for this date.',
-                    style: TextStyle(color: textGrey),
-                  )
-                else ...[
-                  Row(
-                    children: [
-                      Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: isGrantedAnnualLeave
-                              ? leaveRed
-                              : _colourForDuty(duty!.dutyType),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          isGrantedAnnualLeave
-                              ? 'Annual Leave'
-                              : _longDutyLabel(duty!),
-                          style: const TextStyle(
-                            color: navy,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      if (isGrantedAnnualLeave)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: leaveRed.withValues(alpha: 0.10),
-                            borderRadius: BorderRadius.circular(7),
-                          ),
-                          child: Text(
-                            leaveRequest?.requestType ==
-                                    AnnualLeaveRequestType.floating
-                                ? 'ALD'
-                                : 'AW',
-                            style: const TextStyle(
-                              color: leaveRed,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        )
-                      else
-                        _RosterSourceBadge(source: duty!.source),
-                    ],
-                  ),
-                  if (!isGrantedAnnualLeave &&
-                      duty != null &&
-                      (duty.bookOn != null || duty.bookOff != null)) ...[
-                    const SizedBox(height: 14),
-                    Text(
-                      _timeDescription(duty),
-                      style: const TextStyle(color: navy),
-                    ),
-                  ],
-                  if (!isGrantedAnnualLeave &&
-                      duty?.turnNumber?.trim().isNotEmpty == true) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Turn ${duty!.turnNumber!.trim()}',
-                      style: const TextStyle(color: navy),
-                    ),
-                  ],
-                  if (!isGrantedAnnualLeave &&
-                      duty?.remarks?.trim().isNotEmpty == true) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      displayDatesInText(duty!.remarks!.trim()),
-                      style: const TextStyle(color: textGrey),
-                    ),
-                  ],
-                  const SizedBox(height: 22),
+                if (duty != null || isGrantedAnnualLeave) ...[
                   _DutyHistorySection(
                     future: DutyHistoryService().load(date, _dutyResolver.getDutiesForDate(date)),
                     onChanged: () { widget.onRosterChanged(); _loadMonth(); },
@@ -7953,7 +7735,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                         (_leaveRequestsByDate[_dateKey(date)] == null ||
                             _leaveRequestsByDate[_dateKey(date)]!.status ==
                                 AnnualLeaveRequestStatus.cancelled)) ...[
-                      SizedBox(
+                      _PinnedDayAction(child: SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
                           onPressed: () {
@@ -7971,7 +7753,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                             backgroundColor: leaveRed,
                           ),
                         ),
-                      ),
+                      )),
                       const SizedBox(height: 10),
                     ],
                   ],
@@ -8037,7 +7819,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                             AnnualLeaveRequestStatus.requested ||
                         _leaveRequestsByDate[_dateKey(date)]!.status ==
                             AnnualLeaveRequestStatus.abeyance) ...[
-                      SizedBox(
+                      _PinnedDayAction(child: SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
                           onPressed: () {
@@ -8066,7 +7848,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                             backgroundColor: leaveRed,
                           ),
                         ),
-                      ),
+                      )),
                       const SizedBox(height: 12),
                     ],
                     SizedBox(
@@ -8113,7 +7895,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                     ),
                   ],
                   const SizedBox(height: 12),
-                  SizedBox(
+                  _PinnedDayAction(child: SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: () {
@@ -8123,11 +7905,9 @@ class _CalendarPageState extends State<_CalendarPage> {
                       icon: const Icon(Icons.more_horiz),
                       label: const Text('More day actions'),
                     ),
-                  ),
+                  )),
                 ],
-              ],
-            ),
-          ),
+          ],
         );
       },
     );
@@ -11288,3 +11068,100 @@ class PlaceholderPage extends StatelessWidget {
   }
 }
 
+
+class _PinnedDayAction extends StatelessWidget {
+  const _PinnedDayAction({required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => child;
+}
+
+class _PinnedDayPanel extends StatelessWidget {
+  const _PinnedDayPanel({required this.summary, required this.children});
+  final Widget summary;
+  final List<Widget> children;
+  @override
+  Widget build(BuildContext context) {
+    final footer = children.whereType<_PinnedDayAction>().toList();
+    return SafeArea(child: SizedBox(
+      height: MediaQuery.sizeOf(context).height * 0.88,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(padding: const EdgeInsets.fromLTRB(20, 8, 12, 12),
+          child: Row(children: [
+            const Expanded(child: Text('Day details', style: TextStyle(fontWeight: FontWeight.w800))),
+            IconButton(tooltip: 'Close day details', onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.close)),
+          ])),
+        Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: summary),
+        const SizedBox(height: 8),
+        Expanded(child: SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children.where((child) => child is! _PinnedDayAction).toList()),
+        )),
+        Container(
+          decoration: const BoxDecoration(border: Border(top: BorderSide(color: Color(0xFFE0E5EA)))),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (var i = 0; i < footer.length; i++) ...[
+              if (i > 0) const SizedBox(height: 8),
+              footer[i],
+            ],
+          ]),
+        ),
+      ]),
+    ));
+  }
+}
+
+class _DayShiftSummary extends StatelessWidget {
+  const _DayShiftSummary({required this.date, required this.duty, required this.annualLeave});
+  final DateTime date;
+  final Duty? duty;
+  final bool annualLeave;
+  @override
+  Widget build(BuildContext context) {
+    const navy = Color(0xFF102A43);
+    const weekdays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    final on = duty?.bookOn?.trim();
+    final off = duty?.bookOff?.trim();
+    final timed = !annualLeave && (on?.isNotEmpty == true || off?.isNotEmpty == true);
+    final overnight = timed && on != null && off != null && off.compareTo(on) < 0;
+    final type = annualLeave ? 'Annual leave' : duty == null ? 'No roster information' :
+      duty!.dutyType.countsAsWorking ? (duty!.dutyType == DutyType.training ? 'Training' : duty!.dutyType == DutyType.medical ? 'Medical' : 'Working') : _historyDutyLabel(duty!);
+    final colour = annualLeave ? const Color(0xFFD64545) :
+      duty?.dutyType.countsAsWorking == true ? const Color(0xFF2E7D32) : const Color(0xFF52667A);
+    Widget clock(String label, String? value, bool nextDay) => Expanded(child: Column(children: [
+      Text(label, style: const TextStyle(color: navy, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 4),
+      FittedBox(child: Text(value?.isNotEmpty == true ? value! : '—',
+        style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w900, color: navy))),
+      Text(nextDay ? '+1 day' : '', style: const TextStyle(color: Color(0xFF52667A))),
+    ]));
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text('${weekdays[date.weekday-1]} ${date.day} ${months[date.month-1]} ${date.year}',
+        style: const TextStyle(color: navy, fontSize: 20, fontWeight: FontWeight.w900)),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(child: Text(type, style: TextStyle(color: colour, fontWeight: FontWeight.w800))),
+        if (!annualLeave && duty != null) _RosterSourceBadge(source: duty!.source),
+      ]),
+      const SizedBox(height: 10),
+      if (timed) Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: colour.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(16)),
+        child: Column(children: [
+          Row(children: [clock('Start', on, false),
+            Container(width: 1, height: 65, color: colour.withValues(alpha: 0.2)),
+            clock('Finish', off, overnight)]),
+          if (duty?.turnNumber?.trim().isNotEmpty == true) ...[
+            const Divider(),
+            Text('Turn ${duty!.turnNumber}', style: const TextStyle(color: navy, fontWeight: FontWeight.w800)),
+          ],
+        ]),
+      ),
+    ]);
+  }
+}
