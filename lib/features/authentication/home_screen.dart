@@ -3281,7 +3281,7 @@ class _DashboardPageState extends State<_DashboardPage> {
       isScrollControlled: true,
       builder: (BuildContext sheetContext) {
         return _PinnedDayPanel(
-          summary: _DayShiftSummary(date: date, duty: duty, annualLeave: isGrantedAnnualLeave,
+          summary: DayShiftSummary(date: date, duty: duty, annualLeave: isGrantedAnnualLeave,
             onChanged: () { widget.onRosterChanged(); _loadDashboardDuties(); }),
           children: [
                 DayDocumentLinks(date: date, compact: true),
@@ -7629,7 +7629,7 @@ class _CalendarPageState extends State<_CalendarPage> {
       isScrollControlled: true,
       builder: (BuildContext sheetContext) {
         return _PinnedDayPanel(
-          summary: _DayShiftSummary(date: date, duty: duty, annualLeave: isGrantedAnnualLeave,
+          summary: DayShiftSummary(date: date, duty: duty, annualLeave: isGrantedAnnualLeave,
             onChanged: () { widget.onRosterChanged(); _loadMonth(); }),
           children: [
                 DayDocumentLinks(date: date, compact: true),
@@ -11094,16 +11094,16 @@ class _PinnedDayPanel extends StatelessWidget {
   );
 }
 
-class _DayShiftSummary extends StatefulWidget {
-  const _DayShiftSummary({required this.date, required this.duty, required this.annualLeave, required this.onChanged});
+class DayShiftSummary extends StatefulWidget {
+  const DayShiftSummary({super.key, required this.date, required this.duty, required this.annualLeave, required this.onChanged});
   final DateTime date;
   final Duty? duty;
   final bool annualLeave;
   final VoidCallback onChanged;
   @override
-  State<_DayShiftSummary> createState() => _DayShiftSummaryState();
+  State<DayShiftSummary> createState() => DayShiftSummaryState();
 }
-class _DayShiftSummaryState extends State<_DayShiftSummary> {
+class DayShiftSummaryState extends State<DayShiftSummary> {
   late final TextEditingController _start = TextEditingController(text: widget.duty?.bookOn ?? '');
   late final TextEditingController _finish = TextEditingController(text: widget.duty?.bookOff ?? '');
   late String _savedStart = widget.duty?.bookOn ?? '';
