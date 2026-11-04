@@ -3271,9 +3271,6 @@ class _DashboardPageState extends State<_DashboardPage> {
     final bool isGrantedAnnualLeave =
         leaveRequest?.status == AnnualLeaveRequestStatus.granted;
 
-    final bool isFloatingAnnualLeave =
-        isGrantedAnnualLeave &&
-        leaveRequest?.requestType == AnnualLeaveRequestType.floating;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -10521,25 +10518,6 @@ class _CalendarPageState extends State<_CalendarPage> {
     }
   }
 
-  String _timeDescription(Duty duty) {
-    final String? bookOn = duty.bookOn?.trim();
-    final String? bookOff = duty.bookOff?.trim();
-
-    if (bookOn?.isNotEmpty == true && bookOff?.isNotEmpty == true) {
-      return 'Book on $bookOn  •  Book off $bookOff';
-    }
-
-    if (bookOn?.isNotEmpty == true) {
-      return 'Book on $bookOn';
-    }
-
-    if (bookOff?.isNotEmpty == true) {
-      return 'Book off $bookOff';
-    }
-
-    return 'Duty times not available';
-  }
-
   String _sourceLabel(RosterSource source) {
     switch (source) {
       case RosterSource.baseRoster:
@@ -11130,7 +11108,11 @@ class _DayShiftSummary extends StatelessWidget {
     final timed = !annualLeave && (on?.isNotEmpty == true || off?.isNotEmpty == true);
     final overnight = timed && on != null && off != null && off.compareTo(on) < 0;
     final type = annualLeave ? 'Annual leave' : duty == null ? 'No roster information' :
-      duty!.dutyType.countsAsWorking ? (duty!.dutyType == DutyType.training ? 'Training' : duty!.dutyType == DutyType.medical ? 'Medical' : 'Working') : _historyDutyLabel(duty!);
+      duty!.dutyType.countsAsWorking ? (duty!.dutyType == DutyType.training ? 'Training' : duty!.dutyType == DutyType.medical ? 'Medical' : 'Working') : switch (duty!.dutyType) {
+        DutyType.restDay => 'Rest day', DutyType.sick => 'Sick',
+        DutyType.publicHoliday => 'Bank holiday', DutyType.unavailable => 'Unavailable',
+        DutyType.annualLeave => 'Annual leave', _ => 'Review duty',
+      };
     final colour = annualLeave ? const Color(0xFFD64545) :
       duty?.dutyType.countsAsWorking == true ? const Color(0xFF2E7D32) : const Color(0xFF52667A);
     Widget clock(String label, String? value, bool nextDay) => Expanded(child: Column(children: [
