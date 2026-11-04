@@ -3279,7 +3279,8 @@ class _DashboardPageState extends State<_DashboardPage> {
       isScrollControlled: true,
       builder: (BuildContext sheetContext) {
         return _PinnedDayPanel(
-          summary: _DayShiftSummary(date: date, duty: duty, annualLeave: isGrantedAnnualLeave),
+          summary: _DayShiftSummary(date: date, duty: duty, annualLeave: isGrantedAnnualLeave,
+            onChanged: () { widget.onRosterChanged(); _loadDashboardDuties(); }),
           children: [
                 DayDocumentLinks(date: date, compact: true),
                 if (duty != null || isGrantedAnnualLeave) ...[
@@ -4875,15 +4876,20 @@ class _DutyPresentation {
   final String? detail;
 }
 
-class _DutyHistorySection extends StatelessWidget {
+class _DutyHistorySection extends StatefulWidget {
   const _DutyHistorySection({required this.future, required this.onChanged});
 
   final VoidCallback onChanged;
 
   final Future<List<Duty>> future;
 
-  Future<void> _showTurnHistory(BuildContext context, List<Duty> duties) async {
-    final selected = await showModalBottomSheet<Duty>(
+  @override
+  State<_DutyHistorySection> createState() => _DutyHistorySectionState();
+}
+class _DutyHistorySectionState extends State<_DutyHistorySection> {
+  bool _expanded = false;
+  Future<void> _showTurnHistory(BuildContext context, List<Duty> duties, {Duty? selectedEntry}) async {
+    final selected = selectedEntry ?? await showModalBottomSheet<Duty>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
@@ -4962,14 +4968,14 @@ class _DutyHistorySection extends StatelessWidget {
           if (!changed || !context.mounted) return;
           // Restore now on approval, or remember the choice until approval later.
           Navigator.pop(context);
-          onChanged();
+          widget.onChanged();
           return;
         }
       }
       await DutyHistoryService().revert(selected, duties.first);
       if (!context.mounted) return;
       Navigator.pop(context);
-      onChanged();
+      widget.onChanged();
     } catch (_) {
       if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not revert the roster entry. Please try again.'))); }
@@ -4979,7 +4985,7 @@ class _DutyHistorySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<Duty>>(
-      future: future,
+      future: widget.future,
       builder: (BuildContext context, AsyncSnapshot<List<Duty>> snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Row(
@@ -5010,13 +5016,32 @@ class _DutyHistorySection extends StatelessWidget {
           return const SizedBox.shrink();
         }
 
-        return ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.history),
-          title: const Text('Roster history'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _showTurnHistory(context, duties),
-        );
+        return Column(children: [
+          ListTile(contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.history),
+            title: const Text('Roster history'),
+            trailing: Icon(_expanded ? Icons.expand_less : Icons.chevron_right),
+            onTap: () => setState(() => _expanded = !_expanded)),
+          if (_expanded) for (var index = 0; index < duties.length; index++)
+            InkWell(
+              onTap: index == 0 ? null : () async {
+                final confirmed = await showRosterDecisionSheet<bool>(
+                  context: context,
+                  builder: (dialogContext) => RosterDecisionSheet(
+                    title: const Text('Revert to this entry?'),
+                    content: _DutyHistoryEntry(duty: duties[index], isCurrent: false),
+                    actions: [
+                      CupertinoDialogAction(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Back')),
+                      CupertinoDialogAction(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Revert')),
+                    ]));
+                if (confirmed == true && context.mounted) {
+                  await _showTurnHistory(context, duties, selectedEntry: duties[index]);
+                }
+              },
+              child: Padding(padding: const EdgeInsets.only(bottom: 8),
+                child: _DutyHistoryEntry(duty: duties[index], isCurrent: index == 0))),
+          const Divider(height: 1),
+        ]);
       },
     );
   }
@@ -7602,7 +7627,8 @@ class _CalendarPageState extends State<_CalendarPage> {
       isScrollControlled: true,
       builder: (BuildContext sheetContext) {
         return _PinnedDayPanel(
-          summary: _DayShiftSummary(date: date, duty: duty, annualLeave: isGrantedAnnualLeave),
+          summary: _DayShiftSummary(date: date, duty: duty, annualLeave: isGrantedAnnualLeave,
+            onChanged: () { widget.onRosterChanged(); _loadMonth(); }),
           children: [
                 DayDocumentLinks(date: date, compact: true),
                 if (duty != null || isGrantedAnnualLeave) ...[
@@ -11062,7 +11088,7 @@ class _PinnedDayPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final footer = children.whereType<_PinnedDayAction>().toList();
     return SafeArea(child: SizedBox(
-      height: MediaQuery.sizeOf(context).height * 0.88,
+      height: (MediaQuery.sizeOf(context).height - MediaQuery.viewInsetsOf(context).bottom) * 0.88,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(padding: const EdgeInsets.fromLTRB(20, 8, 12, 12),
           child: Row(children: [
@@ -11093,20 +11119,60 @@ class _PinnedDayPanel extends StatelessWidget {
   }
 }
 
-class _DayShiftSummary extends StatelessWidget {
-  const _DayShiftSummary({required this.date, required this.duty, required this.annualLeave});
+class _DayShiftSummary extends StatefulWidget {
+  const _DayShiftSummary({required this.date, required this.duty, required this.annualLeave, required this.onChanged});
   final DateTime date;
   final Duty? duty;
   final bool annualLeave;
+  final VoidCallback onChanged;
+  @override
+  State<_DayShiftSummary> createState() => _DayShiftSummaryState();
+}
+class _DayShiftSummaryState extends State<_DayShiftSummary> {
+  late final TextEditingController _start = TextEditingController(text: widget.duty?.bookOn ?? '');
+  late final TextEditingController _finish = TextEditingController(text: widget.duty?.bookOff ?? '');
+  bool _editing = false, _saving = false;
+  String? _error;
+  Duty? get duty => widget.duty;
+  DateTime get date => widget.date;
+  bool get annualLeave => widget.annualLeave;
+  @override
+  void dispose() { _start.dispose(); _finish.dispose(); super.dispose(); }
+  String? _clock(String text) {
+    final digits = text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length != 4) return null;
+    final hour = int.parse(digits.substring(0,2)), minute = int.parse(digits.substring(2));
+    if (hour > 23 || minute > 59) return null;
+    return '${digits.substring(0,2)}:${digits.substring(2)}';
+  }
+  Future<void> _save() async {
+    final on = _clock(_start.text), off = _clock(_finish.text);
+    if (on == null || off == null) {
+      setState(() => _error = 'Enter four digits for each time, e.g. 1711.');
+      return;
+    }
+    setState(() { _saving = true; _error = null; });
+    try {
+      await ManualDutyService().saveEditedDuty(date: date,
+        turnNumber: duty!.turnNumber ?? '', bookOn: on, bookOff: off,
+        remarks: duty!.remarks ?? '', originalDuty: duty!);
+      if (!mounted) return;
+      FocusScope.of(context).unfocus();
+      setState(() { _start.text = on; _finish.text = off; _editing = false; _saving = false; });
+      widget.onChanged();
+    } catch (_) {
+      if (mounted) setState(() { _saving = false; _error = 'Could not save times. Please retry.'; });
+    }
+  }
   @override
   Widget build(BuildContext context) {
     const navy = Color(0xFF102A43);
     const weekdays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    final on = duty?.bookOn?.trim();
-    final off = duty?.bookOff?.trim();
-    final timed = !annualLeave && (on?.isNotEmpty == true || off?.isNotEmpty == true);
-    final overnight = timed && on != null && off != null && off.compareTo(on) < 0;
+    final on = _start.text.trim();
+    final off = _finish.text.trim();
+    final timed = !annualLeave && (on.isNotEmpty || off.isNotEmpty);
+    final overnight = timed && off.compareTo(on) < 0;
     final type = annualLeave ? 'Annual leave' : duty == null ? 'No roster information' :
       duty!.dutyType.countsAsWorking ? (duty!.dutyType == DutyType.training ? 'Training' : duty!.dutyType == DutyType.medical ? 'Medical' : 'Working') : switch (duty!.dutyType) {
         DutyType.restDay => 'Rest day', DutyType.sick => 'Sick',
@@ -11118,7 +11184,13 @@ class _DayShiftSummary extends StatelessWidget {
     Widget clock(String label, String? value, bool nextDay) => Expanded(child: Column(children: [
       Text(label, style: const TextStyle(color: navy, fontWeight: FontWeight.w700)),
       const SizedBox(height: 4),
-      FittedBox(child: Text(value?.isNotEmpty == true ? value! : '—',
+      if (_editing) TextField(
+        controller: label == 'Start' ? _start : _finish,
+        keyboardType: TextInputType.number,
+        textAlign: TextAlign.center, enabled: !_saving,
+        decoration: InputDecoration(hintText: 'HHMM', semanticCounterText: label),
+        style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: navy),
+      ) else FittedBox(child: Text(value?.isNotEmpty == true ? value! : '—',
         style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w900, color: navy))),
       Text(nextDay ? '+1 day' : '', style: const TextStyle(color: Color(0xFF52667A))),
     ]));
@@ -11138,10 +11210,21 @@ class _DayShiftSummary extends StatelessWidget {
           Row(children: [clock('Start', on, false),
             Container(width: 1, height: 65, color: colour.withValues(alpha: 0.2)),
             clock('Finish', off, overnight)]),
-          if (duty?.turnNumber?.trim().isNotEmpty == true) ...[
-            const Divider(),
-            Text('Turn ${duty!.turnNumber}', style: const TextStyle(color: navy, fontWeight: FontWeight.w800)),
-          ],
+          const Divider(),
+          Row(children: [
+            Expanded(child: Text(duty?.turnNumber?.trim().isNotEmpty == true ? 'Turn ${duty!.turnNumber}' : '',
+              textAlign: TextAlign.center, style: const TextStyle(color: navy, fontWeight: FontWeight.w800))),
+            Expanded(child: DateUtils.isSameDay(date, DateTime.now()) && duty?.dutyType.countsAsWorking == true
+              ? TextButton(onPressed: _saving ? null : _editing ? _save : () => setState(() => _editing = true),
+                  child: Text(_saving ? 'Saving…' : _editing ? 'Save times' : 'Edit times'))
+              : const SizedBox.shrink()),
+          ]),
+          if (_editing) TextButton(onPressed: _saving ? null : () {
+            FocusScope.of(context).unfocus();
+            setState(() { _editing = false; _error = null; _start.text = duty?.bookOn ?? ''; _finish.text = duty?.bookOff ?? ''; });
+          }, child: const Text('Cancel')),
+          if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
+
         ]),
       ),
     ]);
