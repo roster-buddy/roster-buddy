@@ -10,6 +10,13 @@ export function canvasSize(width, height) {
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 
+export function countStructuredRosterRows(text) {
+  return (text || '').split(/\r?\n/).filter(line =>
+    /\b\d{4}\b/.test(line) &&
+    (line.match(/\b(?:[01]?\d|2[0-3])[:.]\d{2}\b/g) || []).length >= 2
+  ).length;
+}
+
 export function normaliseRecognition(data, region) {
   const lines = [];
   const rowTexts = [];
@@ -146,10 +153,18 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}) {
     check();
     if (!isPdf) {
       const image = await imageCanvas(bytes, name);
-      // Small typewritten portrait sheets lose lower rows in whole-page OCR.
-      // Read overlapping bands at twice the resolution, keeping each line in
-      // exactly one band. This avoids both dropped columns and duplicate rows.
+      // Prefer page-layout OCR for roster tables. It keeps narrow columns
+      // (turn, book-on, book-off and hours) separate. The old portrait-band
+      // pass uses single-block OCR and can fuse them into one unreadable token.
       if (image.height > 1000 && image.height > image.width * 1.15) {
+        await worker.setParameters({tessedit_pageseg_mode: '3'});
+        const {data: pageData} = await worker.recognize(image, {}, {text: true, blocks: true});
+        check();
+        const pageResult = normaliseRecognition(pageData);
+        if (countStructuredRosterRows(pageResult.fullText) >= 3) {
+          image.width = 1; image.height = 1;
+          return [pageResult];
+        }
         try {
           const first = Math.round(image.height * 0.16);
           const step = Math.round(image.width * 0.28);

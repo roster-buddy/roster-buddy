@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {canvasSize, normaliseRecognition} from '../web/roster_scanner.mjs';
+import {canvasSize, countStructuredRosterRows, normaliseRecognition} from '../web/roster_scanner.mjs';
 
 test('large photos keep table aspect ratio within iPad memory limits', () => {
   const size = canvasSize(12000, 8000);
@@ -38,4 +38,17 @@ test('header words inside one cell stay together for column mapping', () => {
     ]}]}],
   }]});
   assert.deepEqual(result.lines.map(l => l.text), ['BOOK ON', 'BOOK OFF']);
+});
+
+
+test('structured roster rows favour full-page table recognition', () => {
+  const clean = [
+    'B Moore 1910 WOD 208 08:11 17:10 8.59 Amended Turn',
+    'A Jesson 3280 WOD DI DI 10:00 22:00 8.45',
+    'J Brooks 3849 WOD TW TW 12:00 20:45 8.45',
+  ].join('\n');
+  assert.equal(countStructuredRosterRows(clean), 3);
+  assert.equal(countStructuredRosterRows(
+    'B Moore 1910 WOD 2085:08:11.517:102-58759 Amended Turn'
+  ), 0);
 });
