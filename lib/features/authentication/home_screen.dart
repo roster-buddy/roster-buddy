@@ -11149,12 +11149,14 @@ class _DayShiftSummaryState extends State<_DayShiftSummary> {
     return '${digits.substring(0,2)}:${digits.substring(2)}';
   }
   Future<void> _save() async {
+    if (_saving) return;
     final on = _clock(_start.text), off = _clock(_finish.text);
     if (on == null || off == null) {
       setState(() => _error = 'Enter four digits for each time, e.g. 1711.');
       return;
     }
     setState(() { _saving = true; _error = null; });
+    FocusScope.of(context).unfocus();
     try {
       await ManualDutyService().saveEditedDuty(date: date,
         turnNumber: duty!.turnNumber ?? '', bookOn: on, bookOff: off,
@@ -11208,7 +11210,9 @@ class _DayShiftSummaryState extends State<_DayShiftSummary> {
         if (!annualLeave && duty != null) _RosterSourceBadge(source: duty!.source),
       ]),
       const SizedBox(height: 10),
-      if (timed) Container(
+      // Keep Save in the fields' tap region: dismissing focus on pointer-down
+      // can move the sheet before the button receives pointer-up on iOS web.
+      if (timed) TextFieldTapRegion(child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(color: colour.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(16)),
         child: Column(children: [
@@ -11233,7 +11237,7 @@ class _DayShiftSummaryState extends State<_DayShiftSummary> {
           if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
 
         ]),
-      ),
+      )),
     ]);
   }
 }
