@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import '../upload/roster_updates_section.dart';
 import '../notifications/push_notification_settings.dart';
 import '../smart_scan/scan_duty_editor.dart';
@@ -869,6 +870,8 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                     controller: controller,
                     autofocus: true,
                     keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)],
+        onTap: () { final controller = label == 'Start' ? _start : _finish; controller.selection = TextSelection(baseOffset: 0, extentOffset: controller.text.length); },
                     decoration: InputDecoration(
                       labelText: 'Queue position',
                       hintText: 'For example 3',
@@ -11131,6 +11134,8 @@ class _DayShiftSummary extends StatefulWidget {
 class _DayShiftSummaryState extends State<_DayShiftSummary> {
   late final TextEditingController _start = TextEditingController(text: widget.duty?.bookOn ?? '');
   late final TextEditingController _finish = TextEditingController(text: widget.duty?.bookOff ?? '');
+  late String _savedStart = widget.duty?.bookOn ?? '';
+  late String _savedFinish = widget.duty?.bookOff ?? '';
   bool _editing = false, _saving = false;
   String? _error;
   Duty? get duty => widget.duty;
@@ -11158,7 +11163,7 @@ class _DayShiftSummaryState extends State<_DayShiftSummary> {
         remarks: duty!.remarks ?? '', originalDuty: duty!);
       if (!mounted) return;
       FocusScope.of(context).unfocus();
-      setState(() { _start.text = on; _finish.text = off; _editing = false; _saving = false; });
+      setState(() { _savedStart = on; _savedFinish = off; _start.text = on; _finish.text = off; _editing = false; _saving = false; });
       widget.onChanged();
     } catch (_) {
       if (mounted) setState(() { _saving = false; _error = 'Could not save times. Please retry.'; });
@@ -11215,13 +11220,13 @@ class _DayShiftSummaryState extends State<_DayShiftSummary> {
             Expanded(child: Text(duty?.turnNumber?.trim().isNotEmpty == true ? 'Turn ${duty!.turnNumber}' : '',
               textAlign: TextAlign.center, style: const TextStyle(color: navy, fontWeight: FontWeight.w800))),
             Expanded(child: DateUtils.isSameDay(date, DateTime.now()) && duty?.dutyType.countsAsWorking == true
-              ? TextButton(onPressed: _saving ? null : _editing ? _save : () => setState(() => _editing = true),
+              ? TextButton(onPressed: _saving ? null : _editing ? _save : () => setState(() { _start.text = _savedStart.replaceAll(':', ''); _finish.text = _savedFinish.replaceAll(':', ''); _editing = true; }),
                   child: Text(_saving ? 'Saving…' : _editing ? 'Save times' : 'Edit times'))
               : const SizedBox.shrink()),
           ]),
           if (_editing) TextButton(onPressed: _saving ? null : () {
             FocusScope.of(context).unfocus();
-            setState(() { _editing = false; _error = null; _start.text = duty?.bookOn ?? ''; _finish.text = duty?.bookOff ?? ''; });
+            setState(() { _editing = false; _error = null; _start.text = _savedStart; _finish.text = _savedFinish; });
           }, child: const Text('Cancel')),
           if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
 
