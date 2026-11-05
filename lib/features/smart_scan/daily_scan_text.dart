@@ -46,7 +46,7 @@ class DailyScanText {
       final keepsReadDuties = rebuiltResult.duties.every((d) =>
           nativeByKey[_key(d)] != null && _agrees(d, nativeByKey[_key(d)]!));
       final improves = nativeResult.duties.length > rebuiltResult.duties.length &&
-          _blocking(nativeResult) < _blocking(rebuiltResult);
+          _blocking(nativeResult) <= _blocking(rebuiltResult);
       selected.add(datesAgree && keepsIdentities && keepsReadDuties && improves
           ? native : rebuilt);
     }

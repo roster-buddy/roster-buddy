@@ -39,6 +39,25 @@ void main() {
     expect((await DailyScanText.bestPages([page], type)).single,
       SmartScanPageTextReconstructor.reconstruct(page));
   });
+  test('uses native rows when they add safe duties without reducing warnings', () async {
+    final page = SmartScanResult(
+      fullText: '$heading\n'
+          'B Moore 1910 WOD 208 08:11 17:10 8.59\n'
+          'D Derry 2001 WOD ZS ZS',
+      lines: [
+        line(heading, 0, 20),
+        line('B Moore 1910 WOD 208 08:11 17:10 8.59', 0, 100),
+        line('D 2001 WOD ZS ZS', 0, 140),
+      ],
+    );
+    final chosen = await DailyScanText.bestPages([page], type);
+    expect(chosen.single, page.fullText);
+    final result = await DailyAmendmentParser(
+      documentType: type,
+    ).parse(pageText: chosen);
+    expect(result.duties, hasLength(2));
+    expect(result.duties.last.driverName, 'D Derry');
+  });
   test('does not replace an already-read shift with conflicting times', () async {
     final page = skewed('$heading\nB Moore 1910 WOD 208 09:11 17:10 8.59\n'
       'D Derry 2001 WOD ALLOC 211 15:11 01:01 8.45 Amended Turn', firstComplete: true);

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {canvasSize, countStructuredRosterRows, normaliseRecognition} from '../web/roster_scanner.mjs';
+import {canvasSize, countStructuredRosterRows, documentVerticalBounds,
+  normaliseRecognition} from '../web/roster_scanner.mjs';
 
 test('large photos keep table aspect ratio within iPad memory limits', () => {
   const size = canvasSize(12000, 8000);
@@ -9,6 +10,19 @@ test('large photos keep table aspect ratio within iPad memory limits', () => {
   assert.ok(Math.abs(size.width / size.height - 1.5) < 0.01);
   assert.deepEqual(canvasSize(1600, 1200), {width: 1600, height: 1200});
   assert.throws(() => canvasSize(0, 1200));
+});
+
+test('iPhone viewer bars are cropped without cropping a dark document', () => {
+  const pixels = new Uint8ClampedArray(10 * 20 * 4).fill(255);
+  for (let y = 0; y < 5; y++) {
+    for (let x = 0; x < 10; x++) pixels.fill(0, (y * 10 + x) * 4, (y * 10 + x) * 4 + 3);
+  }
+  for (let y = 16; y < 20; y++) {
+    for (let x = 0; x < 10; x++) pixels.fill(0, (y * 10 + x) * 4, (y * 10 + x) * 4 + 3);
+  }
+  assert.deepEqual(documentVerticalBounds(pixels, 10, 20), {top: 5, bottom: 16});
+  assert.deepEqual(documentVerticalBounds(new Uint8ClampedArray(10 * 20 * 4), 10, 20),
+    {top: 0, bottom: 20});
 });
 
 test('recognition preserves word boxes used to reconstruct roster columns', () => {

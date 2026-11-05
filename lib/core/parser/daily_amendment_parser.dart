@@ -422,6 +422,9 @@ class DailyAmendmentParser implements BaseParser {
   String _correctNoDutyCode(String code) {
     if (code == 'NONA') return 'NDNA';
     if (code == 'NO') return 'ND';
+    // Sunday sheets print ZS in a narrow column. OCR commonly reads either
+    // character as a similar digit or letter when the page is shadowed.
+    if (const {'2S', '28', 'Z8', 'IS'}.contains(code)) return 'ZS';
     return code;
   }
 

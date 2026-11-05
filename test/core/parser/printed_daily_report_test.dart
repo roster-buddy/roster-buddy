@@ -102,4 +102,21 @@ A Tester 1910 WOD ALLOC 213 16:53 01:11 8.45
     expect(result.duties[1].rosteredMinutes, 373);
     expect(result.duties.last.dutyType, DutyType.unavailable);
   });
+  test('Sunday ZS OCR lookalikes remain unavailable duties', () async {
+    final result = await parser.parse(
+      pageText: const [
+        'Report for Sunday 08/11/26 in All Links\n'
+            'A Example 1890 WOD 2S 2s\n'
+            'B Example 2175 WOD 28 28\n'
+            'C Example 1104 WOD Z8 Z8\n'
+            'D Example 1719 WOD IS IS',
+      ],
+    );
+    expect(result.canImport, isTrue);
+    expect(result.duties, hasLength(4));
+    for (final duty in result.duties) {
+      expect(duty.dutyType, DutyType.unavailable);
+      expect(duty.amendmentCode, 'ZS');
+    }
+  });
 }

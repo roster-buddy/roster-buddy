@@ -63,6 +63,55 @@ export function normaliseRecognition(data, region) {
   return { fullText: region ? rowTexts.join('\n') : data.text || '', lines, confidence: Number(data.confidence) || 0 };
 }
 
+// Photos selected from the iPhone viewer can include large black bars above
+// and below a comparatively small, shadowed sheet. Crop those bars and flatten
+// broad lighting changes before OCR so names, payrolls and shift columns stay
+// on the same row.
+export function documentVerticalBounds(pixels, width, height) {
+  const nearlyBlack = y => {
+    let black = 0;
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      if (Math.max(pixels[i], pixels[i + 1], pixels[i + 2]) < 24) black++;
+    }
+    return black >= width * 0.98;
+  };
+  let top = 0;
+  let bottom = height;
+  while (top < bottom && nearlyBlack(top)) top++;
+  while (bottom > top && nearlyBlack(bottom - 1)) bottom--;
+  return bottom - top >= height * 0.35 ? {top, bottom} : {top: 0, bottom: height};
+}
+
+function flattenShadows(imageData) {
+  const {data: pixels, width, height} = imageData;
+  const stride = width + 1;
+  const sums = new Float64Array(stride * (height + 1));
+  for (let y = 0; y < height; y++) {
+    let row = 0;
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      row += pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114;
+      sums[(y + 1) * stride + x + 1] = sums[y * stride + x + 1] + row;
+    }
+  }
+  const radius = Math.max(6, Math.round(width / 40));
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const x0 = Math.max(0, x - radius);
+      const x1 = Math.min(width, x + radius + 1);
+      const y0 = Math.max(0, y - radius);
+      const y1 = Math.min(height, y + radius + 1);
+      const background = (sums[y1 * stride + x1] - sums[y0 * stride + x1] -
+        sums[y1 * stride + x0] + sums[y0 * stride + x0]) / ((x1 - x0) * (y1 - y0));
+      const i = (y * width + x) * 4;
+      const grey = pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114;
+      const value = Math.min(255, Math.round(255 * grey / Math.max(1, background)));
+      pixels[i] = pixels[i + 1] = pixels[i + 2] = value;
+    }
+  }
+}
+
 function loadTesseract(base) {
   if (globalThis.Tesseract) return Promise.resolve(globalThis.Tesseract);
   if (!tesseractLoading) {
@@ -90,6 +139,27 @@ async function imageCanvas(bytes, name) {
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const raster = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const bounds = documentVerticalBounds(raster.data, canvas.width, canvas.height);
+    const cropped = bounds.top + canvas.height - bounds.bottom;
+    if (cropped > canvas.height * 0.1 && canvas.width < 1400) {
+      const sheetHeight = bounds.bottom - bounds.top;
+      const sheet = document.createElement('canvas');
+      const scale = Math.min(1800 / canvas.width,
+        Math.sqrt(4800000 / (canvas.width * sheetHeight)));
+      sheet.width = Math.round(canvas.width * scale);
+      sheet.height = Math.round(sheetHeight * scale);
+      const sheetContext = sheet.getContext('2d');
+      sheetContext.drawImage(canvas, 0, bounds.top, canvas.width, sheetHeight,
+        0, 0, sheet.width, sheet.height);
+      const prepared = sheetContext.getImageData(0, 0, sheet.width, sheet.height);
+      flattenShadows(prepared);
+      sheetContext.putImageData(prepared, 0, 0);
+      sheet.rosterPrepared = true;
+      canvas.width = 1;
+      canvas.height = 1;
+      return sheet;
+    }
     return canvas;
   } catch {
     throw new Error('This photo could not be opened. Take another photo, or choose a JPG or PNG image.');
@@ -153,6 +223,10 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}) {
     check();
     if (!isPdf) {
       const image = await imageCanvas(bytes, name);
+      if (image.rosterPrepared) {
+        await worker.setParameters({tessedit_pageseg_mode: '6'});
+        return [await recognise(image, 1, 1)];
+      }
       // Prefer page-layout OCR for roster tables. It keeps narrow columns
       // (turn, book-on, book-off and hours) separate. The old portrait-band
       // pass uses single-block OCR and can fuse them into one unreadable token.

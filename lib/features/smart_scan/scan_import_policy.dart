@@ -70,6 +70,19 @@ class ScanImportPolicy {
           '${duties.length} shift records read. Some rows could be missing or mismatched.',
         );
       }
+      if (payrolls.length >= 5) {
+        final lengths = <int, int>{};
+        for (final payroll in payrolls) {
+          lengths.update(payroll.length, (count) => count + 1, ifAbsent: () => 1);
+        }
+        final majority = lengths.values.reduce((a, b) => a > b ? a : b);
+        if (lengths.length > 1 && majority / payrolls.length >= 0.8) {
+          reasons.add(
+            'Page ${i + 1}: one or more payroll numbers have a different length from the rest. '
+            'Check those rows for a scanning error.',
+          );
+        }
+      }
     }
     return reasons;
   }

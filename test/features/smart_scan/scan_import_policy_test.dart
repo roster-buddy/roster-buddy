@@ -40,6 +40,15 @@ void main() {
       result.duties.first.copyWith(payrollNumber: '9999'),
       result.duties.last,
     ]), [page]), isFalse);
+    const mixedPayrolls = SmartScanResult(
+      fullText: 'A One 1001 WOD ND\nB Two 1002 WOD ND\nC Three 1003 WOD ND\n'
+          'D Four 1004 WOD ND\nE Five 100005 WOD ND',
+      lines: [],
+    );
+    expect(
+      ScanImportPolicy.reviewReasons(result, [mixedPayrolls]).join(' '),
+      contains('different length from the rest'),
+    );
     expect(ScanUploadSummary.title(result, 'Amendment'), '28/11/26 7 Day Sheet');
     expect(ScanUploadSummary.message(result, 2, 'Reviewed'), 'Reviewed');
     expect(ScanUploadSummary.message(result.copyWith(allRowsRead: true), 2, ''),
