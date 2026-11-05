@@ -25,7 +25,11 @@ void main() {
     ]), isFalse);
     expect(ScanImportPolicy.allRowsRead(result, [
       const SmartScanResult(fullText: text, lines: [], documentHeading: '48HR'),
-    ]), isFalse);
+    ]), isTrue);
+    expect(ScanImportPolicy.allRowsRead(result, [
+      const SmartScanResult(fullText: 'Report for Saturday 28/11/26 in All Links\n'
+        'S Rees 0184 WOD ND\nD Guest 3685 WOD NDNA', lines: []),
+    ]), isTrue);
     expect(ScanUploadSummary.title(result, 'Amendment'), '28/11/26 7 Day Sheet');
     expect(ScanUploadSummary.message(result, 2, 'Reviewed'), 'Reviewed');
     expect(ScanUploadSummary.message(result.copyWith(allRowsRead: true), 2, ''),

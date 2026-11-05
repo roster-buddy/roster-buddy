@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'smart_scan_result.dart';
-import '../../core/parser/document_classifier.dart';
 import 'cloud_image_preparation.dart';
 
 class SmartScanCloudException implements Exception {
@@ -40,28 +39,7 @@ class SmartScanCloudClient {
       );
     }
 
-    final page = pages.single;
-    const classifier = DocumentClassifier();
-    if (classifier.amendmentStamps([page.fullText]).isNotEmpty ||
-        !RegExp(r'DAILY\s+ROSTER|REPORT\s+FOR', caseSensitive: false)
-            .hasMatch(page.fullText)) {
-      return page;
-    }
-    onProgress?.call('Checking the sheet stamp…', 0.85);
-    try {
-      final crop = await prepareCloudStamp(bytes, fileName);
-      if (crop == null) return page;
-      final stampPages = await _recognise(
-        bytes: crop, fileName: 'sheet-stamp.jpg', isPdf: false,
-      );
-      return SmartScanResult(
-        fullText: page.fullText, lines: page.lines, confidence: page.confidence,
-        documentHeading: stampPages.map((p) => p.fullText).join('\n'),
-      );
-    } catch (_) {
-      // A stamp failure must leave the readable table available for manual labelling.
-      return page;
-    }
+    return pages.single;
   }
 
   static Future<List<SmartScanResult>> recognisePdf({

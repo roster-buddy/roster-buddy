@@ -1,7 +1,6 @@
 import '../../core/models/duty_type.dart';
 import '../../core/models/parse_result.dart';
 import '../../core/models/parse_warning.dart';
-import '../../core/parser/document_classifier.dart';
 import 'smart_scan_page_text_reconstructor.dart';
 import 'smart_scan_result.dart';
 
@@ -25,13 +24,8 @@ class ScanImportPolicy {
         pages.any((p) => p.confidence != null && p.confidence! < 65)) {
       return false;
     }
-    const classifier = DocumentClassifier();
     for (var i = 0; i < pages.length; i++) {
       final page = pages[i];
-      final text = [page.fullText, page.documentHeading,
-        SmartScanPageTextReconstructor.reconstruct(page)];
-      final stamps = classifier.amendmentStamps(text);
-      if (stamps.length != 1 || stamps.single != result.documentType) return false;
       final payrolls = {..._payrolls(page.fullText),
         ..._payrolls(SmartScanPageTextReconstructor.reconstruct(page))};
       final duties = result.duties.where((d) => d.pageNumber == i + 1).toList();

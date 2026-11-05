@@ -16,6 +16,13 @@ const pages = [
   SmartScanResult(fullText: '48-HOUR AMENDMENT\nDATE 03/08/2026', lines: []),
 ];
 
+Future<void> chooseType(WidgetTester tester, String label) async {
+  await tester.tap(find.byType(DropdownButtonFormField<DocumentType>));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(label).last);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   final upload = PickedUpload(
     bytes: Uint8List.fromList([1]),
@@ -75,8 +82,9 @@ void main() {
     await tester.tap(find.text('Upload'));
     await tester.pumpAndSettle();
     expect(confirmed, isNull);
-    expect(find.text('48-Hour Amendment'), findsOneWidget);
-    await tester.tap(find.text('Review records'));
+    expect(find.text('48-Hour Amendment'), findsNothing);
+    await chooseType(tester, '48-Hour Amendment');
+    await tester.tap(find.text('Check and apply'));
     await tester.pumpAndSettle();
     expect(find.textContaining('03/08/2026'), findsWidgets);
     expect(find.textContaining('21910'), findsOneWidget);
@@ -106,7 +114,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Review records'));
+    await chooseType(tester, '48-Hour Amendment');
+    await tester.tap(find.text('Check and apply'));
     await tester.pumpAndSettle();
     expect(find.text('Date is ambiguous'), findsOneWidget);
     expect(
@@ -143,7 +152,7 @@ void main() {
     expect(find.text('Retry scan'), findsOneWidget);
     await tester.tap(find.text('Retry scan'));
     await tester.pumpAndSettle();
-    expect(find.text('48-Hour Amendment'), findsOneWidget);
+    expect(find.text('48-Hour Amendment'), findsNothing);
     expect(scans, 2);
     expect(parses, 0);
   });
@@ -164,7 +173,7 @@ void main() {
     expect(
       tester
           .widget<FilledButton>(
-            find.widgetWithText(FilledButton, 'Review records'),
+            find.widgetWithText(FilledButton, 'Check and apply'),
           )
           .onPressed,
       isNull,
@@ -191,7 +200,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Review records'));
+    await chooseType(tester, '48-Hour Amendment');
+    await tester.tap(find.text('Check and apply'));
     await tester.pumpAndSettle();
     expect(
       tester
@@ -234,7 +244,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Review records'));
+    await chooseType(tester, '48-Hour Amendment');
+    await tester.tap(find.text('Check and apply'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Add missing shift'));
     await tester.tap(find.text('Add missing shift'));
@@ -259,7 +270,7 @@ void main() {
     expect(find.textContaining('16:53–01:11'), findsOneWidget);
   });
 
-  testWidgets('clean stamped sheet returns automatically exactly once', (tester) async {
+  testWidgets('clean sheet waits for manual type choice then applies exactly once', (tester) async {
     ReviewedDocument? confirmed;
     var parses = 0;
     const text = 'Report for Saturday 28/11/26 in All Links\nS Rees 0184 WOD ND';
@@ -278,6 +289,11 @@ void main() {
       })))));
     await tester.tap(find.text('Start'));
     await tester.pumpAndSettle();
+    expect(confirmed, isNull);
+    expect(parses, 0);
+    await chooseType(tester, '7-Day Amendment');
+    await tester.tap(find.text('Check and apply'));
+    await tester.pumpAndSettle();
     expect(confirmed, isNotNull);
     expect(confirmed!.result.allRowsRead, isTrue);
     expect(confirmed!.type, DocumentType.sevenDayAmendment);
@@ -293,6 +309,9 @@ void main() {
       parseDocument: (_, type, activation) =>
           DailyAmendmentParser(documentType: type).parse(pageText: [text]),
     )));
+    await tester.pumpAndSettle();
+    await chooseType(tester, '7-Day Amendment');
+    await tester.tap(find.text('Check and apply'));
     await tester.pumpAndSettle();
     expect(find.text('Tap to correct this row'), findsOneWidget);
     expect(tester.widget<FilledButton>(

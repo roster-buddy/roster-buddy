@@ -9,14 +9,12 @@ import '../../core/models/parse_warning.dart';
 import '../../core/models/duty.dart';
 import '../../core/models/roster_source.dart';
 import 'scan_duty_editor.dart';
-import '../../core/parser/document_classifier.dart';
 import '../upload/base_roster_activation_page.dart';
 import '../upload/document_processing_service.dart';
 import '../upload/storage_service.dart';
 import '../upload/upload_service.dart';
 import 'smart_scan_engine.dart';
 import 'scan_import_policy.dart';
-import 'smart_scan_page_text_reconstructor.dart';
 import 'smart_scan_result.dart';
 
 extension ScanDocumentLabel on DocumentType {
@@ -176,6 +174,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
       _busy = true;
       _error = null;
       _parsed = null;
+      _type = DocumentType.unknown;
       _excludeUnreadable = false;
       _progress = null;
     });
@@ -204,18 +203,11 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
           'No readable text was found. Take a clearer photo and try again.',
         );
       }
-      final type = const DocumentClassifier().classify(
-        [...SmartScanPageTextReconstructor.reconstructPages(pages),
-          ...pages.map((p) => '${p.fullText}\n${p.documentHeading}')],
-      );
       setState(() {
         _pages = pages;
-        _type = type;
+        _type = DocumentType.unknown;
         _busy = false;
       });
-      if (_daily && ScanImportPolicy.hasRosterRows(pages)) {
-        await _prepare(automatic: true);
-      }
     } catch (error) {
       if (mounted) {
         setState(() {
@@ -289,7 +281,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
         ),
         const SizedBox(height: 12),
         const Text(
-          'Clear shift sheets are applied automatically after checks. If anything needs review, correct it below before importing.',
+          'Choose the document type, then check the rows. Complete shift sheets are applied automatically; anything unclear stays here for correction.',
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<DocumentType>(
@@ -321,7 +313,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
         if (_type == DocumentType.unknown) ...[
           const SizedBox(height: 12),
           const Text(
-            'The heading was unclear. Choose the document type above.',
+            'Choose which kind of roster or document you are uploading.',
           ),
         ],
         if (_pages!.any((p) => p.confidence != null && p.confidence! < 65))
@@ -544,7 +536,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
                               _type == DocumentType.unknown
                           ? null
                           : parsed == null
-                          ? () => _prepare()
+                          ? () => _prepare(automatic: true)
                           : !parsed.canImport
                           ? null
                           : () => Navigator.pop(
@@ -555,7 +547,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
                                 _activation),
                             ),
                       child: Text(
-                        parsed == null ? 'Review records' : 'Import records',
+                        parsed == null ? 'Check and apply' : 'Import records',
                       ),
                     ),
                   ),
