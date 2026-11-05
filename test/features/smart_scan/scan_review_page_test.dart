@@ -87,7 +87,7 @@ void main() {
     await chooseType(tester, '48-Hour Amendment');
     await tester.tap(find.text('Check and apply'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.textContaining('03/08/2026').first, 150);
+    await tester.scrollUntilVisible(find.textContaining('03/08/2026'), 150);
     await tester.pumpAndSettle();
     expect(find.textContaining('03/08/2026'), findsWidgets);
     expect(find.textContaining('21910'), findsOneWidget);
@@ -323,3 +323,4 @@ void main() {
       find.widgetWithText(FilledButton, 'Import records')).onPressed, isNull);
   });
 }
+
