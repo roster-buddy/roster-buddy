@@ -15,6 +15,7 @@ class RosterUpdateNotice {
   final String dutyType;
   final String? amendmentCode;
   final String kind;
+  String get viewKey => '${documentId ?? ''}|$date|$source|${receivedAt.toUtc().toIso8601String()}';
   String get title => RosterNotificationText.title(date, amendmentCode, dutyType, needsInvestigation ? 'leave_conflict' : kind);
   Duty? get rosteredDuty {
     final dateValue = DateTime.tryParse(date);
@@ -73,21 +74,23 @@ class RosterUpdateService {
       for (final event in events)
         '${event['document_id']}|${event['duty_date']}': event['kind'] as String,
     };
-    return fromRows(rows, payrollNumber: payroll, since: cutoff, annualLeaveDates: annualLeaveDates, eventKinds: kinds, seenAt: DateTime.tryParse(profile?['roster_updates_seen_at']?.toString() ?? ''));
+    final viewed = await client.from('roster_update_views').select('notice_key')
+        .eq('user_id', user.id)
+        .gt('received_at', cutoff.toUtc().toIso8601String());
+    return fromRows(rows, viewedKeys: viewed.map((row) => row['notice_key'] as String).toSet(), payrollNumber: payroll, since: cutoff, annualLeaveDates: annualLeaveDates, eventKinds: kinds, seenAt: DateTime.tryParse(profile?['roster_updates_seen_at']?.toString() ?? ''));
   }
 
   Future<void> markViewed(List<RosterUpdateNotice> viewed) async {
     final updates = viewed.where((notice) => !notice.needsInvestigation).toList();
     if (updates.isEmpty) return;
-    final seenAt = updates.map((notice) => notice.receivedAt.toUtc())
-        .reduce((a, b) => a.isAfter(b) ? a : b).toIso8601String();
     final client = Supabase.instance.client;
     final user = client.auth.currentUser;
     if (user == null) throw StateError('Sign in to mark updates viewed.');
-    // A slower device must not move the account's watermark backwards.
-    await client.from('driver_profiles').update({'roster_updates_seen_at': seenAt})
-        .eq('user_id', user.id)
-        .or('roster_updates_seen_at.is.null,roster_updates_seen_at.lt.$seenAt');
+    await client.from('roster_update_views').upsert([
+      for (final notice in updates)
+        {'user_id': user.id, 'notice_key': notice.viewKey,
+         'received_at': notice.receivedAt.toUtc().toIso8601String()},
+    ], onConflict: 'user_id,notice_key', ignoreDuplicates: true);
   }
 
   static List<RosterUpdateNotice> fromRows(List<Map<String, dynamic>> rows, {
@@ -95,6 +98,7 @@ class RosterUpdateService {
     Set<String> annualLeaveDates = const {},
     Map<String, String> eventKinds = const {},
     DateTime? seenAt,
+    Set<String> viewedKeys = const {},
   }) {
     final notices = <String, RosterUpdateNotice>{};
     const labels = {'10_day': '10D', '7_day': '7D', '48_hour': '48HR'};
@@ -115,10 +119,11 @@ class RosterUpdateService {
         kind: eventKinds['${row['document_id']}|$date'] ?? 'allocated',
         needsInvestigation: annualLeaveDates.contains(date) && ['working', 'training', 'medical'].contains(row['duty_type']),
       );
-      if (!notice.needsInvestigation && seenAt != null && !received.isAfter(seenAt)) continue;
       final key = '$date|$source';
       if (notices[key] == null || received.isAfter(notices[key]!.receivedAt)) notices[key] = notice;
     }
-    return notices.values.toList()..sort((a, b) => b.receivedAt.compareTo(a.receivedAt));
+    return notices.values.where((notice) => notice.needsInvestigation ||
+        !((seenAt != null && !notice.receivedAt.isAfter(seenAt)) ||
+          viewedKeys.contains(notice.viewKey))).toList()..sort((a, b) => b.receivedAt.compareTo(a.receivedAt));
   }
 }

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/services/roster_update_service.dart';
 import 'roster_update_card.dart';
 
-class RosterUpdatesSection extends StatelessWidget {
+class RosterUpdatesSection extends StatefulWidget {
   const RosterUpdatesSection({required this.notices, required this.onViewed,
     required this.onOpenDocument, super.key});
   final List<RosterUpdateNotice> notices;
@@ -10,63 +10,65 @@ class RosterUpdatesSection extends StatelessWidget {
   final ValueChanged<RosterUpdateNotice> onOpenDocument;
 
   @override
-  Widget build(BuildContext context) {
-    if (notices.isEmpty) return const SizedBox.shrink();
-    return Card(child: ListTile(
-      leading: const Icon(Icons.notifications_outlined),
-      title: const Text('Roster updates'),
-      subtitle: Text('${notices.length} unread · Tap to view all'),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: () {
-        final snapshot = List<RosterUpdateNotice>.unmodifiable(notices);
-        Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
-          _ViewedRosterUpdatesPage(notices: snapshot, onViewed: onViewed,
-            onOpenDocument: onOpenDocument)));
-      },
-    ));
-  }
+  State<RosterUpdatesSection> createState() => _RosterUpdatesSectionState();
 }
 
-class _ViewedRosterUpdatesPage extends StatefulWidget {
-  const _ViewedRosterUpdatesPage({required this.notices, required this.onViewed,
-    required this.onOpenDocument});
-  final List<RosterUpdateNotice> notices;
-  final Future<void> Function(List<RosterUpdateNotice>) onViewed;
-  final ValueChanged<RosterUpdateNotice> onOpenDocument;
-  @override
-  State<_ViewedRosterUpdatesPage> createState() => _ViewedRosterUpdatesPageState();
-}
+class _RosterUpdatesSectionState extends State<RosterUpdatesSection> {
+  bool _saving = false;
+  String? _error;
+  List<RosterUpdateNotice>? _retry;
 
-class _ViewedRosterUpdatesPageState extends State<_ViewedRosterUpdatesPage> {
-  bool _saving = true;
-  bool _failed = false;
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _markViewed());
-  }
-  Future<void> _markViewed() async {
-    if (!mounted) return;
-    setState(() { _saving = true; _failed = false; });
+  Future<void> _clear(List<RosterUpdateNotice> snapshot) async {
+    if (_saving || snapshot.isEmpty) return;
+    setState(() { _saving = true; _error = null; _retry = null; });
     try {
-      await widget.onViewed(widget.notices);
-      if (mounted) setState(() => _saving = false);
+      await widget.onViewed(snapshot);
     } catch (_) {
-      if (mounted) setState(() { _saving = false; _failed = true; });
+      if (mounted) setState(() {
+        _error = 'Could not clear these updates. Please retry.';
+        _retry = snapshot;
+      });
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
+
+  Future<void> _open(RosterUpdateNotice notice) async {
+    await showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('Roster update'),
+      content: SingleChildScrollView(child: RosterUpdateCard(notice: notice,
+        onOpenDocument: () => widget.onOpenDocument(notice), onUseShift: () {})),
+      actions: [TextButton(onPressed: () => Navigator.pop(dialogContext),
+        child: const Text('Done'))],
+    ));
+    if (mounted) await _clear([notice]);
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Roster updates')),
-    body: ListView(padding: const EdgeInsets.all(16), children: [
-      if (_failed)
-        ListTile(title: const Text('Could not save viewed updates. Please retry.'),
-          trailing: TextButton(onPressed: _markViewed, child: const Text('Retry')))
-      else Padding(padding: const EdgeInsets.only(bottom: 12),
-        child: Text(_saving ? 'Marking updates as viewed…' : 'All updates below are marked as viewed.')),
-      for (final notice in widget.notices)
-        RosterUpdateCard(notice: notice,
-          onOpenDocument: () => widget.onOpenDocument(notice), onUseShift: () {}),
-    ]),
-  );
+  Widget build(BuildContext context) {
+    // Investigation items are pending actions and cannot be cleared here.
+    final notices = widget.notices.where((n) => !n.needsInvestigation).toList();
+    if (notices.isEmpty) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        const Expanded(child: Text('Roster updates',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
+        TextButton(onPressed: _saving ? null : () =>
+          _clear(List<RosterUpdateNotice>.unmodifiable(notices)),
+          child: const Text('Clear all roster updates')),
+      ]),
+      if (_error != null)
+        ListTile(title: Text(_error!),
+          trailing: TextButton(onPressed: _saving || _retry == null
+            ? null : () => _clear(_retry!), child: const Text('Retry'))),
+      for (final notice in notices)
+        Card(child: ListTile(
+          title: Text(notice.title),
+          subtitle: Text(notice.detail),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _saving ? null : () => _open(notice),
+        )),
+      const SizedBox(height: 16),
+    ]);
+  }
 }

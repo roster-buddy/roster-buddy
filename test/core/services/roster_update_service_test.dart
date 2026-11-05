@@ -81,4 +81,21 @@ void main() {
     expect(result.last.needsInvestigation, isTrue);
   });
 
+
+  test('viewing the newest update leaves older unopened dates and conflicts', () {
+    final rows = [
+      {...row('2319', '2026-11-02T09:00:00Z'), 'duty_type': 'working'},
+      {...row('2319', '2026-11-02T12:00:00Z'), 'duty_type': 'working'},
+      {...row('2319', '2026-11-02T10:00:00Z'), 'duty_date': '2026-11-04', 'duty_type': 'working'},
+      {...row('2319', '2026-11-02T11:00:00Z'), 'duty_date': '2026-11-03', 'duty_type': 'working'},
+    ];
+    final since = DateTime.utc(2026,11,1);
+    final all = RosterUpdateService.fromRows(rows, payrollNumber: '52319',
+      since: since, annualLeaveDates: {'2026-11-03'});
+    final remaining = RosterUpdateService.fromRows(rows, payrollNumber: '52319',
+      since: since, annualLeaveDates: {'2026-11-03'},
+      viewedKeys: all.where((n) => n.date != '2026-11-04').map((n) => n.viewKey).toSet());
+    expect(remaining.map((n) => n.date), ['2026-11-03', '2026-11-04']);
+    expect(remaining.first.needsInvestigation, isTrue);
+  });
 }

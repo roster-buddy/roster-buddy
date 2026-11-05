@@ -1,4 +1,5 @@
 import '../notifications/shift_reminder_link.dart';
+import '../../core/widgets/top_notice_banner.dart';
 import '../../core/widgets/day_details_panel.dart';
 import 'package:flutter/services.dart';
 import '../upload/roster_updates_section.dart';
@@ -110,6 +111,8 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Color background = Color(0xFFF4F7FA);
 
   int _selectedIndex = 0;
+  bool _annualLeaveFromSettings = false;
+  final TopNoticeBanner _rosterBanner = TopNoticeBanner();
   int _dashboardRefreshVersion = 0;
   int _pendingActionCount = 0;
   Timer? _rosterNoticeTimer;
@@ -144,6 +147,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _rosterNoticeTimer?.cancel();
+    _rosterBanner.dismiss();
     super.dispose();
   }
 
@@ -240,12 +244,12 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted && rosterUpdates.isNotEmpty) {
         final latest = rosterUpdates.first.receivedAt;
         if ((!_noticesInitialised || _lastRosterNotice == null || latest.isAfter(_lastRosterNotice!))) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(rosterUpdates.any((notice) => notice.needsInvestigation)
-                ? 'Annual leave conflict: a roster sheet lists you working. Investigation needed. Open the bell for the uploaded sheet.'
-                : 'Roster update: ${rosterUpdates.length} duty record(s) received. Open the bell for details.'),
-            action: SnackBarAction(label: 'View', onPressed: _openPendingActions),
-          ));
+          _rosterBanner.show(context,
+            message: rosterUpdates.any((notice) => notice.needsInvestigation)
+                ? 'Annual leave conflict: a roster sheet lists you working. Open the bell to review.'
+                : 'Roster update: ${rosterUpdates.length} duty record(s) received. Open the bell for details.',
+            onView: _openPendingActions,
+          );
         }
         _lastRosterNotice = latest;
       }
@@ -335,6 +339,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _dashboardRefreshVersion++;
       }
 
+      _annualLeaveFromSettings = destination == 3 && _selectedIndex == 4;
       _selectedIndex = destination;
     });
   }
@@ -495,6 +500,12 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: background,
       appBar: AppBar(
         automaticallyImplyLeading: false,
+        leading: _selectedIndex == 3 && _annualLeaveFromSettings
+            ? BackButton(onPressed: () => setState(() {
+                _annualLeaveFromSettings = false;
+                _selectedIndex = 4;
+              }))
+            : null,
         backgroundColor: Colors.white,
         foregroundColor: navy,
         elevation: 0,
@@ -575,6 +586,7 @@ class _HomeScreenState extends State<HomeScreen> {
               _dashboardRefreshVersion++;
             }
 
+            _annualLeaveFromSettings = false;
             _selectedIndex = index;
           });
         },
@@ -656,10 +668,9 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   Future<void> _viewedRosterUpdates(List<RosterUpdateNotice> viewed) async {
     await RosterUpdateService().markViewed(viewed);
     if (!mounted) return;
-    final latest = viewed.map((notice) => notice.receivedAt)
-        .reduce((a, b) => a.isAfter(b) ? a : b);
+    final keys = viewed.where((n) => !n.needsInvestigation).map((n) => n.viewKey).toSet();
     setState(() => _rosterUpdates.removeWhere((notice) =>
-        !notice.needsInvestigation && !notice.receivedAt.isAfter(latest)));
+        !notice.needsInvestigation && keys.contains(notice.viewKey)));
     widget.onChanged();
   }
 
