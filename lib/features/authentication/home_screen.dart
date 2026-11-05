@@ -2,7 +2,6 @@ import '../notifications/shift_reminder_link.dart';
 import '../../core/widgets/day_details_panel.dart';
 import 'package:flutter/services.dart';
 import '../upload/roster_updates_section.dart';
-import '../notifications/push_notification_settings.dart';
 import '../smart_scan/scan_duty_editor.dart';
 import '../upload/roster_update_card.dart';
 import '../upload/day_document_links.dart';
@@ -2092,8 +2091,6 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                 'and shift-swap actions.',
                 style: TextStyle(color: textGrey),
               ),
-              const SizedBox(height: 16),
-              const PushNotificationSettings(),
               const SizedBox(height: 16),
               RosterUpdatesSection(
                 notices: _rosterUpdates.where((notice) => !notice.needsInvestigation).toList(),

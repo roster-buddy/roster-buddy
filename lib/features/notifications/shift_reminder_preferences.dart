@@ -13,6 +13,17 @@ Set<int> readShiftReminderMinutes(dynamic value) => value is List
     ? value.whereType<int>().where(shiftReminderOptions.contains).toSet()
     : <int>{30};
 
+class NotificationSettingsIcon extends StatelessWidget {
+  const NotificationSettingsIcon({super.key, this.color});
+  final Color? color;
+  @override
+  Widget build(BuildContext context) => SizedBox(width: 28, height: 28,
+    child: Stack(children: [
+      Icon(Icons.notifications_outlined, color: color, size: 25),
+      Positioned(right: 0, bottom: 0, child: Icon(Icons.settings, color: color, size: 13)),
+    ]));
+}
+
 class ShiftReminderPreferences extends StatelessWidget {
   const ShiftReminderPreferences({
     super.key, required this.selected, required this.onChanged, this.enabled = true,
@@ -100,12 +111,9 @@ class _ShiftReminderSettingsPageState extends State<ShiftReminderSettingsPage> {
       await client.from('driver_profiles')
           .update({'shift_reminder_minutes': _selected.toList()..sort()})
           .eq('user_id', user.id).select('user_id').single();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Shift reminders saved.')));
-      }
+      if (mounted) setState(() => _error = null);
     } catch (_) {
-      if (mounted) setState(() => _error = 'Could not save reminders. Please retry.');
+      if (mounted) setState(() => _error = 'Could not save your changes. Tap Retry to save them.');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -113,19 +121,22 @@ class _ShiftReminderSettingsPageState extends State<ShiftReminderSettingsPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Shift reminders')),
+    appBar: AppBar(title: const Row(children: [NotificationSettingsIcon(), SizedBox(width: 10), Text('Notification settings')])),
     body: _loading ? const Center(child: CircularProgressIndicator()) :
       ListView(padding: const EdgeInsets.all(20), children: [
         if (_error != null) ...[
           Text(_error!, style: const TextStyle(color: Colors.red)),
-          TextButton(onPressed: _saving ? null : _load, child: const Text('Reload preferences')),
+          TextButton(onPressed: _saving ? null : (_loaded ? _save : _load), child: const Text('Retry')),
         ],
         Card(child: Padding(padding: const EdgeInsets.all(16),
           child: ShiftReminderPreferences(selected: _selected, enabled: !_saving,
-            onChanged: (value) => setState(() => _selected = value)))),
+            onChanged: !_loaded ? (_) {} : (value) {
+              setState(() => _selected = value);
+              _save();
+            }))),
         const SizedBox(height: 12),
-        FilledButton(onPressed: _saving || !_loaded ? null : _save,
-          child: Text(_saving ? 'Saving…' : 'Save reminders')),
+        Text(_saving ? 'Saving…' : 'Changes save automatically.',
+          style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: 12),
         const PushNotificationSettings(),
       ]),

@@ -325,12 +325,9 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                     ),
                     const Divider(height: 1),
                     ListTile(
-                      leading: const Icon(
-                        Icons.notifications_outlined,
-                        color: railwayBlue,
-                      ),
-                      title: const Text('Shift reminders'),
-                      subtitle: const Text('Before book-on and the fixed book-off check'),
+                      leading: const NotificationSettingsIcon(color: railwayBlue),
+                      title: const Text('Notification settings'),
+                      subtitle: const Text('Device notifications and shift reminders'),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => Navigator.of(context).push<void>(
                         MaterialPageRoute<void>(builder: (_) => const ShiftReminderSettingsPage())),

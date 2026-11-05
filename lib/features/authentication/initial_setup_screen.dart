@@ -1010,6 +1010,9 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
           ),
         ),
         const SizedBox(height: 18),
+        const Row(children: [NotificationSettingsIcon(), SizedBox(width: 10),
+          Text('Notification settings', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800))]),
+        const SizedBox(height: 12),
         Card(child: Padding(padding: const EdgeInsets.all(16),
           child: ShiftReminderPreferences(
             selected: _shiftReminderMinutes, enabled: !_saving,
