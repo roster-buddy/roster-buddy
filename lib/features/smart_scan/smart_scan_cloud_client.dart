@@ -1,0 +1,194 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'smart_scan_result.dart';
+
+class SmartScanCloudException implements Exception {
+  const SmartScanCloudException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+class SmartScanCloudClient {
+  SmartScanCloudClient._();
+
+  static const String _functionName = 'roster-ocr';
+  static const int _maximumFreeFileBytes = 1000000;
+
+  static Future<SmartScanResult> recogniseImage({
+    required Uint8List bytes,
+    required String fileName,
+    void Function(String, double?)? onProgress,
+  }) async {
+    final List<SmartScanResult> pages = await _recognise(
+      bytes: bytes,
+      fileName: fileName,
+      isPdf: false,
+      onProgress: onProgress,
+    );
+
+    if (pages.length != 1) {
+      throw const SmartScanCloudException(
+        'The secure scanner returned an unexpected number of image pages.',
+      );
+    }
+
+    return pages.single;
+  }
+
+  static Future<List<SmartScanResult>> recognisePdf({
+    required Uint8List bytes,
+    required String fileName,
+    void Function(String, double?)? onProgress,
+  }) => _recognise(
+    bytes: bytes,
+    fileName: fileName,
+    isPdf: true,
+    onProgress: onProgress,
+  );
+
+  static Future<List<SmartScanResult>> _recognise({
+    required Uint8List bytes,
+    required String fileName,
+    required bool isPdf,
+    void Function(String, double?)? onProgress,
+  }) async {
+    if (bytes.isEmpty) {
+      throw const SmartScanCloudException('The selected document is empty.');
+    }
+
+    if (bytes.length > _maximumFreeFileBytes) {
+      throw const SmartScanCloudException(
+        'This document is too large for the secure free scanner.',
+      );
+    }
+
+    if (Supabase.instance.client.auth.currentUser == null) {
+      throw const SmartScanCloudException(
+        'Sign in before using the secure scanner.',
+      );
+    }
+
+    onProgress?.call('Sending document to the secure scanner…', 0.2);
+
+    try {
+      final FunctionResponse response = await Supabase.instance.client.functions
+          .invoke(
+            _functionName,
+            body: <String, dynamic>{
+              'fileName': fileName,
+              'mimeType': _mimeType(fileName, isPdf),
+              'base64Data': base64Encode(bytes),
+            },
+          );
+
+      onProgress?.call('Reading the roster table…', 0.75);
+
+      dynamic payload = response.data;
+      if (payload is String) {
+        payload = jsonDecode(payload);
+      }
+
+      if (payload is! Map) {
+        throw const SmartScanCloudException(
+          'The secure scanner returned an invalid response.',
+        );
+      }
+
+      final Object? error = payload['error'];
+      if (error is String && error.trim().isNotEmpty) {
+        throw SmartScanCloudException(error.trim());
+      }
+
+      final Object? rawPages = payload['pages'];
+      if (rawPages is! List || rawPages.isEmpty) {
+        throw const SmartScanCloudException(
+          'No readable text was found by the secure scanner.',
+        );
+      }
+
+      final List<SmartScanResult> pages = rawPages.map((dynamic rawPage) {
+        if (rawPage is! Map) {
+          throw const SmartScanCloudException(
+            'The secure scanner returned an invalid page.',
+          );
+        }
+
+        final Object? rawLines = rawPage['lines'];
+        final List<SmartScanTextLine> lines = rawLines is List
+            ? rawLines.map((dynamic rawLine) {
+                if (rawLine is! Map) {
+                  throw const SmartScanCloudException(
+                    'The secure scanner returned an invalid text position.',
+                  );
+                }
+
+                return SmartScanTextLine(
+                  text: (rawLine['text'] ?? '').toString(),
+                  left: _number(rawLine['left']),
+                  top: _number(rawLine['top']),
+                  right: _number(rawLine['right']),
+                  bottom: _number(rawLine['bottom']),
+                );
+              }).toList(growable: false)
+            : const <SmartScanTextLine>[];
+
+        final Object? rawConfidence = rawPage['confidence'];
+
+        return SmartScanResult(
+          fullText: (rawPage['fullText'] ?? '').toString(),
+          lines: lines,
+          confidence: rawConfidence is num
+              ? rawConfidence.toDouble()
+              : null,
+        );
+      }).toList(growable: false);
+
+      if (!pages.any((SmartScanResult page) => page.hasText)) {
+        throw const SmartScanCloudException(
+          'No readable text was found by the secure scanner.',
+        );
+      }
+
+      onProgress?.call('Secure scan complete', 1);
+      return pages;
+    } on SmartScanCloudException {
+      rethrow;
+    } catch (_) {
+      throw const SmartScanCloudException(
+        'The secure scanner is unavailable. Trying the device scanner instead.',
+      );
+    }
+  }
+
+  static double _number(Object? value) {
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  static String _mimeType(String fileName, bool isPdf) {
+    if (isPdf) {
+      return 'application/pdf';
+    }
+
+    final String lowerName = fileName.toLowerCase();
+    if (lowerName.endsWith('.png')) {
+      return 'image/png';
+    }
+    if (lowerName.endsWith('.heic')) {
+      return 'image/heic';
+    }
+    if (lowerName.endsWith('.heif')) {
+      return 'image/heif';
+    }
+    return 'image/jpeg';
+  }
+}
