@@ -1,3 +1,4 @@
+import '../../core/app_build.dart';
 import '../notifications/shift_reminder_preferences.dart';
 import 'documents_page.dart';
 import '../../core/formatters/roster_date_format.dart';
@@ -207,7 +208,9 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
         children: [
           Text('Roster Buddy', style: TextStyle(color: navy, fontSize: 24, fontWeight: FontWeight.w800)),
           SizedBox(height: 8),
-          Text('Version 1.0.0 (1)'),
+          Text(AppBuild.label),
+          SizedBox(height: 4),
+          Text(AppBuild.revision),
           SizedBox(height: 16),
           Text('Your railway roster, annual leave and duty history in one place.'),
           SizedBox(height: 12),
@@ -362,7 +365,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                         color: railwayBlue,
                       ),
                       title: const Text('About'),
-                      subtitle: const Text('Roster Buddy Version 1'),
+                      subtitle: const Text(AppBuild.label),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: _openAbout,
                     ),

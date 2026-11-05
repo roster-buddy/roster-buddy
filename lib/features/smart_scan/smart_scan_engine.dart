@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:typed_data';
 
 import 'smart_scan_cloud_client.dart';
@@ -37,7 +38,7 @@ class SmartScanEngine {
       cloudError = error;
     }
 
-    if (!local.SmartScanEngine.isSupported) {
+    if (kIsWeb || !local.SmartScanEngine.isSupported) {
       throw SmartScanException(cloudError.message);
     }
 
@@ -69,7 +70,7 @@ class SmartScanEngine {
       cloudError = error;
     }
 
-    if (!local.SmartScanEngine.isSupported) {
+    if (kIsWeb || !local.SmartScanEngine.isSupported) {
       throw SmartScanException(cloudError.message);
     }
 

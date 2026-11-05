@@ -63,8 +63,8 @@ class SmartScanCloudClient {
     }
 
     if (bytes.length > _maximumFreeFileBytes) {
-      throw const SmartScanCloudException(
-        'This document is too large for the secure free scanner.',
+      throw SmartScanCloudException(
+        'This photo is ${(bytes.length / 1000000).toStringAsFixed(1)} MB. The free scanner accepts up to 1 MB. Choose a smaller JPG photo.',
       );
     }
 
@@ -159,9 +159,15 @@ class SmartScanCloudClient {
       return pages;
     } on SmartScanCloudException {
       rethrow;
+    } on FunctionException catch (error) {
+      final details = error.details;
+      final message = details is Map ? (details['error'] ?? details['message']) : null;
+      throw SmartScanCloudException(
+        message is String ? message : 'Secure scanner connection failed (HTTP ${error.status}). Please retry.',
+      );
     } catch (_) {
       throw const SmartScanCloudException(
-        'The secure scanner is unavailable. Trying the device scanner instead.',
+        'The secure scanner could not connect. Check your connection and retry.',
       );
     }
   }
