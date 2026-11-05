@@ -52,4 +52,27 @@ void main() {
     expect(result.duties.last.bookOn, '08:11');
     expect(result.duties.last.bookOff, '17:10');
   });
+
+  test('NO OCR alias becomes ND only on no-duty rows', () async {
+    final result = await DailyAmendmentParser(
+      documentType: DocumentType.sevenDayAmendment,
+    ).parse(pageText: [
+      'Report for Saturday 07/11/26 in All Links\n'
+      'S Rees 0184 WOD [35] NO\n'
+      'D Guest 3685 WOD NO\n'
+      'B Moore 1910 WOD NO 208 08:11 17:10 8.59',
+    ]);
+    expect(result.canImport, isTrue);
+    expect(result.duties.length, 3);
+    for (final duty in result.duties.take(2)) {
+      expect(duty.amendmentCode, 'ND');
+      expect(duty.dutyType, DutyType.restDay);
+      expect(duty.bookOn, isNull);
+      expect(duty.turnNumber, isNull);
+      expect(duty.rawText, contains('NO'));
+    }
+    expect(result.duties.last.dutyType, DutyType.working);
+    expect(result.duties.last.bookOn, '08:11');
+    expect(result.duties.last.bookOff, '17:10');
+  });
 }
