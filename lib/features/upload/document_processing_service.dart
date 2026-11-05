@@ -17,6 +17,7 @@ import '../../core/parser/daily_amendment_parser.dart';
 import '../../core/parser/job_card_parser.dart';
 import '../smart_scan/smart_scan_engine.dart';
 import '../smart_scan/smart_scan_page_text_reconstructor.dart';
+import '../smart_scan/daily_scan_text.dart';
 import '../smart_scan/smart_scan_result.dart';
 
 class DocumentProcessingService {
@@ -221,7 +222,9 @@ class DocumentProcessingService {
     final isAnnualLeaveRoster = documentType == DocumentType.annualLeaveRoster;
     final isJobCard = documentType == DocumentType.jobCard;
     final List<String> reconstructedPageText =
-        SmartScanPageTextReconstructor.reconstructPages(scanResults);
+        _isDailyAmendment(documentType)
+            ? await DailyScanText.bestPages(scanResults, documentType)
+            : SmartScanPageTextReconstructor.reconstructPages(scanResults);
 
     if (reconstructedPageText.isEmpty) {
       throw const DocumentProcessingException(
