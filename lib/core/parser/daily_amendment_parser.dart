@@ -302,7 +302,9 @@ class DailyAmendmentParser implements BaseParser {
     }
     final payroll = match.group(2)!;
     final depot = match.group(3)!.toUpperCase();
-    final tail = match.group(4)!.trim();
+    final tail = match.group(4)!
+        .replaceAll(RegExp(r'\[\s*\d+\s*\]|\(\s*\d+\s*\)'), ' ')
+        .trim();
     final clocks = _printedClock.allMatches(tail).toList();
     final prefix = clocks.isEmpty
         ? tail

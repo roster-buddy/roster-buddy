@@ -38,6 +38,16 @@ class DutyCodeLibrary {
 
   static const List<DutyCodeDefinition> codes = [
     DutyCodeDefinition(
+      code: 'ND',
+      crewplanMeaning: 'No shift allocated — available to work',
+      dutyType: DutyType.restDay,
+    ),
+    DutyCodeDefinition(
+      code: 'NDNA',
+      crewplanMeaning: 'No shift allocated — not available to work',
+      dutyType: DutyType.unavailable,
+    ),
+    DutyCodeDefinition(
       code: 'AC',
       crewplanMeaning: 'Accident at work',
       traincrewUnavailabilityMeaning: 'Accident at work',

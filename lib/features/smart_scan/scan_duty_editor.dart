@@ -24,6 +24,7 @@ class _ScanDutyEditorState extends State<ScanDutyEditor> {
   final _form = GlobalKey<FormState>();
   late final TextEditingController _date, _pay, _turn, _on, _off;
   late DutyType _type;
+  String? _availabilityCode;
   bool get _needsTimes =>
       _type == DutyType.working ||
       _type == DutyType.training ||
@@ -44,6 +45,8 @@ class _ScanDutyEditorState extends State<ScanDutyEditor> {
     _on = TextEditingController(text: d?.bookOn ?? '');
     _off = TextEditingController(text: d?.bookOff ?? '');
     _type = d?.dutyType ?? DutyType.working;
+    _availabilityCode = ['ND', 'NDNA'].contains(d?.amendmentCode)
+        ? d?.amendmentCode : null;
   }
 
   @override
@@ -91,10 +94,14 @@ class _ScanDutyEditorState extends State<ScanDutyEditor> {
         bookOn: _needsTimes ? _on.text.trim() : null,
         bookOff: _needsTimes ? _off.text.trim() : null,
         rosteredMinutes: minutes,
-        amendmentCode: _type == DutyType.annualLeave
+        amendmentCode: _availabilityCode ?? (_type == DutyType.annualLeave
             ? 'ALD'
-            : widget.initial?.amendmentCode,
-        remarks: 'Checked against the document',
+            : (_type == widget.initial?.dutyType ? widget.initial?.amendmentCode : null)),
+        remarks: _availabilityCode == 'ND'
+            ? 'No shift allocated — available to work'
+            : _availabilityCode == 'NDNA'
+            ? 'No shift allocated — not available to work'
+            : 'Checked against the document',
         rawText: widget.initial?.rawText,
         pageNumber: widget.initial?.pageNumber,
       ),
@@ -128,8 +135,8 @@ class _ScanDutyEditorState extends State<ScanDutyEditor> {
                   ? null
                   : 'Enter the payroll number',
             ),
-            DropdownButtonFormField<DutyType>(
-              initialValue: _type,
+            DropdownButtonFormField<String>(
+              initialValue: _availabilityCode ?? _type.name,
               decoration: const InputDecoration(labelText: 'Day type'),
               items:
                   [
@@ -145,7 +152,7 @@ class _ScanDutyEditorState extends State<ScanDutyEditor> {
                       ]
                       .map(
                         (t) => DropdownMenuItem(
-                          value: t,
+                          value: t.name,
                           child: Text(switch (t) {
                             DutyType.restDay => 'Rest day',
                             DutyType.annualLeave => 'Annual leave',
@@ -154,11 +161,20 @@ class _ScanDutyEditorState extends State<ScanDutyEditor> {
                           }),
                         ),
                       )
-                      .toList(),
+                      .toList()
+                      ..addAll(const [
+                        DropdownMenuItem(value: 'ND', child: Text('ND — available, no shift allocated')),
+                        DropdownMenuItem(value: 'NDNA', child: Text('NDNA — unavailable, no shift allocated')),
+                      ]),
               validator: (v) =>
-                  v == DutyType.unknown ? 'Choose a day type' : null,
+                  v == DutyType.unknown.name ? 'Choose a day type' : null,
               onChanged: (v) {
-                if (v != null) setState(() => _type = v);
+                if (v != null) setState(() {
+                  _availabilityCode = ['ND', 'NDNA'].contains(v) ? v : null;
+                  _type = v == 'ND' ? DutyType.restDay
+                      : v == 'NDNA' ? DutyType.unavailable
+                      : DutyType.values.byName(v);
+                });
               },
             ),
             if (_needsTimes) ...[
