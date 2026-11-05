@@ -51,6 +51,65 @@ class ScanImportPolicy {
     return candidates.first;
   }
 
+  static String _bestPayrollText(
+    SmartScanResult page,
+    Set<String?> parsedPayrolls,
+  ) {
+    final candidates = <String>[
+      page.fullText,
+      SmartScanPageTextReconstructor.reconstruct(page),
+    ];
+    candidates.sort((first, second) {
+      int score(String text) {
+        final values = _payrolls(text);
+        final matches = values.where(parsedPayrolls.contains).length;
+        final extras = values
+            .where((value) => !parsedPayrolls.contains(value))
+            .length;
+        final missing = parsedPayrolls
+            .where((value) => value != null && !values.contains(value))
+            .length;
+        return matches * 100 - extras * 10 - missing;
+      }
+
+      return score(second).compareTo(score(first));
+    });
+    return candidates.first;
+  }
+
+  static List<ParseWarning> unmatchedRows(
+    ParseResult result,
+    List<SmartScanResult> pages,
+  ) {
+    final rows = <ParseWarning>[];
+    for (var i = 0; i < pages.length; i++) {
+      final parsedPayrolls = result.duties
+          .where((d) => d.pageNumber == i + 1)
+          .map((d) => d.payrollNumber)
+          .toSet();
+      final text = _bestPayrollText(pages[i], parsedPayrolls);
+      final missing = _payrolls(text).where(
+        (payroll) => !parsedPayrolls.contains(payroll),
+      );
+      for (final payroll in missing) {
+        final line = text.split(RegExp(r'\r?\n')).firstWhere(
+          (value) => RegExp(
+            '\\b${RegExp.escape(payroll)}\\s+[A-Za-z]{2,5}\\b',
+          ).hasMatch(value),
+          orElse: () => 'Payroll $payroll',
+        );
+        rows.add(
+          ParseWarning(
+            message: 'Unresolved roster row on page ${i + 1}: ${line.trim()}',
+            pageNumber: i + 1,
+            severity: ParseWarningSeverity.blocking,
+          ),
+        );
+      }
+    }
+    return rows;
+  }
+
   static List<String> reviewReasons(
     ParseResult result,
     List<SmartScanResult> pages,

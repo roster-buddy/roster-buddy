@@ -324,5 +324,29 @@ void main() {
     expect(tester.widget<FilledButton>(
       find.widgetWithText(FilledButton, 'Import records')).onPressed, isNull);
   });
+
+  testWidgets('count mismatch shows only unresolved rows', (tester) async {
+    const text = '7DAY\nReport for Saturday 28/11/26 in All Links\n'
+        'S Rees 0184 WOD ND\nD Guest 3685 WOD NDNA';
+    final partial = await DailyAmendmentParser(
+      documentType: DocumentType.sevenDayAmendment,
+    ).parse(pageText: [text]);
+    await tester.pumpWidget(MaterialApp(home: ScanReviewPage(
+      upload: upload,
+      readDocument: (_) async => const [
+        SmartScanResult(fullText: text, lines: []),
+      ],
+      parseDocument: (_, type, activation) async => partial.copyWith(
+        duties: [partial.duties.first],
+      ),
+    )));
+    await tester.pumpAndSettle();
+    await chooseType(tester, '7-Day Amendment');
+    await tester.tap(find.text('Check and apply'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('1 rows need correction'), findsOneWidget);
+    expect(find.textContaining('D Guest 3685 WOD NDNA'), findsOneWidget);
+    expect(find.textContaining('S Rees · Payroll 0184'), findsNothing);
+  });
 }
 

@@ -62,6 +62,12 @@ void main() {
     expect(ScanImportPolicy.reviewReasons(result.copyWith(
       duties: [result.duties.first]), [page]).join(' '),
       contains('2 payroll rows detected, 1 shift records read'));
+    final missingRows = ScanImportPolicy.unmatchedRows(
+      result.copyWith(duties: [result.duties.first]),
+      [page],
+    );
+    expect(missingRows, hasLength(1));
+    expect(missingRows.single.message, contains('D Guest 3685 WOD NDNA'));
     expect(ScanImportPolicy.allRowsRead(result.copyWith(duties: [
       result.duties.first.copyWith(payrollNumber: '9999'),
       result.duties.last,

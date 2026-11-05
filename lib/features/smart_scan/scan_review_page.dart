@@ -106,7 +106,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
       DocumentType.fortyEightHourAmendment => RosterSource.fortyEightHour,
       _ => RosterSource.sevenDay,
     };
-    final rowText = warning?.message.split(': ').skip(1).join(': ');
+    final rowText = warning?.message.split(': ').last;
     final row = rowText == null ? null : RegExp(
       r'^(.+?)\s+([0-9]{4,8})\s+([A-Za-z]{2,5})\b(.*)$',
     ).firstMatch(rowText);
@@ -272,6 +272,12 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
 
   Widget _header() {
     final parsed = _effective;
+    final reviewReasons = parsed == null || !_daily
+        ? const <String>[]
+        : ScanImportPolicy.reviewReasons(parsed, _pages!);
+    final unmatchedRows = parsed == null || !_daily
+        ? const <ParseWarning>[]
+        : ScanImportPolicy.unmatchedRows(parsed, _pages!);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -355,14 +361,32 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
               'No rows matched your profile. This import will not update your own shifts.',
             ),
           if (_daily)
-            for (final reason in ScanImportPolicy.reviewReasons(parsed, _pages!))
+            for (final reason in reviewReasons)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Text('Review needed: $reason'),
               ),
-          const Text(
-            'Check these records against your document. Shared sheets include records for other drivers; each calendar uses its matching driver or payroll number.',
-          ),
+          if (unmatchedRows.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              '${unmatchedRows.length} rows need correction. '
+              'The ${parsed.duties.length} correctly read rows are kept and hidden below.',
+            ),
+            for (final warning in unmatchedRows)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(warning.message.split(': ').last),
+                subtitle: const Text('Tap to correct only this row'),
+                trailing: const Icon(Icons.edit_outlined),
+                onTap: () => _editRecord(null, warning),
+              ),
+          ] else if (reviewReasons.isEmpty)
+            const Text('All recognised records passed the automatic checks.')
+          else
+            const Text(
+              'Only the unresolved items shown above need checking. '
+              'Correctly read rows are kept automatically.',
+            ),
           for (final warning in parsed.warnings)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -457,6 +481,12 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
   @override
   Widget build(BuildContext context) {
     final parsed = _effective;
+    final needsDailyReview = parsed != null &&
+        _daily &&
+        ScanImportPolicy.reviewReasons(parsed, _pages!).isNotEmpty;
+    final visibleRecordCount = needsDailyReview
+        ? 0
+        : (parsed?.calculatedRecordCount ?? 0);
     return Scaffold(
       appBar: AppBar(title: const Text('Scan and review')),
       body: SafeArea(
@@ -479,7 +509,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.all(20),
-                      itemCount: 1 + (parsed?.calculatedRecordCount ?? 0),
+                      itemCount: 1 + visibleRecordCount,
                       itemBuilder: (_, index) => index == 0
                           ? Column(
                               children: [
