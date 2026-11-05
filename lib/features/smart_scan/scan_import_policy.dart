@@ -22,7 +22,9 @@ class ScanImportPolicy {
         result.identifiedDates.isEmpty || result.pagesProcessed != pages.length ||
         result.warnings.any((w) => w.severity != ParseWarningSeverity.information) ||
         result.duties.any((d) => d.dutyType == DutyType.unknown) ||
-        pages.any((p) => p.confidence != null && p.confidence! < 65)) return false;
+        pages.any((p) => p.confidence != null && p.confidence! < 65)) {
+      return false;
+    }
     const classifier = DocumentClassifier();
     for (var i = 0; i < pages.length; i++) {
       final page = pages[i];

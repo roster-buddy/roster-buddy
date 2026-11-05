@@ -44,7 +44,9 @@ class SmartScanCloudClient {
     const classifier = DocumentClassifier();
     if (classifier.amendmentStamps([page.fullText]).isNotEmpty ||
         !RegExp(r'DAILY\s+ROSTER|REPORT\s+FOR', caseSensitive: false)
-            .hasMatch(page.fullText)) return page;
+            .hasMatch(page.fullText)) {
+      return page;
+    }
     onProgress?.call('Checking the sheet stamp…', 0.85);
     try {
       final crop = await prepareCloudStamp(bytes, fileName);
