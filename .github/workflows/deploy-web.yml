@@ -39,6 +39,7 @@ jobs:
         run: flutter test
 
       - name: Prepare browser scanner
+        timeout-minutes: 10
         run: |
           npm ci --prefix browser-scanner
           npm test --prefix browser-scanner
