@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'smart_scan_result.dart';
+import 'cloud_image_preparation.dart';
 
 class SmartScanCloudException implements Exception {
   const SmartScanCloudException(this.message);
@@ -60,6 +61,20 @@ class SmartScanCloudClient {
   }) async {
     if (bytes.isEmpty) {
       throw const SmartScanCloudException('The selected document is empty.');
+    }
+
+    if (!isPdf && (bytes.length > _maximumFreeFileBytes ||
+        fileName.toLowerCase().endsWith('.heic') ||
+        fileName.toLowerCase().endsWith('.heif'))) {
+      onProgress?.call('Preparing photo for scanning…', 0.1);
+      try {
+        bytes = await prepareCloudImage(bytes, fileName);
+        fileName = 'scan.jpg';
+      } catch (_) {
+        throw const SmartScanCloudException(
+          'The photo could not be prepared for scanning. Choose a JPG or PNG photo and retry.',
+        );
+      }
     }
 
     if (bytes.length > _maximumFreeFileBytes) {

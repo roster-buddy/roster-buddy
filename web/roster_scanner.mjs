@@ -245,3 +245,17 @@ if (typeof window !== 'undefined') {
     JSON.stringify({error: error?.message || 'The scanner could not read this document.'}));
   window.rosterCancelScan = cancelScan;
 }
+
+// Prepare a temporary JPEG for the free cloud scanner; the upload stays original.
+export async function prepareCloudImage(bytes, name) {
+  const canvas = await imageCanvas(bytes, name);
+  try {
+    for (const quality of [0.94, 0.88, 0.8, 0.7, 0.6]) {
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+      if (!blob) throw new Error('The photo could not be prepared.');
+      if (blob.size <= 990000) return new Uint8Array(await blob.arrayBuffer());
+    }
+    throw new Error('The photo could not fit the free scanner limit while retaining readable detail.');
+  } finally { canvas.width = 1; canvas.height = 1; }
+}
+if (typeof window !== 'undefined') window.rosterPrepareCloudImage = prepareCloudImage;
