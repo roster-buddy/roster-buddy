@@ -30,6 +30,32 @@ void main() {
       const SmartScanResult(fullText: 'Report for Saturday 28/11/26 in All Links\n'
         'S Rees 0184 WOD ND\nD Guest 3685 WOD NDNA', lines: []),
     ]), isTrue);
+    expect(
+      ScanImportPolicy.allRowsRead(result, [
+        const SmartScanResult(
+          fullText: text,
+          lines: [
+            SmartScanTextLine(
+              text: 'S Rees 0184 WOD ND',
+              left: 0,
+              top: 0,
+              right: 200,
+              bottom: 12,
+            ),
+            SmartScanTextLine(
+              text: 'D Guest 368S WOD NDNA',
+              left: 0,
+              top: 20,
+              right: 220,
+              bottom: 32,
+            ),
+          ],
+        ),
+      ]),
+      isTrue,
+      reason:
+          'a poorer positioned-word reading must not add a phantom review row',
+    );
     expect(ScanImportPolicy.reviewReasons(result, [
       const SmartScanResult(fullText: text, lines: [], confidence: 40),
     ]).join(' '), contains('text recognition is uncertain'));

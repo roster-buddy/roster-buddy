@@ -22,6 +22,35 @@ class ScanImportPolicy {
   static bool allRowsRead(ParseResult result, List<SmartScanResult> pages) =>
       reviewReasons(result, pages).isEmpty;
 
+  /// Browser OCR supplies both its natural reading order and positioned words.
+  /// The daily parser deliberately chooses the better of those two versions.
+  /// Do the same when checking completeness: merging both sets can create a
+  /// phantom extra payroll when the poorer version misreads one digit.
+  static Set<String> _bestPayrolls(
+    SmartScanResult page,
+    Set<String?> parsedPayrolls,
+  ) {
+    final candidates = <Set<String>>[
+      _payrolls(page.fullText),
+      _payrolls(SmartScanPageTextReconstructor.reconstruct(page)),
+    ];
+    candidates.sort((first, second) {
+      int score(Set<String> values) {
+        final matches = values.where(parsedPayrolls.contains).length;
+        final extras = values
+            .where((value) => !parsedPayrolls.contains(value))
+            .length;
+        final missing = parsedPayrolls
+            .where((value) => value != null && !values.contains(value))
+            .length;
+        return matches * 100 - extras * 10 - missing;
+      }
+
+      return score(second).compareTo(score(first));
+    });
+    return candidates.first;
+  }
+
   static List<String> reviewReasons(
     ParseResult result,
     List<SmartScanResult> pages,
@@ -53,12 +82,9 @@ class ScanImportPolicy {
           'Page ${i + 1}: text recognition is uncertain. Check the rows against the original sheet.',
         );
       }
-      final payrolls = {
-        ..._payrolls(page.fullText),
-        ..._payrolls(SmartScanPageTextReconstructor.reconstruct(page)),
-      };
       final duties = result.duties.where((d) => d.pageNumber == i + 1).toList();
       final parsedPayrolls = duties.map((d) => d.payrollNumber).toSet();
+      final payrolls = _bestPayrolls(page, parsedPayrolls);
       if (payrolls.isEmpty) {
         reasons.add(
           'Page ${i + 1}: the scanner could not verify all payroll rows.',

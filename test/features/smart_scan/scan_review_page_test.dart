@@ -90,6 +90,8 @@ void main() {
     await tester.scrollUntilVisible(find.textContaining('03/08/2026'), 150);
     await tester.pumpAndSettle();
     expect(find.textContaining('03/08/2026'), findsWidgets);
+    expect(find.text('1 records found'), findsOneWidget);
+    expect(find.textContaining('records to review'), findsNothing);
     expect(find.textContaining('21910'), findsOneWidget);
     expect(find.textContaining('Alex Example · Payroll 21910'), findsOneWidget);
     expect(confirmed, isNull);

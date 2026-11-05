@@ -344,7 +344,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
         if (parsed != null) ...[
           const SizedBox(height: 12),
           Text(
-            '${parsed.calculatedRecordCount} records to review',
+            '${parsed.calculatedRecordCount} records found',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 8),
