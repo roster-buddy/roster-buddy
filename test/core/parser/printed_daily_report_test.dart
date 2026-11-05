@@ -77,4 +77,29 @@ A Tester 1910 WOD ALLOC 213 16:53 01:11 8.45
     expect(result.duties.single.date, DateTime(2026, 11, 5));
     expect(result.duties.single.turnNumber, '213');
   });
+  test('Sunday turns retain one digit and overnight finish times', () async {
+    final result = await parser.parse(
+      pageText: const [
+        'Report for Sunday 08/11/26 in All Links\n'
+            'A Example 1718 WOD ALLOC 2 07:44 13:38 Amended Turn\n'
+            'B Example 1108 WOD 9 17:59 00:12\n'
+            'C Example 1587 WOD 9001 07:19 16:04\n'
+            '- vacancy - WOD 6 15:34 23:40 8.06 Amended Turn\n'
+            'D Example 0184 WOD [22] ND\n'
+            'E Example 1378 WOD ZS ZS',
+      ],
+    );
+    expect(result.canImport, isTrue);
+    expect(result.duties, hasLength(5));
+    expect(result.duties.map((d) => d.turnNumber), [
+      '2',
+      '9',
+      '9001',
+      null,
+      null,
+    ]);
+    expect(result.duties[1].bookOff, '00:12');
+    expect(result.duties[1].rosteredMinutes, 373);
+    expect(result.duties.last.dutyType, DutyType.unavailable);
+  });
 }

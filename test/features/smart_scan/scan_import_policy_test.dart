@@ -30,6 +30,16 @@ void main() {
       const SmartScanResult(fullText: 'Report for Saturday 28/11/26 in All Links\n'
         'S Rees 0184 WOD ND\nD Guest 3685 WOD NDNA', lines: []),
     ]), isTrue);
+    expect(ScanImportPolicy.reviewReasons(result, [
+      const SmartScanResult(fullText: text, lines: [], confidence: 40),
+    ]).join(' '), contains('text recognition is uncertain'));
+    expect(ScanImportPolicy.reviewReasons(result.copyWith(
+      duties: [result.duties.first]), [page]).join(' '),
+      contains('2 payroll rows detected, 1 shift records read'));
+    expect(ScanImportPolicy.allRowsRead(result.copyWith(duties: [
+      result.duties.first.copyWith(payrollNumber: '9999'),
+      result.duties.last,
+    ]), [page]), isFalse);
     expect(ScanUploadSummary.title(result, 'Amendment'), '28/11/26 7 Day Sheet');
     expect(ScanUploadSummary.message(result, 2, 'Reviewed'), 'Reviewed');
     expect(ScanUploadSummary.message(result.copyWith(allRowsRead: true), 2, ''),

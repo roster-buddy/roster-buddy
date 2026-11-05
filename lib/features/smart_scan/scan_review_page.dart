@@ -354,6 +354,12 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
             const Text(
               'No rows matched your profile. This import will not update your own shifts.',
             ),
+          if (_daily)
+            for (final reason in ScanImportPolicy.reviewReasons(parsed, _pages!))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text('Review needed: $reason'),
+              ),
           const Text(
             'Check these records against your document. Shared sheets include records for other drivers; each calendar uses its matching driver or payroll number.',
           ),
@@ -407,7 +413,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
           '${displayDate(d.date)} · ${_label(d.dutyType.name)} · Turn ${d.turnNumber ?? "—"}',
         ),
         subtitle: Text(
-          'Driver ${d.driverNumber ?? "—"} · Payroll ${d.payrollNumber ?? "—"}\n'
+          '${d.driverName ?? (d.driverNumber == null ? "Driver" : "Driver ${d.driverNumber}")} · Payroll ${d.payrollNumber ?? "—"}\n'
           '${d.bookOn ?? "—"}–${d.bookOff ?? "—"}${d.remarks == null ? "" : "\n${d.remarks}"}',
         ),
         isThreeLine: true,

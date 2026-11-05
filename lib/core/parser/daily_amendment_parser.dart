@@ -322,7 +322,7 @@ class DailyAmendmentParser implements BaseParser {
       final token = clocks.isEmpty
           ? _correctNoDutyCode(scannedToken)
           : scannedToken;
-      if (RegExp(r'^(?:WO)?[0-9]{2,4}$').hasMatch(token)) {
+      if (RegExp(r'^(?:WO)?[0-9]{1,4}$').hasMatch(token)) {
         turn = token.replaceFirst(RegExp(r'^WO'), '');
       } else if (token == 'ALLOC' || DutyCodeLibrary.contains(token)) {
         code ??= token;
