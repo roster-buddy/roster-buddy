@@ -27,4 +27,29 @@ void main() {
     expect(result.duties[1].dutyType, DutyType.unavailable);
     expect(result.duties.last.turnNumber, '208');
   });
+
+  test('NONA OCR alias becomes NDNA without changing names or timed rows', () async {
+    final result = await DailyAmendmentParser(
+      documentType: DocumentType.sevenDayAmendment,
+    ).parse(pageText: [
+      'Report for Saturday 07/11/26 in All Links\n'
+      'D Guest 3685 WOD NONA\n'
+      'A Passmore 4365 WOD [35] NONA\n'
+      'Nona Smith 2152 WOD ND\n'
+      'B Moore 1910 WOD NONA 208 08:11 17:10 8.59',
+    ]);
+    expect(result.canImport, isTrue);
+    expect(result.duties.length, 4);
+    for (final duty in result.duties.take(2)) {
+      expect(duty.amendmentCode, 'NDNA');
+      expect(duty.dutyType, DutyType.unavailable);
+      expect(duty.bookOn, isNull);
+      expect(duty.rawText, contains('NONA'));
+    }
+    expect(result.duties[2].driverName, 'Nona Smith');
+    expect(result.duties[2].amendmentCode, 'ND');
+    expect(result.duties.last.dutyType, DutyType.working);
+    expect(result.duties.last.bookOn, '08:11');
+    expect(result.duties.last.bookOff, '17:10');
+  });
 }

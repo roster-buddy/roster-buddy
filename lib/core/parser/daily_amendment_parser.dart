@@ -316,7 +316,12 @@ class DailyAmendmentParser implements BaseParser {
         .toList();
     String? code;
     String? turn;
-    for (final token in tokens) {
+    for (final scannedToken in tokens) {
+      // OCR can confuse D with O in this no-duty code. Only correct a
+      // standalone code on rows without shift clocks; keep rawText intact.
+      final token = scannedToken == 'NONA' && clocks.isEmpty
+          ? 'NDNA'
+          : scannedToken;
       if (RegExp(r'^(?:WO)?[0-9]{2,4}$').hasMatch(token)) {
         turn = token.replaceFirst(RegExp(r'^WO'), '');
       } else if (token == 'ALLOC' || DutyCodeLibrary.contains(token)) {
@@ -419,7 +424,8 @@ class DailyAmendmentParser implements BaseParser {
       return null;
     }
 
-    final code = DutyCodeLibrary.normaliseCode(value);
+    final scannedCode = DutyCodeLibrary.normaliseCode(value);
+    final code = scannedCode == 'NONA' ? 'NDNA' : scannedCode;
 
     if (code.isEmpty) {
       return null;
