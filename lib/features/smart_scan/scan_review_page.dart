@@ -15,6 +15,7 @@ import '../upload/document_processing_service.dart';
 import '../upload/storage_service.dart';
 import '../upload/upload_service.dart';
 import 'smart_scan_engine.dart';
+import 'scan_import_policy.dart';
 import 'smart_scan_page_text_reconstructor.dart';
 import 'smart_scan_result.dart';
 
@@ -73,6 +74,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
   String? _error;
   bool _busy = true;
   bool _excludeUnreadable = false;
+  bool _completed = false;
   bool get _daily => [
     DocumentType.tenDayAmendment,
     DocumentType.sevenDayAmendment,
@@ -203,13 +205,17 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
         );
       }
       final type = const DocumentClassifier().classify(
-        SmartScanPageTextReconstructor.reconstructPages(pages),
+        [...SmartScanPageTextReconstructor.reconstructPages(pages),
+          ...pages.map((p) => '${p.fullText}\n${p.documentHeading}')],
       );
       setState(() {
         _pages = pages;
         _type = type;
         _busy = false;
       });
+      if (_daily && ScanImportPolicy.hasRosterRows(pages)) {
+        await _prepare(automatic: true);
+      }
     } catch (error) {
       if (mounted) {
         setState(() {
@@ -220,7 +226,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
     }
   }
 
-  Future<void> _prepare() async {
+  Future<void> _prepare({bool automatic = false}) async {
     if (_type == DocumentType.baseRoster && _activation == null) {
       final activation = await Navigator.of(context).push<BaseRosterActivation>(
         MaterialPageRoute(
@@ -256,6 +262,11 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
           _parsed = result;
           _busy = false;
         });
+        if (automatic && !_completed &&
+            ScanImportPolicy.allRowsRead(result, _pages!)) {
+          _completed = true;
+          Navigator.pop(context, ReviewedDocument(_type, result.copyWith(allRowsRead: true), _activation));
+        }
       }
     } catch (error) {
       if (mounted) {
@@ -278,7 +289,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
         ),
         const SizedBox(height: 12),
         const Text(
-          'Nothing is uploaded or added to your calendar until you confirm the import.',
+          'Clear shift sheets are applied automatically after checks. If anything needs review, correct it below before importing.',
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<DocumentType>(
@@ -533,12 +544,15 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
                               _type == DocumentType.unknown
                           ? null
                           : parsed == null
-                          ? _prepare
+                          ? () => _prepare()
                           : !parsed.canImport
                           ? null
                           : () => Navigator.pop(
                               context,
-                              ReviewedDocument(_type, parsed, _activation),
+                              ReviewedDocument(_type,
+                                ScanImportPolicy.allRowsRead(parsed, _pages!)
+                                    ? parsed.copyWith(allRowsRead: true) : parsed,
+                                _activation),
                             ),
                       child: Text(
                         parsed == null ? 'Review records' : 'Import records',

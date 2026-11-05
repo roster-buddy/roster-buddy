@@ -31,4 +31,16 @@ void main() {
     expect(classifier.classify([]), DocumentType.unknown);
     expect(classifier.classify(['   ']), DocumentType.unknown);
   });
+
+  test('reads compact, abbreviated and wrapped stamps', () {
+    for (final stamp in ['7DAY', '7\nDAY', 'SEVEN-DAY']) {
+      expect(classifier.classify([stamp]), DocumentType.sevenDayAmendment);
+    }
+    for (final stamp in ['48HR', '48 HR', '48HRS', '48 HOUR', '48\nHOUR']) {
+      expect(classifier.classify([stamp]), DocumentType.fortyEightHourAmendment);
+    }
+    expect(classifier.classify(['10DAY']), DocumentType.tenDayAmendment);
+    expect(classifier.classify(['7 DAY\n48HR']), DocumentType.unknown);
+    expect(classifier.classify(['Report for Monday 28/11/26']), DocumentType.unknown);
+  });
 }

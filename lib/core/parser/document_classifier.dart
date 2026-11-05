@@ -8,6 +8,7 @@ class DocumentClassifier {
 
     // Explicit amendment headings win over leave codes and depot/turn text
     // inside their rows.
+    if (hasConflictingAmendmentStamps(pages)) return DocumentType.unknown;
     if (_looksLike48Hour(text)) {
       return DocumentType.fortyEightHourAmendment;
     }
@@ -39,20 +40,32 @@ class DocumentClassifier {
     return DocumentType.unknown;
   }
 
+  Set<DocumentType> amendmentStamps(List<String> pages) {
+    final text = pages.join('\n').toUpperCase();
+    return {
+      if (_looksLike7Day(text)) DocumentType.sevenDayAmendment,
+      if (_looksLike10Day(text)) DocumentType.tenDayAmendment,
+      if (_looksLike48Hour(text)) DocumentType.fortyEightHourAmendment,
+    };
+  }
+
+  bool hasConflictingAmendmentStamps(List<String> pages) =>
+      amendmentStamps(pages).length > 1;
+
   bool _looksLikeBaseRoster(String text) {
     return text.contains('WEEK') && text.contains('SUN');
   }
 
   bool _looksLike10Day(String text) {
-    return text.contains('10 DAY') || text.contains('10-DAY');
+    return RegExp(r'\b(?:10|TEN)[\s-]*D\s*AYS?\b').hasMatch(text);
   }
 
   bool _looksLike7Day(String text) {
-    return text.contains('7 DAY') || text.contains('7-DAY');
+    return RegExp(r'\b(?:7|SEVEN)[\s-]*D\s*AYS?\b').hasMatch(text);
   }
 
   bool _looksLike48Hour(String text) {
-    return text.contains('48 HOUR') || text.contains('48-HOUR');
+    return RegExp(r'\b(?:48|FORTY[\s-]*EIGHT)[\s-]*(?:H\s*O\s*U\s*R\s*S?|HRS?|H)\b').hasMatch(text);
   }
 
   bool _looksLikeAnnualLeave(String text) {

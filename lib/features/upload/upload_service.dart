@@ -7,6 +7,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../../core/models/parse_result.dart';
 import 'storage_service.dart';
+import 'scan_upload_summary.dart';
 
 enum UploadSource { camera, photoLibrary, file }
 
@@ -102,9 +103,11 @@ class UploadService {
 
       await _showUploadResult(
         context,
-        documentType: detectedType,
+        documentType: ScanUploadSummary.title(reviewedResult, detectedType),
         outcome: _displayOutcome(result.outcome),
-        message: result.message,
+        message: result.outcome == UploadProcessingOutcome.processed
+            ? ScanUploadSummary.message(reviewedResult, result.recordsInserted, result.message)
+            : result.message,
         recordsInserted: result.recordsInserted,
       );
 
@@ -524,9 +527,7 @@ class _UploadResultCardState extends State<_UploadResultCard>
   String get _statusText {
     switch (widget.outcome) {
       case UploadDisplayOutcome.processed:
-        return widget.recordsInserted == 1
-            ? '1 duty processed'
-            : '${widget.recordsInserted} duties processed';
+        return 'Upload successful';
       case UploadDisplayOutcome.pending:
         return 'Uploaded successfully';
       case UploadDisplayOutcome.processingFailed:
@@ -546,7 +547,8 @@ class _UploadResultCardState extends State<_UploadResultCard>
           margin: const EdgeInsets.symmetric(horizontal: 24),
           padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 34),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: widget.outcome == UploadDisplayOutcome.processed
+                ? _backgroundColour : Colors.white,
             borderRadius: BorderRadius.circular(24),
             boxShadow: const [
               BoxShadow(

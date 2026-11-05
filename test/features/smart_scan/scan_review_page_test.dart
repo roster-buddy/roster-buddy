@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'package:roster_buddy/core/parser/daily_amendment_parser.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:roster_buddy/core/models/document_type.dart';
@@ -256,5 +257,45 @@ void main() {
       100,
     );
     expect(find.textContaining('16:53–01:11'), findsOneWidget);
+  });
+
+  testWidgets('clean stamped sheet returns automatically exactly once', (tester) async {
+    ReviewedDocument? confirmed;
+    var parses = 0;
+    const text = 'Report for Saturday 28/11/26 in All Links\nS Rees 0184 WOD ND';
+    await tester.pumpWidget(MaterialApp(home: Builder(builder: (context) =>
+      Scaffold(body: TextButton(child: const Text('Start'), onPressed: () async {
+        confirmed = await Navigator.of(context).push<ReviewedDocument>(
+          MaterialPageRoute(builder: (_) => ScanReviewPage(
+            upload: upload,
+            readDocument: (_) async => const [SmartScanResult(
+              fullText: text, lines: [], documentHeading: '7DAY')],
+            parseDocument: (read, type, activation) async {
+              parses++;
+              return DailyAmendmentParser(documentType: type).parse(pageText: [text]);
+            },
+          )));
+      })))));
+    await tester.tap(find.text('Start'));
+    await tester.pumpAndSettle();
+    expect(confirmed, isNotNull);
+    expect(confirmed!.result.allRowsRead, isTrue);
+    expect(confirmed!.type, DocumentType.sevenDayAmendment);
+    expect(parses, 1);
+  });
+
+  testWidgets('uncertain rows remain on review after automatic checks', (tester) async {
+    const text = '7DAY\nReport for Saturday 28/11/26 in All Links\n'
+        'S Rees 0184 WOD unreadable';
+    await tester.pumpWidget(MaterialApp(home: ScanReviewPage(
+      upload: upload,
+      readDocument: (_) async => const [SmartScanResult(fullText: text, lines: [])],
+      parseDocument: (_, type, activation) =>
+          DailyAmendmentParser(documentType: type).parse(pageText: [text]),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('Tap to correct this row'), findsOneWidget);
+    expect(tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Import records')).onPressed, isNull);
   });
 }

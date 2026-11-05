@@ -259,3 +259,34 @@ export async function prepareCloudImage(bytes, name) {
   } finally { canvas.width = 1; canvas.height = 1; }
 }
 if (typeof window !== 'undefined') window.rosterPrepareCloudImage = prepareCloudImage;
+
+// Isolate the top-right stamp and present three deskewed views to OCR.
+// This image is classification-only; it never replaces the roster table.
+export async function prepareCloudStamp(bytes, name) {
+  const source = await imageCanvas(bytes, name);
+  const tileWidth = 900, tileHeight = 600;
+  const output = document.createElement('canvas');
+  output.width = tileWidth * 3; output.height = tileHeight;
+  const ctx = output.getContext('2d');
+  ctx.fillStyle = 'white'; ctx.fillRect(0, 0, output.width, output.height);
+  try {
+    const sx = source.width * 0.40, sw = source.width * 0.60;
+    const sh = source.height * 0.27;
+    const scale = Math.min(780 / sw, 440 / sh);
+    [-12, 0, 12].forEach((degrees, i) => {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(i * tileWidth, 0, tileWidth, tileHeight); ctx.clip();
+      ctx.translate(i * tileWidth + tileWidth / 2, tileHeight / 2);
+      ctx.rotate(degrees * Math.PI / 180);
+      ctx.filter = 'grayscale(1) contrast(1.6)';
+      ctx.drawImage(source, sx, 0, sw, sh, -sw * scale / 2, -sh * scale / 2, sw * scale, sh * scale);
+      ctx.restore();
+    });
+    const blob = await new Promise(resolve => output.toBlob(resolve, 'image/jpeg', 0.90));
+    if (!blob || blob.size > 990000) throw new Error('Stamp image unavailable.');
+    return new Uint8Array(await blob.arrayBuffer());
+  } finally {
+    source.width = 1; source.height = 1; output.width = 1; output.height = 1;
+  }
+}
+if (typeof window !== 'undefined') window.rosterPrepareCloudStamp = prepareCloudStamp;

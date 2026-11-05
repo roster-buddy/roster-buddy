@@ -19,8 +19,10 @@ class SmartScanResult {
     required this.fullText,
     required this.lines,
     this.confidence,
+    this.documentHeading = '',
   });
 
+  final String documentHeading;
   final double? confidence;
   final String fullText;
   final List<SmartScanTextLine> lines;

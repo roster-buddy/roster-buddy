@@ -8,6 +8,7 @@ class ParseResult {
   const ParseResult({
     required this.documentType,
     this.duties = const [],
+    this.allRowsRead = false,
     this.identifiedDates = const [],
     this.annualLeaveAllocations = const [],
     this.jobCards = const [],
@@ -22,6 +23,7 @@ class ParseResult {
   });
 
   final DocumentType documentType;
+  final bool allRowsRead;
 
   /// Duties extracted from Base Rosters or amendment documents.
   ///
@@ -83,6 +85,7 @@ class ParseResult {
 
   ParseResult copyWith({
     DocumentType? documentType,
+    bool? allRowsRead,
     List<Duty>? duties,
     List<DateTime>? identifiedDates,
     List<AnnualLeaveAllocation>? annualLeaveAllocations,
@@ -98,6 +101,7 @@ class ParseResult {
   }) {
     return ParseResult(
       documentType: documentType ?? this.documentType,
+      allRowsRead: allRowsRead ?? this.allRowsRead,
       duties: duties ?? this.duties,
       identifiedDates: identifiedDates ?? this.identifiedDates,
       annualLeaveAllocations:
