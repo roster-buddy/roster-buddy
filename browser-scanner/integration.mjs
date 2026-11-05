@@ -96,6 +96,37 @@ try {
         await writeFile(path.join(output,engine.name()+'-'+filename+'.json'),JSON.stringify(pages));
         console.log('PASS '+engine.name()+' '+filename+': correct payroll, times and '+count+' page(s)');
       }
+      const stamp = await page.evaluate(async () => {
+        const scanner = await import('/roster_scanner.mjs');
+        const source = document.createElement('canvas');
+        source.width = 1200; source.height = 1600;
+        const ctx = source.getContext('2d');
+        ctx.fillStyle = 'white'; ctx.fillRect(0, 0, 1200, 1600);
+        ctx.fillStyle = 'black'; ctx.font = 'bold 80px sans-serif';
+        ctx.save(); ctx.translate(900, 150); ctx.rotate(10 * Math.PI / 180);
+        ctx.fillText('7 DAY', -120, 0); ctx.restore();
+        // A body marker must never leak into the classification-only crop.
+        ctx.fillRect(0, 700, 1200, 900);
+        const bytes = new Uint8Array(await (await new Promise(r =>
+          source.toBlob(r, 'image/png'))).arrayBuffer());
+        const crop = await scanner.prepareCloudStamp(bytes, 'stamp.png');
+        const url = URL.createObjectURL(new Blob([crop], {type: 'image/jpeg'}));
+        const image = new Image(); image.src = url; await image.decode();
+        const canvas = document.createElement('canvas');
+        canvas.width = image.width; canvas.height = image.height;
+        const pixels = canvas.getContext('2d'); pixels.drawImage(image, 0, 0);
+        const data = pixels.getImageData(0, 0, canvas.width, canvas.height).data;
+        let ink = 0;
+        for (let i = 0; i < data.length; i += 4) if (data[i] < 100) ink++;
+        URL.revokeObjectURL(url);
+        return {width: image.width, height: image.height, size: crop.length,
+          inkFraction: ink / (canvas.width * canvas.height)};
+      });
+      assert.equal(stamp.width, 2700);
+      assert.equal(stamp.height, 600);
+      assert.ok(stamp.size < 1000000);
+      assert.ok(stamp.inkFraction > 0.005 && stamp.inkFraction < 0.15);
+      console.log('PASS '+engine.name()+': stamp crop retains text and excludes roster body');
       const cancel = await page.evaluate(async bytes => {
         const scanner = await import('/roster_scanner.mjs');
         const reading = scanner.scanDocument(new Uint8Array(bytes),'photo.png',false);
