@@ -24,10 +24,12 @@ class _RosterUpdatesSectionState extends State<RosterUpdatesSection> {
     try {
       await widget.onViewed(snapshot);
     } catch (_) {
-      if (mounted) setState(() {
-        _error = 'Could not clear these updates. Please retry.';
-        _retry = snapshot;
-      });
+      if (mounted) {
+        setState(() {
+          _error = 'Could not clear these updates. Please retry.';
+          _retry = snapshot;
+        });
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
