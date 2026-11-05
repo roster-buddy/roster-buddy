@@ -169,12 +169,14 @@ class _ScanDutyEditorState extends State<ScanDutyEditor> {
               validator: (v) =>
                   v == DutyType.unknown.name ? 'Choose a day type' : null,
               onChanged: (v) {
-                if (v != null) setState(() {
+                if (v != null) {
+                  setState(() {
                   _availabilityCode = ['ND', 'NDNA'].contains(v) ? v : null;
                   _type = v == 'ND' ? DutyType.restDay
                       : v == 'NDNA' ? DutyType.unavailable
                       : DutyType.values.byName(v);
-                });
+                  });
+                }
               },
             ),
             if (_needsTimes) ...[
