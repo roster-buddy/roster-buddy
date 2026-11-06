@@ -133,4 +133,21 @@ A Tester 1910 WOD ALLOC 213 16:53 01:11 8.45
     expect(result.duties.every((d) => d.driverName == null), isTrue);
     expect(result.duties.every((d) => d.dutyType == DutyType.unavailable), isTrue);
   });
+  test('Saturday leave hours and split NDNA rows import automatically', () async {
+    final result = await parser.parse(
+      pageText: const [
+        'Report for Saturday 07/11/26 in All Links\n'
+            'Moore 1910 WOD ALD ALD 08:45\n'
+            '1190 WOD Exchanged N DNA',
+      ],
+    );
+    expect(result.canImport, isTrue);
+    expect(result.duties, hasLength(2));
+    expect(result.duties.first.payrollNumber, '1910');
+    expect(result.duties.first.dutyType, DutyType.annualLeave);
+    expect(result.duties.first.bookOn, isNull);
+    expect(result.duties.last.payrollNumber, '1190');
+    expect(result.duties.last.amendmentCode, 'NDNA');
+    expect(result.duties.last.dutyType, DutyType.unavailable);
+  });
 }
