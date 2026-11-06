@@ -558,3 +558,38 @@ class DailyAmendmentParser implements BaseParser {
 
     if (remarks.toUpperCase() == meaning.toUpperCase()) {
       return remarks;
+    }
+
+    return '$meaning — $remarks';
+  }
+
+  String? _cleanOptionalValue(String? value) {
+    if (value == null) {
+      return null;
+    }
+
+    final cleaned = ParserUtils.normaliseWhitespace(value);
+
+    return cleaned.isEmpty ? null : cleaned;
+  }
+
+  bool _looksLikeSundaySheet(String text) {
+    final containsSunday =
+        text.contains('SUNDAY') || RegExp(r'\bSUN\b').hasMatch(text);
+
+    final containsDailyColumns =
+        text.contains('PAY NO') ||
+        text.contains('PAYROLL') ||
+        text.contains('PAY NUMBER');
+
+    final explicitlyAnotherType =
+        text.contains('10 DAY') ||
+        text.contains('10-DAY') ||
+        text.contains('TEN DAY') ||
+        text.contains('7 DAY') ||
+        text.contains('7-DAY') ||
+        text.contains('SEVEN DAY');
+
+    return containsSunday && containsDailyColumns && !explicitlyAnotherType;
+  }
+}
