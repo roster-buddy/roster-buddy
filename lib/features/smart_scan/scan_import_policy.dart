@@ -148,7 +148,7 @@ class ScanImportPolicy {
         reasons.add(
           'Page ${i + 1}: the scanner could not verify all payroll rows.',
         );
-      } else if (payrolls.length != duties.length ||
+      } else if (duties.length < payrolls.length ||
           !parsedPayrolls.containsAll(payrolls)) {
         reasons.add(
           'Page ${i + 1}: ${payrolls.length} payroll rows detected, '

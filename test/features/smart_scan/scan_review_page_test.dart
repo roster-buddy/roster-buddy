@@ -13,7 +13,11 @@ import 'package:roster_buddy/features/smart_scan/smart_scan_result.dart';
 import 'package:roster_buddy/features/upload/upload_service.dart';
 
 const pages = [
-  SmartScanResult(fullText: '48-HOUR AMENDMENT\nDATE 03/08/2026', lines: []),
+  SmartScanResult(
+    fullText: '48-HOUR AMENDMENT\nDATE 03/08/2026\n'
+        'Alex Example 21910 WOD 204 04:25 12:58',
+    lines: [],
+  ),
 ];
 
 Future<void> chooseType(WidgetTester tester, String label) async {
