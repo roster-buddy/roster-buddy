@@ -36,8 +36,11 @@ void main() {
   });
   test('does not switch to text that drops a named payroll row', () async {
     final page = skewed('$heading\nB Moore 1910 WOD 208 08:11 17:10 8.59');
-    expect((await DailyScanText.bestPages([page], type)).single,
-      SmartScanPageTextReconstructor.reconstruct(page));
+    final chosen = await DailyScanText.bestPages([page], type);
+    final result = await DailyAmendmentParser(
+      documentType: type,
+    ).parse(pageText: chosen);
+    expect(result.duties.map((d) => d.payrollNumber).toSet(), {'1910', '2001'});
   });
   test('uses native rows when they add safe duties without reducing warnings', () async {
     final page = SmartScanResult(
@@ -66,8 +69,13 @@ void main() {
       ...page.lines.where((l) => !l.text.startsWith('15:11')),
       line('211 15:11 01:01 8.45', 300, 157),
     ]);
-    expect((await DailyScanText.bestPages([conflicted], type)).single,
-      SmartScanPageTextReconstructor.reconstruct(conflicted));
+    final chosen = await DailyScanText.bestPages([conflicted], type);
+    final result = await DailyAmendmentParser(
+      documentType: type,
+    ).parse(pageText: chosen);
+    final existing = result.duties.firstWhere((d) => d.payrollNumber == '1910');
+    expect(existing.bookOn, '08:11');
+    expect(existing.bookOff, '17:10');
   });
   test('combines safe rows split between both OCR readings', () async {
     final page = SmartScanResult(
