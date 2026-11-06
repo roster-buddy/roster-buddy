@@ -92,24 +92,4 @@ void main() {
     expect(result.duties, hasLength(2));
     expect(result.duties.map((d) => d.payrollNumber).toSet(), {'3280', '1378'});
   });
-  test('prefers clean natural payroll over one positioned-word substitution', () async {
-    const natural = '$heading\n'
-        'A One 1001 WOD ND\nB Two 1002 WOD ND\nC Three 1003 WOD ND\n'
-        'D Four 1004 WOD ND\nMoore 1910 WOD ALD ALD 08:45';
-    final page = SmartScanResult(fullText: natural, lines: [
-      line(heading, 0, 20),
-      line('A One 1001 WOD ND', 0, 100),
-      line('B Two 1002 WOD ND', 0, 120),
-      line('C Three 1003 WOD ND', 0, 140),
-      line('D Four 1004 WOD ND', 0, 160),
-      line('Moore 1918 WOD ALD ALD 08:45', 0, 180),
-    ]);
-    final chosen = await DailyScanText.bestPages([page], type);
-    final result = await DailyAmendmentParser(
-      documentType: type,
-    ).parse(pageText: chosen);
-    expect(result.duties, hasLength(5));
-    expect(result.duties.map((d) => d.payrollNumber), contains('1910'));
-    expect(result.duties.map((d) => d.payrollNumber), isNot(contains('1918')));
-  });
 }

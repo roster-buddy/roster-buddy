@@ -72,6 +72,19 @@ void main() {
       result.duties.first.copyWith(payrollNumber: '9999'),
       result.duties.last,
     ]), [page]), isFalse);
+    final linkedFullPayroll = result.copyWith(duties: [
+      result.duties.first,
+      result.duties.last.copyWith(payrollNumber: '23685'),
+    ]);
+    expect(
+      ScanImportPolicy.allRowsRead(linkedFullPayroll, [page]),
+      isTrue,
+      reason: 'a full profile payroll must match its four-digit printed pay number',
+    );
+    expect(
+      ScanImportPolicy.unmatchedRows(linkedFullPayroll, [page]),
+      isEmpty,
+    );
     const mixedPayrolls = SmartScanResult(
       fullText: 'A One 1001 WOD ND\nB Two 1002 WOD ND\nC Three 1003 WOD ND\n'
           'D Four 1004 WOD ND\nE Five 100005 WOD ND',

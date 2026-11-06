@@ -1,11 +1,17 @@
 import '../../core/models/duty_type.dart';
 import '../../core/models/parse_result.dart';
 import '../../core/models/parse_warning.dart';
+import '../../core/services/printed_roster_identity.dart';
 import 'smart_scan_page_text_reconstructor.dart';
 import 'smart_scan_result.dart';
 
 class ScanImportPolicy {
   ScanImportPolicy._();
+
+  static bool _containsPayroll(Iterable<String?> values, String payroll) =>
+      values.any(
+        (value) => PrintedRosterIdentity.payrollMatches(value, payroll),
+      );
 
   static Set<String> _payrolls(String text) =>
       RegExp(r'\b([0-9]{4,8})\s+[A-Za-z]{2,5}\b')
@@ -36,12 +42,17 @@ class ScanImportPolicy {
     ];
     candidates.sort((first, second) {
       int score(Set<String> values) {
-        final matches = values.where(parsedPayrolls.contains).length;
+        final matches = values
+            .where((value) => _containsPayroll(parsedPayrolls, value))
+            .length;
         final extras = values
-            .where((value) => !parsedPayrolls.contains(value))
+            .where((value) => !_containsPayroll(parsedPayrolls, value))
             .length;
         final missing = parsedPayrolls
-            .where((value) => value != null && !values.contains(value))
+            .where(
+              (value) =>
+                  value != null && !_containsPayroll(values, value),
+            )
             .length;
         return matches * 100 - extras * 10 - missing;
       }
@@ -62,12 +73,17 @@ class ScanImportPolicy {
     candidates.sort((first, second) {
       int score(String text) {
         final values = _payrolls(text);
-        final matches = values.where(parsedPayrolls.contains).length;
+        final matches = values
+            .where((value) => _containsPayroll(parsedPayrolls, value))
+            .length;
         final extras = values
-            .where((value) => !parsedPayrolls.contains(value))
+            .where((value) => !_containsPayroll(parsedPayrolls, value))
             .length;
         final missing = parsedPayrolls
-            .where((value) => value != null && !values.contains(value))
+            .where(
+              (value) =>
+                  value != null && !_containsPayroll(values, value),
+            )
             .length;
         return matches * 100 - extras * 10 - missing;
       }
@@ -93,7 +109,7 @@ class ScanImportPolicy {
           .toSet();
       final text = _bestPayrollText(pages[i], parsedPayrolls);
       final missing = _payrolls(text).where(
-        (payroll) => !parsedPayrolls.contains(payroll),
+        (payroll) => !_containsPayroll(parsedPayrolls, payroll),
       );
       for (final payroll in missing) {
         final line = text.split(RegExp(r'\r?\n')).firstWhere(
@@ -159,7 +175,9 @@ class ScanImportPolicy {
           'Page ${i + 1}: the scanner could not verify all payroll rows.',
         );
       } else if (duties.length < payrolls.length ||
-          !parsedPayrolls.containsAll(payrolls)) {
+          payrolls.any(
+            (payroll) => !_containsPayroll(parsedPayrolls, payroll),
+          )) {
         reasons.add(
           'Page ${i + 1}: ${payrolls.length} payroll rows detected, '
           '${duties.length} shift records read. Some rows could be missing or mismatched.',
