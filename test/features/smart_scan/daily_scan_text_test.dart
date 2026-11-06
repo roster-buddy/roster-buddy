@@ -141,7 +141,12 @@ void main() {
 
     expect(chosen.single, page.fullText);
     expect(result.identifiedDates, [DateTime(2026, 11, 14)]);
-    expect(result.duties.map((d) => d.payrollNumber).toSet(), {'5380', '1867'});
+    expect(result.duties.map((d) => d.payrollNumber).toSet(), {
+      '5380',
+      '1867',
+      // Safely recovered from the undated positional OCR reading.
+      '3100',
+    });
     expect(result.canImport, isTrue);
   });
 }

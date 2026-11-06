@@ -76,10 +76,27 @@ class DailyScanText {
         selected.add(rebuilt);
         continue;
       }
-      final rebuiltResult = await parser.parse(pageText: [rebuilt]);
       final nativeResult = await parser.parse(pageText: [native]);
+      var rebuiltText = rebuilt;
+      var rebuiltResult = await parser.parse(pageText: [rebuiltText]);
+      final rebuiltOriginallyHasDate =
+          rebuiltResult.identifiedDates.isNotEmpty;
+      // The enlarged positional pass often reads rows that the natural page
+      // pass misses, but can crop away the report heading. Give that reading
+      // the date already confirmed by the natural pass so it can contribute
+      // safe, complementary payroll rows. This does not infer a date from the
+      // device or filename.
+      if (!rebuiltOriginallyHasDate &&
+          nativeResult.identifiedDates.isNotEmpty) {
+        final date = nativeResult.identifiedDates.first;
+        final heading =
+            'Report for ${date.day.toString().padLeft(2, '0')}/'
+            '${date.month.toString().padLeft(2, '0')}/'
+            '${(date.year % 100).toString().padLeft(2, '0')}';
+        rebuiltText = '$heading\n$rebuilt';
+        rebuiltResult = await parser.parse(pageText: [rebuiltText]);
+      }
       final nativeByKey = {for (final d in nativeResult.duties) _key(d): d};
-      final rebuiltHasDate = rebuiltResult.identifiedDates.isNotEmpty;
       final nativeHasDate = nativeResult.identifiedDates.isNotEmpty;
       final datesAgree = rebuiltResult.identifiedDates.isNotEmpty &&
           nativeResult.identifiedDates.toSet().containsAll(rebuiltResult.identifiedDates) &&
@@ -103,12 +120,12 @@ class DailyScanText {
       // drops the heading entirely. Never let that undated reread replace a
       // cloud reading which retained a valid report date.
       final useNative = nativeHasDate &&
-          (!rebuiltHasDate ||
+          (!rebuiltOriginallyHasDate ||
               (datesAgree &&
                   ((keepsIdentities && keepsReadDuties && improves) ||
                       nativeHasBetterCoverage ||
                       nativePreservesPayrollOnlyRow)));
-      var choice = useNative ? native : rebuilt;
+      var choice = useNative ? native : rebuiltText;
       final choiceResult = useNative ? nativeResult : rebuiltResult;
       final otherResult = useNative ? rebuiltResult : nativeResult;
       final choicePayrolls = choiceResult.duties
