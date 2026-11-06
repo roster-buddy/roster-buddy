@@ -14,7 +14,7 @@ class ScanImportPolicy {
       );
 
   static Set<String> _payrolls(String text) =>
-      RegExp(r'\b([0-9]{4,8})\s+[A-Za-z]{2,5}\b')
+      RegExp(r'(?<![0-9])([0-9]{4})(?![0-9])\s+[A-Za-z]{2,5}\b')
           .allMatches(text)
           .map((m) => m[1]!)
           .toSet();

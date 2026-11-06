@@ -107,6 +107,8 @@ class DailyAmendmentParser implements BaseParser {
     final table = tableExtractor.extract(pageText);
     final duties = <Duty>[];
     final warnings = <ParseWarning>[];
+    final unreadablePrintedRows =
+        <({ParseWarning warning, String payroll, DateTime date})>[];
     final seenPayrollRows = <String, List<Duty>>{};
     final reportDates = <DateTime>{};
 
@@ -153,12 +155,19 @@ class DailyAmendmentParser implements BaseParser {
             : _parseMappedRow(row: row, date: dutyDate, columnMap: columnMap);
 
         if (printed != null && duty == null) {
-          warnings.add(
-            ParseWarning(
+          final printedPayroll = _printedRow.hasMatch(row.rawText)
+              ? printed.group(2)
+              : printed.group(1);
+          unreadablePrintedRows.add(
+            (
+              warning: ParseWarning(
               message:
                   'A roster row could not be read safely on page $pageNumber: ${row.rawText}',
               pageNumber: pageNumber,
               severity: ParseWarningSeverity.blocking,
+              ),
+              payroll: printedPayroll!,
+              date: dutyDate,
             ),
           );
         }
@@ -183,6 +192,19 @@ class DailyAmendmentParser implements BaseParser {
           }
         }
       }
+    }
+
+    for (final unreadable in unreadablePrintedRows) {
+      final wasRecovered = duties.any(
+        (duty) =>
+            duty.date == unreadable.date &&
+            duty.pageNumber == unreadable.warning.pageNumber &&
+            PrintedRosterIdentity.payrollMatches(
+              duty.payrollNumber,
+              unreadable.payroll,
+            ),
+      );
+      if (!wasRecovered) warnings.add(unreadable.warning);
     }
 
     if (duties.isEmpty) {
@@ -316,10 +338,10 @@ class DailyAmendmentParser implements BaseParser {
   // Printed Daily Roster Reports have wrapped headings and blank columns.
   // Match the name/pay/depot prefix, then read clocks ONLY after the depot.
   static final _printedRow = RegExp(
-    r'^(.+?)\s+([0-9]{4,8})\s+([A-Za-z]{2,5})\b(.*)$',
+    r'^(.+?)\s+([0-9]{4})\s+([A-Za-z]{2,5})\b(.*)$',
   );
   static final _printedPayrollRow = RegExp(
-    r'^([0-9]{4,8})\s+([A-Za-z]{2,5})\b(.*)$',
+    r'^([0-9]{4})\s+([A-Za-z]{2,5})\b(.*)$',
   );
   static final _printedClock = RegExp(
     r'(?<![0-9])([0-2]?[0-9])[:;]([0-5][0-9])(?![0-9])',

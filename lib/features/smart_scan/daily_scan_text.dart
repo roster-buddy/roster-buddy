@@ -12,7 +12,7 @@ class DailyScanText {
   DailyScanText._();
 
   static Set<String> _identities(String text) => RegExp(
-    r'\b([0-9]{4,8})\s+([A-Za-z]{2,5})\b',
+    r'(?<![0-9])([0-9]{4})(?![0-9])\s+([A-Za-z]{2,5})\b',
   ).allMatches(text).map((m) => '${m[1]}|${m[2]!.toUpperCase()}').toSet();
 
   static Set<String> _payrolls(String text) => _identities(text)
@@ -26,20 +26,6 @@ class DailyScanText {
   static bool _agrees(Duty first, Duty second) =>
       first.bookOn == second.bookOn && first.bookOff == second.bookOff &&
       first.turnNumber == second.turnNumber && first.dutyType == second.dutyType;
-
-  static String _nameKey(String? value) => (value ?? '')
-      .toUpperCase()
-      .replaceAll(RegExp(r'[^A-Z0-9]'), '');
-
-  static bool _samePayrollDriver(Duty first, Duty second) {
-    if (PrintedRosterIdentity.payrollKey(first.payrollNumber) !=
-        PrintedRosterIdentity.payrollKey(second.payrollNumber)) {
-      return false;
-    }
-    final firstName = _nameKey(first.driverName);
-    final secondName = _nameKey(second.driverName);
-    return firstName.isEmpty || secondName.isEmpty || firstName == secondName;
-  }
 
   static int _blocking(ParseResult result) =>
       result.warnings.where((w) => w.preventsImport).length;
@@ -64,7 +50,7 @@ class DailyScanText {
   static bool _hasCompletePayrollOnlyRow(String text) => text
       .split(RegExp(r'\r?\n'))
       .any((line) =>
-          RegExp(r'^\s*[0-9]{4,8}\s+[A-Za-z]{2,5}\b').hasMatch(line) &&
+          RegExp(r'^\s*[0-9]{4}\s+[A-Za-z]{2,5}\b').hasMatch(line) &&
           RegExp(r'\b[0-2]?[0-9][;:][0-5][0-9]\b')
                   .allMatches(line)
                   .length >=
@@ -117,11 +103,15 @@ class DailyScanText {
       var choice = useNative ? native : rebuilt;
       final choiceResult = useNative ? nativeResult : rebuiltResult;
       final otherResult = useNative ? rebuiltResult : nativeResult;
+      final choicePayrolls = choiceResult.duties
+          .map((duty) => PrintedRosterIdentity.payrollKey(duty.payrollNumber))
+          .whereType<String>()
+          .toSet();
       final complementaryRows = (nativePreservesPayrollOnlyRow
               ? const <Duty>[]
               : otherResult.duties)
-          .where((duty) => !choiceResult.duties.any(
-                (chosen) => _samePayrollDriver(chosen, duty),
+          .where((duty) => !choicePayrolls.contains(
+                PrintedRosterIdentity.payrollKey(duty.payrollNumber),
               ))
           .map((duty) => duty.rawText)
           .whereType<String>()

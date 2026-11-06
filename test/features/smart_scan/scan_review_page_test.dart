@@ -15,7 +15,7 @@ import 'package:roster_buddy/features/upload/upload_service.dart';
 const pages = [
   SmartScanResult(
     fullText: '48-HOUR AMENDMENT\nDATE 03/08/2026\n'
-        'Alex Example 21910 WOD 204 04:25 12:58',
+        'Alex Example 1910 WOD 204 04:25 12:58',
     lines: [],
   ),
 ];

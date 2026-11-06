@@ -85,14 +85,22 @@ void main() {
       ScanImportPolicy.unmatchedRows(linkedFullPayroll, [page]),
       isEmpty,
     );
-    const mixedPayrolls = SmartScanResult(
+    const fusedClockNoise = SmartScanResult(
       fullText: 'A One 1001 WOD ND\nB Two 1002 WOD ND\nC Three 1003 WOD ND\n'
-          'D Four 1004 WOD ND\nE Five 100005 WOD ND',
+          'D Four 1004 WOD ND\nR Brown 3686 WOD TW TH+: 125001420245 8.45',
       lines: [],
     );
     expect(
-      ScanImportPolicy.reviewReasons(result, [mixedPayrolls]).join(' '),
-      contains('different length from the rest'),
+      ScanImportPolicy.unmatchedRows(result.copyWith(duties: [
+        ...result.duties,
+        result.duties.first.copyWith(payrollNumber: '1001'),
+        result.duties.first.copyWith(payrollNumber: '1002'),
+        result.duties.first.copyWith(payrollNumber: '1003'),
+        result.duties.first.copyWith(payrollNumber: '1004'),
+        result.duties.first.copyWith(payrollNumber: '3686'),
+      ]), [fusedClockNoise]),
+      isEmpty,
+      reason: 'a fused clock string must not become a phantom payroll row',
     );
     expect(ScanUploadSummary.title(result, 'Amendment'), '28/11/26 7 Day Sheet');
     expect(ScanUploadSummary.message(result, 2, 'Reviewed'), 'Reviewed');
