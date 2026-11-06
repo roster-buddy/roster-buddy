@@ -11,10 +11,32 @@ export function canvasSize(width, height) {
 }
 
 export function countStructuredRosterRows(text) {
+  return (text || '').split(/\r?\n/).filter(line => {
+    if (!/\b\d{4}\b/.test(line)) return false;
+    const clockColumns = (line.match(/\b(?:[01]?\d|2[0-3]):\d{2}\b/g) || []).length;
+    const clockOrHoursColumns = (line.match(/\b(?:[01]?\d|2[0-3])[:.]\d{2}\b/g) || []).length;
+    // Printed rostered hours (for example 8.59) must not be mistaken for a
+    // missing book-off clock. Some OCR engines use dots for every column, so
+    // three complete time/hour values is also accepted.
+    return clockColumns >= 2 || clockOrHoursColumns >= 3;
+  }).length;
+}
+
+export function countPayrollRosterRows(text) {
   return (text || '').split(/\r?\n/).filter(line =>
-    /\b\d{4}\b/.test(line) &&
-    (line.match(/\b(?:[01]?\d|2[0-3])[:.]\d{2}\b/g) || []).length >= 2
+    /\b\d{4,8}\s+[A-Za-z]{2,5}\b/.test(line)
   ).length;
+}
+
+// A page-layout pass is quick and normally preserves the table columns well,
+// but a small number of complete rows must not make a partly read page look
+// successful. When the page contains a roster-sized set of payroll rows, run
+// the slower enlarged band pass unless nearly all of those rows have both
+// clocks. The two readings are then offered to the row parser independently.
+export function needsDetailedRosterPass(text) {
+  const payrollRows = countPayrollRosterRows(text);
+  if (payrollRows < 5) return countStructuredRosterRows(text) < 3;
+  return countStructuredRosterRows(text) < Math.ceil(payrollRows * 0.85);
 }
 
 export function normaliseRecognition(data, region) {
@@ -235,7 +257,7 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}) {
         const {data: pageData} = await worker.recognize(image, {}, {text: true, blocks: true});
         check();
         const pageResult = normaliseRecognition(pageData);
-        if (countStructuredRosterRows(pageResult.fullText) >= 3) {
+        if (!needsDetailedRosterPass(pageResult.fullText)) {
           image.width = 1; image.height = 1;
           return [pageResult];
         }
@@ -263,9 +285,13 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}) {
               results.push(normaliseRecognition(data,{scale,offset:top,start,end}));
             } finally {tile.width=1;tile.height=1;}
           }
-          const fullText=results.map(r=>r.fullText).join('\n');
-          if(!fullText.trim()) throw new Error('No readable text was found. Try a clearer photo.');
-          return [{fullText,lines:results.flatMap(r=>r.lines),
+          const detailedText=results.map(r=>r.fullText).join('\n');
+          if(!detailedText.trim()) throw new Error('No readable text was found. Try a clearer photo.');
+          // Keep the natural page reading as fullText and the enlarged band
+          // reading as positioned lines. DailyScanText validates both parses,
+          // merges complementary payroll rows, and never joins clocks across
+          // different drivers.
+          return [{fullText:pageResult.fullText,lines:results.flatMap(r=>r.lines),
             confidence:results.reduce((n,r)=>n+r.confidence,0)/results.length}];
         } finally {image.width=1;image.height=1;}
       }

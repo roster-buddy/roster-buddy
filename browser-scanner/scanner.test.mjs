@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {canvasSize, countStructuredRosterRows, documentVerticalBounds,
+import {canvasSize, countPayrollRosterRows, countStructuredRosterRows,
+  documentVerticalBounds, needsDetailedRosterPass,
   normaliseRecognition} from '../web/roster_scanner.mjs';
 
 test('large photos keep table aspect ratio within iPad memory limits', () => {
@@ -65,4 +66,26 @@ test('structured roster rows favour full-page table recognition', () => {
   assert.equal(countStructuredRosterRows(
     'B Moore 1910 WOD 2085:08:11.517:102-58759 Amended Turn'
   ), 0);
+});
+
+test('partly read roster pages receive an enlarged detail pass', () => {
+  const complete = [
+    'D Lawrence 1167 WOD ALLOC 201 04:25 12:53 8.45',
+    'N Cotton 5380 WOD ALLOC 9001 04:25 13:10 8.45',
+    'N Appleby 2175 WOD RK 202 04:48 12:10 8.28',
+    'A Passmore 4365 WOD ALLOC 203 04:54 13:22 8.45',
+    'PJ Pratt 1040 WOD 204 04:56 12:58 8.02',
+  ].join('\n');
+  const partial = [
+    complete,
+    'M Winfindale 0979 WOD LD LD 08:11 OTELT 8.59',
+    'S Ellison 2335 WOD RL RL 12:30',
+    'MA Khukon 1378 WOD D3 D3 12:45',
+    'N Carter 0049 WOD ALLOC 215 17:11',
+    'B Morris 1192 WOD ALD',
+  ].join('\n');
+  assert.equal(countPayrollRosterRows(partial), 10);
+  assert.equal(countStructuredRosterRows(partial), 5);
+  assert.equal(needsDetailedRosterPass(partial), true);
+  assert.equal(needsDetailedRosterPass(complete), false);
 });
