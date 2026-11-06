@@ -84,7 +84,11 @@ class ScanImportPolicy {
     final rows = <ParseWarning>[];
     for (var i = 0; i < pages.length; i++) {
       final parsedPayrolls = result.duties
-          .where((d) => d.pageNumber == i + 1)
+          .where(
+            (d) =>
+                d.pageNumber == i + 1 ||
+                (pages.length == 1 && d.pageNumber == null),
+          )
           .map((d) => d.payrollNumber)
           .toSet();
       final text = _bestPayrollText(pages[i], parsedPayrolls);
@@ -141,7 +145,13 @@ class ScanImportPolicy {
           'Page ${i + 1}: text recognition is uncertain. Check the rows against the original sheet.',
         );
       }
-      final duties = result.duties.where((d) => d.pageNumber == i + 1).toList();
+      final duties = result.duties
+          .where(
+            (d) =>
+                d.pageNumber == i + 1 ||
+                (pages.length == 1 && d.pageNumber == null),
+          )
+          .toList();
       final parsedPayrolls = duties.map((d) => d.payrollNumber).toSet();
       final payrolls = _bestPayrolls(page, parsedPayrolls);
       if (payrolls.isEmpty) {
