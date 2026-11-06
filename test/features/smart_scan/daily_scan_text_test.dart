@@ -117,4 +117,31 @@ void main() {
     expect(white.bookOn, '17:11');
     expect(white.bookOff, '01:31');
   });
+
+  test('keeps the dated cloud reading when positional OCR drops the heading', () async {
+    const saturdayHeading =
+        '7DAY Report for Saturday 14/11/26 in All Links';
+    final page = SmartScanResult(
+      fullText: '$saturdayHeading\n'
+          'N Cotton 5380 WOD ALLOC 601 04:23 13:08 8.45 Amended Turn\n'
+          'H Purewal 1867 WOD ALLOC 9001 04:23 13:08 8.45',
+      lines: [
+        // The local positional OCR has lost the report heading and distorted
+        // the first row, matching the failure mode from the photographed
+        // Saturday sheet.
+        line('Cotton | 1867 WOD ALLOC 9001 04:23 13:08 8.45', 0, 100),
+        line('8 Morris 3100 WOD ALLOC 602 04:52 12:07 8.45', 0, 140),
+      ],
+    );
+
+    final chosen = await DailyScanText.bestPages([page], type);
+    final result = await DailyAmendmentParser(
+      documentType: type,
+    ).parse(pageText: chosen);
+
+    expect(chosen.single, page.fullText);
+    expect(result.identifiedDates, [DateTime(2026, 11, 14)]);
+    expect(result.duties.map((d) => d.payrollNumber).toSet(), {'5380', '1867'});
+    expect(result.canImport, isTrue);
+  });
 }

@@ -79,6 +79,8 @@ class DailyScanText {
       final rebuiltResult = await parser.parse(pageText: [rebuilt]);
       final nativeResult = await parser.parse(pageText: [native]);
       final nativeByKey = {for (final d in nativeResult.duties) _key(d): d};
+      final rebuiltHasDate = rebuiltResult.identifiedDates.isNotEmpty;
+      final nativeHasDate = nativeResult.identifiedDates.isNotEmpty;
       final datesAgree = rebuiltResult.identifiedDates.isNotEmpty &&
           nativeResult.identifiedDates.toSet().containsAll(rebuiltResult.identifiedDates) &&
           rebuiltResult.identifiedDates.toSet().containsAll(nativeResult.identifiedDates);
@@ -96,10 +98,16 @@ class DailyScanText {
           _hasCompletePayrollOnlyRow(native) &&
           _blocking(nativeResult) == 0 &&
           _commonDutiesAgree(nativeResult, rebuiltResult);
-      final useNative = datesAgree &&
-          ((keepsIdentities && keepsReadDuties && improves) ||
-              nativeHasBetterCoverage ||
-              nativePreservesPayrollOnlyRow);
+      // A daily roster cannot be imported without its report date. The
+      // positional OCR reread can reconstruct the table well but occasionally
+      // drops the heading entirely. Never let that undated reread replace a
+      // cloud reading which retained a valid report date.
+      final useNative = nativeHasDate &&
+          (!rebuiltHasDate ||
+              (datesAgree &&
+                  ((keepsIdentities && keepsReadDuties && improves) ||
+                      nativeHasBetterCoverage ||
+                      nativePreservesPayrollOnlyRow)));
       var choice = useNative ? native : rebuilt;
       final choiceResult = useNative ? nativeResult : rebuiltResult;
       final otherResult = useNative ? rebuiltResult : nativeResult;
