@@ -92,4 +92,29 @@ void main() {
     expect(result.duties, hasLength(2));
     expect(result.duties.map((d) => d.payrollNumber).toSet(), {'3280', '1378'});
   });
+
+  test('keeps a complete payroll-only row instead of a phantom extra duty', () async {
+    final page = SmartScanResult(
+      fullText: '$heading\n'
+          'B Moore 1910 WOD 9001 04:25 13:10 8.45\n'
+          '0049 WOD RDW 215 17:11 01:31 8.45 Amended Turn',
+      lines: [
+        line(heading, 0, 20),
+        line('B Moore 1910 WOD 9001 04:25 13:10 8.45', 0, 100),
+        // The positioned reading has dropped White and manufactured a
+        // different parseable row. It must not beat the complete payroll row.
+        line('A Phantom 7777 WOD 215 17:11 01:31 8.45', 0, 140),
+      ],
+    );
+    final chosen = await DailyScanText.bestPages([page], type);
+    final result = await DailyAmendmentParser(
+      documentType: type,
+    ).parse(pageText: chosen);
+    expect(chosen.single, page.fullText);
+    expect(result.duties.map((d) => d.payrollNumber).toSet(), {'1910', '0049'});
+    final white = result.duties.singleWhere((d) => d.payrollNumber == '0049');
+    expect(white.turnNumber, '215');
+    expect(white.bookOn, '17:11');
+    expect(white.bookOff, '01:31');
+  });
 }

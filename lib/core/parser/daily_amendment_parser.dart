@@ -5,6 +5,7 @@ import '../models/duty_type.dart';
 import '../models/parse_result.dart';
 import '../models/parse_warning.dart';
 import '../models/roster_source.dart';
+import '../services/printed_roster_identity.dart';
 import 'amendment_column_map.dart';
 import 'base_parser.dart';
 import 'parser_utils.dart';
@@ -106,7 +107,7 @@ class DailyAmendmentParser implements BaseParser {
     final table = tableExtractor.extract(pageText);
     final duties = <Duty>[];
     final warnings = <ParseWarning>[];
-    final seenKeys = <String>{};
+    final seenPayrollRows = <String, List<Duty>>{};
     final reportDates = <DateTime>{};
 
     for (var pageIndex = 0; pageIndex < pageText.length; pageIndex++) {
@@ -145,7 +146,8 @@ class DailyAmendmentParser implements BaseParser {
           continue;
         }
 
-        final printed = _printedRow.firstMatch(row.rawText);
+        final printed = _printedRow.firstMatch(row.rawText) ??
+            _printedPayrollRow.firstMatch(row.rawText);
         final duty = printed != null || columnMap == null
             ? _parseFallbackRow(row: row, date: dutyDate)
             : _parseMappedRow(row: row, date: dutyDate, columnMap: columnMap);
@@ -160,8 +162,25 @@ class DailyAmendmentParser implements BaseParser {
             ),
           );
         }
-        if (duty != null && seenKeys.add(duty.uniqueKey)) {
-          duties.add(duty);
+        // The payroll number is the identity on a shared daily sheet. Driver
+        // names are optional display text and must never make a valid shift
+        // fail when OCR drops or distorts them.
+        final payrollKey = duty == null
+            ? null
+            : PrintedRosterIdentity.payrollKey(duty.payrollNumber);
+        if (duty != null && payrollKey != null) {
+          final rowKey = '${duty.date.toIso8601String()}|$payrollKey';
+          final samePayroll = seenPayrollRows.putIfAbsent(
+            rowKey,
+            () => <Duty>[],
+          );
+          final alreadyRead = samePayroll.any(
+            (other) => _samePrintedDriver(other.driverName, duty.driverName),
+          );
+          if (!alreadyRead) {
+            samePayroll.add(duty);
+            duties.add(duty);
+          }
         }
       }
     }
@@ -188,7 +207,10 @@ class DailyAmendmentParser implements BaseParser {
 
   bool _isHeaderRow(ExtractedTableRow row, AmendmentColumnMap? columnMap) {
     // "Amended Turn" is a remark on real data rows, not a table heading.
-    if (_printedRow.hasMatch(row.rawText)) return false;
+    if (_printedRow.hasMatch(row.rawText) ||
+        _printedPayrollRow.hasMatch(row.rawText)) {
+      return false;
+    }
     if (row.isLikelyHeader) {
       return true;
     }
@@ -199,6 +221,18 @@ class DailyAmendmentParser implements BaseParser {
 
     return row.pageNumber == columnMap.headerPageNumber &&
         row.lineNumber == columnMap.headerLineNumber;
+  }
+
+  static bool _samePrintedDriver(String? first, String? second) {
+    String key(String? value) => (value ?? '')
+        .toUpperCase()
+        .replaceAll(RegExp(r'[^A-Z0-9]'), '');
+
+    final firstKey = key(first);
+    final secondKey = key(second);
+    // A missing OCR name cannot create a second duty. If both names survived,
+    // different names preserve the rare genuine last-four payroll collision.
+    return firstKey.isEmpty || secondKey.isEmpty || firstKey == secondKey;
   }
 
   Duty? _parseMappedRow({

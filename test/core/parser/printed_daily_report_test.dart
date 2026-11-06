@@ -133,6 +133,34 @@ A Tester 1910 WOD ALLOC 213 16:53 01:11 8.45
     expect(result.duties.every((d) => d.driverName == null), isTrue);
     expect(result.duties.every((d) => d.dutyType == DutyType.unavailable), isTrue);
   });
+  test('payroll is canonical when OCR supplies two versions of one row', () async {
+    final result = await parser.parse(
+      pageText: const [
+        'Report for Wednesday 28/10/26 in All Links\n'
+            'A White 0049 WOD RDW 215 17:11 01:31 8.45 Amended Turn\n'
+            '0049 WOD RDW 215 17:11 01:31 Amended Turn',
+      ],
+    );
+    expect(result.canImport, isTrue);
+    expect(result.duties, hasLength(1));
+    expect(result.duties.single.payrollNumber, '0049');
+    expect(result.duties.single.turnNumber, '215');
+    expect(result.duties.single.bookOn, '17:11');
+    expect(result.duties.single.bookOff, '01:31');
+  });
+  test('different names preserve a genuine last-four payroll collision', () async {
+    final result = await parser.parse(
+      pageText: const [
+        'Report for Wednesday 28/10/26 in All Links\n'
+            'A White 0049 WOD RDW 215 17:11 01:31 Amended Turn\n'
+            'B Other 0049 WOD ALLOC 216 18:00 02:00 Amended Turn',
+      ],
+    );
+    expect(result.canImport, isTrue);
+    expect(result.duties, hasLength(2));
+    expect(result.duties.map((d) => d.driverName), ['A White', 'B Other']);
+    expect(result.duties.map((d) => d.turnNumber), ['215', '216']);
+  });
   test('Saturday leave hours and split NDNA rows import automatically', () async {
     final result = await parser.parse(
       pageText: const [
