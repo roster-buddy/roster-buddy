@@ -371,6 +371,9 @@ class DailyAmendmentParser implements BaseParser {
         .replaceAll(RegExp(r'\[\s*\d+\s*\]|\(\s*\d+\s*\)'), ' ')
         .trim();
     final clocks = _printedClock.allMatches(tail).toList();
+    final recoveredClocks = clocks.length == 2
+        ? null
+        : _recoverFusedClocks(tail);
     final prefix = clocks.isEmpty
         ? tail
         : tail.substring(0, clocks.first.start);
@@ -397,7 +400,7 @@ class DailyAmendmentParser implements BaseParser {
     final type = _determineDutyType(
       codeDefinition: definition,
       rawText: ' $tail ',
-      hasTimes: clocks.length >= 2,
+      hasTimes: clocks.length >= 2 || recoveredClocks != null,
     );
     final nonWorking =
         type == DutyType.annualLeave ||
@@ -405,16 +408,20 @@ class DailyAmendmentParser implements BaseParser {
         type == DutyType.sick ||
         type == DutyType.unavailable ||
         type == DutyType.publicHoliday;
-    if (!nonWorking && clocks.length != 2) return null;
+    if (!nonWorking && clocks.length != 2 && recoveredClocks == null) {
+      return null;
+    }
     if (nonWorking && code == null) return null;
     final on = nonWorking
         ? null
-        : ParserUtils.normaliseTime(clocks[0].group(0));
+        : recoveredClocks?.bookOn ??
+            ParserUtils.normaliseTime(clocks[0].group(0));
     final off = nonWorking
         ? null
-        : ParserUtils.normaliseTime(clocks[1].group(0));
+        : recoveredClocks?.bookOff ??
+            ParserUtils.normaliseTime(clocks[1].group(0));
     if (!nonWorking && (on == null || off == null)) return null;
-    final remaining = clocks.length >= 2 ? tail.substring(clocks[1].end) : '';
+    final remaining = clocks.length >= 2 ? tail.substring(clocks[1].end) : tail;
     final duration = RegExp(
       r'^\s*([0-9]{1,2}[.:][0-9]{2})\b',
     ).firstMatch(remaining);
@@ -427,7 +434,8 @@ class DailyAmendmentParser implements BaseParser {
       bookOff: off,
       rosteredMinutes: nonWorking
           ? null
-          : ParserUtils.parseRosteredMinutes(duration?.group(1)) ??
+          : recoveredClocks?.rosteredMinutes ??
+                ParserUtils.parseRosteredMinutes(duration?.group(1)) ??
                 ParserUtils.calculateDutyMinutes(on!, off!),
       payrollNumber: payroll,
       driverName: name,
@@ -436,6 +444,59 @@ class DailyAmendmentParser implements BaseParser {
       pageNumber: row.pageNumber,
       rawText: row.rawText,
       remarks: definition?.preferredMeaning,
+    );
+  }
+
+  ({String bookOn, String bookOff, int rosteredMinutes})?
+      _recoverFusedClocks(String tail) {
+    final durationMatch = RegExp(
+      r'\b([0-9]{1,2}[.:][0-9]{2})\b(?=\s*(?:Amended\s+Turn|Special\s+Turn)?\s*$)',
+      caseSensitive: false,
+    ).firstMatch(tail);
+    final rosteredMinutes = ParserUtils.parseRosteredMinutes(
+      durationMatch?.group(1),
+    );
+    if (rosteredMinutes == null || rosteredMinutes <= 0 ||
+        rosteredMinutes > 12 * 60) {
+      return null;
+    }
+
+    final candidates = <String>{};
+    for (final run in RegExp(r'(?<![0-9])[0-9]{8,14}(?![0-9])')
+        .allMatches(tail)) {
+      final digits = run.group(0)!;
+      void choose(int index, String selected) {
+        if (selected.length == 8) {
+          final firstHour = int.parse(selected.substring(0, 2));
+          final firstMinute = int.parse(selected.substring(2, 4));
+          final secondHour = int.parse(selected.substring(4, 6));
+          final secondMinute = int.parse(selected.substring(6, 8));
+          if (firstHour > 23 || firstMinute > 59 ||
+              secondHour > 23 || secondMinute > 59) {
+            return;
+          }
+          final firstTotal = firstHour * 60 + firstMinute;
+          final secondTotal = secondHour * 60 + secondMinute;
+          final elapsed = (secondTotal - firstTotal + 24 * 60) % (24 * 60);
+          if (elapsed == rosteredMinutes) candidates.add(selected);
+          return;
+        }
+        if (index >= digits.length ||
+            digits.length - index < 8 - selected.length) {
+          return;
+        }
+        choose(index + 1, '$selected${digits[index]}');
+        choose(index + 1, selected);
+      }
+
+      choose(0, '');
+    }
+    if (candidates.length != 1) return null;
+    final value = candidates.single;
+    return (
+      bookOn: '${value.substring(0, 2)}:${value.substring(2, 4)}',
+      bookOff: '${value.substring(4, 6)}:${value.substring(6, 8)}',
+      rosteredMinutes: rosteredMinutes,
     );
   }
 

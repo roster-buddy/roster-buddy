@@ -166,7 +166,6 @@ A Tester 1910 WOD ALLOC 213 16:53 01:11 8.45
       pageText: const [
         'Report for Monday 09/11/26 in All Links\n'
             'R Brown 3686 WOD TW TH+: 125001420245 8.45\n'
-            'R Brown 3686 WOD TW TW 12:00 20:45 8.45\n'
             'D Mount 1957 wWOD 210/51.3:159% 23:10); 9.11\n'
             'D Mount 1957 WOD 210 13:59 23:10 9.11',
       ],
