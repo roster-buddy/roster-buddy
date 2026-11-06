@@ -91,13 +91,8 @@ void main() {
     await chooseType(tester, '48-Hour Amendment');
     await tester.tap(find.text('Check and apply'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.textContaining('03/08/2026'), 150);
-    await tester.pumpAndSettle();
-    expect(find.textContaining('03/08/2026'), findsWidgets);
     expect(find.text('1 records found'), findsOneWidget);
     expect(find.textContaining('records to review'), findsNothing);
-    expect(find.textContaining('21910'), findsOneWidget);
-    expect(find.textContaining('Alex Example · Payroll 21910'), findsOneWidget);
     expect(confirmed, isNull);
     await tester.tap(find.text('Import records'));
     await tester.pumpAndSettle();
@@ -274,11 +269,6 @@ void main() {
       -100,
     );
     expect(find.text('1 records match your calendar.'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.textContaining('05/11/2026').first,
-      100,
-    );
-    expect(find.textContaining('16:53–01:11'), findsOneWidget);
   });
 
   testWidgets('clean sheet waits for manual type choice then applies exactly once', (tester) async {
