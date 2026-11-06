@@ -139,7 +139,11 @@ void main() {
       documentType: type,
     ).parse(pageText: chosen);
 
-    expect(chosen.single, page.fullText);
+    expect(chosen.single, startsWith(page.fullText));
+    expect(
+      chosen.single,
+      contains('8 Morris 3100 WOD ALLOC 602 04:52 12:07 8.45'),
+    );
     expect(result.identifiedDates, [DateTime(2026, 11, 14)]);
     expect(result.duties.map((d) => d.payrollNumber).toSet(), {
       '5380',
