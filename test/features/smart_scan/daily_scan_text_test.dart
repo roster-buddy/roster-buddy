@@ -69,4 +69,19 @@ void main() {
     expect((await DailyScanText.bestPages([conflicted], type)).single,
       SmartScanPageTextReconstructor.reconstruct(conflicted));
   });
+  test('combines safe rows split between both OCR readings', () async {
+    final page = SmartScanResult(
+      fullText: '$heading\nA Jesson 3280 WOD ZS ZS',
+      lines: [
+        line(heading, 0, 20),
+        line('1378 WOD ZS ZS', 180, 100),
+      ],
+    );
+    final chosen = await DailyScanText.bestPages([page], type);
+    final result = await DailyAmendmentParser(
+      documentType: type,
+    ).parse(pageText: chosen);
+    expect(result.duties, hasLength(2));
+    expect(result.duties.map((d) => d.payrollNumber).toSet(), {'3280', '1378'});
+  });
 }

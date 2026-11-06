@@ -284,6 +284,9 @@ class DailyAmendmentParser implements BaseParser {
   static final _printedRow = RegExp(
     r'^(.+?)\s+([0-9]{4,8})\s+([A-Za-z]{2,5})\b(.*)$',
   );
+  static final _printedPayrollRow = RegExp(
+    r'^([0-9]{4,8})\s+([A-Za-z]{2,5})\b(.*)$',
+  );
   static final _printedClock = RegExp(
     r'(?<![0-9])([0-2]?[0-9])[:;]([0-5][0-9])(?![0-9])',
   );
@@ -292,17 +295,21 @@ class DailyAmendmentParser implements BaseParser {
     required ExtractedTableRow row,
     required DateTime date,
   }) {
-    final match = _printedRow.firstMatch(row.rawText);
-    if (match == null) return null;
-    final name = match.group(1)!.trim();
-    if (!RegExp(r'[A-Za-z]{2,}').hasMatch(name) ||
-        RegExp(r'[0-9]{3,}|[/\\:]').hasMatch(name) ||
-        name.toLowerCase().contains('vacancy')) {
+    final named = _printedRow.firstMatch(row.rawText);
+    final payrollOnly = named == null
+        ? _printedPayrollRow.firstMatch(row.rawText)
+        : null;
+    if (named == null && payrollOnly == null) return null;
+    final name = named?.group(1)?.trim();
+    if (name != null &&
+        (!RegExp(r'[A-Za-z]{2,}').hasMatch(name) ||
+            RegExp(r'[0-9]{3,}|[/\\:]').hasMatch(name) ||
+            name.toLowerCase().contains('vacancy'))) {
       return null;
     }
-    final payroll = match.group(2)!;
-    final depot = match.group(3)!.toUpperCase();
-    final tail = match.group(4)!
+    final payroll = named?.group(2) ?? payrollOnly!.group(1)!;
+    final depot = (named?.group(3) ?? payrollOnly!.group(2)!).toUpperCase();
+    final tail = (named?.group(4) ?? payrollOnly!.group(3)!)
         .replaceAll(RegExp(r'\[\s*\d+\s*\]|\(\s*\d+\s*\)'), ' ')
         .trim();
     final clocks = _printedClock.allMatches(tail).toList();

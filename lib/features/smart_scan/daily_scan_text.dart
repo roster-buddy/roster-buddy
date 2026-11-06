@@ -47,8 +47,24 @@ class DailyScanText {
           nativeByKey[_key(d)] != null && _agrees(d, nativeByKey[_key(d)]!));
       final improves = nativeResult.duties.length > rebuiltResult.duties.length &&
           _blocking(nativeResult) <= _blocking(rebuiltResult);
-      selected.add(datesAgree && keepsIdentities && keepsReadDuties && improves
-          ? native : rebuilt);
+      final useNative = datesAgree &&
+          keepsIdentities &&
+          keepsReadDuties &&
+          improves;
+      var choice = useNative ? native : rebuilt;
+      final choiceResult = useNative ? nativeResult : rebuiltResult;
+      final otherResult = useNative ? rebuiltResult : nativeResult;
+      final choiceKeys = choiceResult.duties.map(_key).toSet();
+      final complementaryRows = otherResult.duties
+          .where((duty) => !choiceKeys.contains(_key(duty)))
+          .map((duty) => duty.rawText)
+          .whereType<String>()
+          .where((row) => row.trim().isNotEmpty)
+          .toList();
+      if (complementaryRows.isNotEmpty) {
+        choice = '$choice\n${complementaryRows.join('\n')}';
+      }
+      selected.add(choice);
     }
     return selected;
   }

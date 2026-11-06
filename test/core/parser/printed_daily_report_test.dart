@@ -119,4 +119,18 @@ A Tester 1910 WOD ALLOC 213 16:53 01:11 8.45
       expect(duty.amendmentCode, 'ZS');
     }
   });
+  test('payroll-first Sunday rows remain safe without an OCR name', () async {
+    final result = await parser.parse(
+      pageText: const [
+        'Report for Sunday 08/11/26 in All Links\n'
+            '1378 WOD ZS ZS\n'
+            '3280 WOD ZS ZS',
+      ],
+    );
+    expect(result.canImport, isTrue);
+    expect(result.duties, hasLength(2));
+    expect(result.duties.map((d) => d.payrollNumber), ['1378', '3280']);
+    expect(result.duties.every((d) => d.driverName == null), isTrue);
+    expect(result.duties.every((d) => d.dutyType == DutyType.unavailable), isTrue);
+  });
 }
