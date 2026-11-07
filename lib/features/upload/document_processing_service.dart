@@ -224,7 +224,9 @@ class DocumentProcessingService {
     final List<String> reconstructedPageText =
         _isDailyAmendment(documentType)
             ? await DailyScanText.bestPages(scanResults, documentType)
-            : SmartScanPageTextReconstructor.reconstructPages(scanResults);
+            : isBaseRoster
+                ? scanResults.map(SmartScanPageTextReconstructor.reconstructBaseRoster).toList()
+                : SmartScanPageTextReconstructor.reconstructPages(scanResults);
 
     if (reconstructedPageText.isEmpty) {
       throw const DocumentProcessingException(

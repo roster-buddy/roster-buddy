@@ -356,7 +356,9 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      await _showSmartScanDialog(picked);
+      final document = await UploadService.collectPages(context, picked);
+      if (document == null || !mounted) return;
+      await _showSmartScanDialog(document);
     } catch (error) {
       if (!mounted) return;
 

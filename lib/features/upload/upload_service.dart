@@ -12,10 +12,17 @@ import 'scan_upload_summary.dart';
 enum UploadSource { camera, photoLibrary, file }
 
 class PickedUpload {
-  const PickedUpload({required this.bytes, required this.fileName});
+  const PickedUpload({
+    required this.bytes,
+    required this.fileName,
+    this.photoPages = const [],
+  });
 
   final Uint8List bytes;
   final String fileName;
+
+  /// Original photos, in document order, for scanning before the PDF is saved.
+  final List<PickedUpload> photoPages;
 
   String get filename => fileName;
 }
@@ -58,6 +65,46 @@ class UploadService {
     }
 
     return selectedUpload;
+  }
+
+  static Future<PickedUpload?> collectPages(
+    BuildContext context, PickedUpload first,
+  ) async {
+    if (first.fileName.toLowerCase().endsWith('.pdf')) return first;
+    final pages = <PickedUpload>[first];
+    while (context.mounted) {
+      final add = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('${pages.length} page(s) selected'),
+          content: const Text('Add the remaining roster photos before scanning. '
+              'Keep the pages in roster order.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Add another page')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Scan all pages')),
+          ],
+        ),
+      );
+      if (add == null) return null;
+      if (!add) {
+        if (pages.length == 1) return first;
+        return _bundlePhotos(pages);
+      }
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['jpg', 'jpeg', 'png', 'heic', 'heif'],
+        allowMultiple: true, withData: true,
+      );
+      if (result != null) {
+        for (final file in result.files) {
+          if (file.bytes == null) throw StateError('${file.name} could not be read.');
+          pages.add(PickedUpload(bytes: file.bytes!, fileName: file.name));
+        }
+      }
+    }
+    return null;
   }
 
   static Future<bool> uploadPickedDocument(
@@ -188,27 +235,17 @@ class UploadService {
       return null;
     }
 
-    if (images.length == 1) {
-      final XFile image = images.single;
-
-      return PickedUpload(
-        bytes: await image.readAsBytes(),
-        fileName: _filenameFromPath(
-          image.name.isNotEmpty ? image.name : image.path,
+    final pages = <PickedUpload>[
+      for (final image in images)
+        PickedUpload(
+          bytes: await image.readAsBytes(),
+          fileName: _filenameFromPath(
+            image.name.isNotEmpty ? image.name : image.path,
+          ),
         ),
-      );
-    }
-
-    final List<Uint8List> imageBytes = [];
-
-    for (final XFile image in images) {
-      imageBytes.add(await image.readAsBytes());
-    }
-
-    return PickedUpload(
-      bytes: await _createMultiPagePdf(imageBytes),
-      fileName: _multiPageFilename(),
-    );
+    ];
+    if (pages.length == 1) return pages.single;
+    return _bundlePhotos(pages);
   }
 
   static Future<PickedUpload?> _pickFiles() async {
@@ -268,7 +305,7 @@ class UploadService {
       );
     }
 
-    final List<Uint8List> imageBytes = [];
+    final pages = <PickedUpload>[];
 
     for (final PlatformFile file in result.files) {
       final Uint8List? bytes = file.bytes;
@@ -277,12 +314,17 @@ class UploadService {
         throw StateError('${file.name} could not be read.');
       }
 
-      imageBytes.add(bytes);
+      pages.add(PickedUpload(bytes: bytes, fileName: file.name));
     }
 
+    return _bundlePhotos(pages);
+  }
+
+  static Future<PickedUpload> _bundlePhotos(List<PickedUpload> pages) async {
     return PickedUpload(
-      bytes: await _createMultiPagePdf(imageBytes),
+      bytes: await _createMultiPagePdf(pages.map((page) => page.bytes).toList()),
       fileName: _multiPageFilename(),
+      photoPages: List.unmodifiable(pages),
     );
   }
 

@@ -93,6 +93,46 @@ void main() {
       },
     );
 
+    test(
+      'reads photographed seven-day rows across pages with compact times',
+      () async {
+        final result =
+            await BaseRosterParser(
+              commencementDate: DateTime(2026, 5, 17),
+              rosterNumber: '3535',
+            ).parse(
+              pageText: [
+                'Monday Tuesday Wednesday Thursday Friday Saturday\n'
+                    '1 | | No Duty | No Duty | 15:1100:5609:45211 | 15:1500:0008:45Sp | 17:1101:3108:20215 | 16:0000:4508:45Sp\n'
+                    '3535 | | | | Liverpool,Lich,Ruge | (7) | Ruge,Redd,xcity | (2)',
+                '2 | | 08:1117:1008:59208 | 07:0015:1408:14217 | No Duty | No Duty | 06:1815:3809:20207 | 06:0014:4508:45Sp\n'
+                    '3518 | | Shrew,Redd | Sb | | | Liverpool | (8)',
+              ],
+            );
+        expect(result.hasBlockingWarnings, isFalse);
+        expect(result.weeksDetected, 2);
+        expect(result.pagesProcessed, 2);
+        final saturday = result.duties.firstWhere(
+          (d) => d.date == DateTime(2026, 5, 23),
+        );
+        expect(saturday.bookOn, '16:00');
+        expect(saturday.bookOff, '00:45');
+        expect(saturday.turnNumber, 'Sp');
+        expect(
+          result.duties
+              .firstWhere((d) => d.date == DateTime(2026, 5, 18))
+              .dutyType,
+          DutyType.restDay,
+        );
+        expect(
+          result.duties
+              .firstWhere((d) => d.date == DateTime(2026, 5, 20))
+              .turnNumber,
+          '211',
+        );
+      },
+    );
+
     test('blocks import when the roster number is not found', () async {
       final BaseRosterParser parser = BaseRosterParser(
         commencementDate: DateTime(2026, 5, 3),

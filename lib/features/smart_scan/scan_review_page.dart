@@ -182,6 +182,30 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
       final List<SmartScanResult> pages;
       if (widget.readDocument != null) {
         pages = await widget.readDocument!(_report);
+      } else if (widget.upload.photoPages.isNotEmpty) {
+        final photos = widget.upload.photoPages;
+        pages = [];
+        for (var index = 0; index < photos.length; index++) {
+          final photo = photos[index];
+          final pageLabel = 'Page ${index + 1} of ${photos.length}';
+          try {
+            final page = await SmartScanEngine.recogniseImage(
+              bytes: photo.bytes,
+              fileName: photo.fileName,
+              onProgress: (message, fraction) => _report(
+                '$pageLabel · $message',
+                fraction == null ? null : (index + fraction) / photos.length,
+              ),
+            );
+            if (!mounted) return;
+            if (!page.hasText) {
+              throw const SmartScanException('No readable text was found.');
+            }
+            pages.add(page);
+          } on SmartScanException catch (error) {
+            throw SmartScanException('$pageLabel: ${error.message}');
+          }
+        }
       } else if (widget.upload.fileName.toLowerCase().endsWith('.pdf')) {
         pages = await SmartScanEngine.recognisePdf(
           bytes: widget.upload.bytes,
@@ -380,7 +404,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
                 trailing: const Icon(Icons.edit_outlined),
                 onTap: () => _editRecord(null, warning),
               ),
-          ] else if (reviewReasons.isEmpty)
+          ] else if (reviewReasons.isEmpty && parsed.duties.isNotEmpty)
             const Text('All recognised records passed the automatic checks.')
           else
             const Text(

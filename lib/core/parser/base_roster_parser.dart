@@ -43,7 +43,7 @@ class BaseRosterParser implements BaseParser {
     final bool hasWeekHeading =
         text.contains('WEEK') ||
         RegExp(
-          r'^(?:[1-9]|[1-4][0-9]|5[0-4])(?:\\s|$)',
+          r'^(?:[1-9]|[1-4][0-9]|5[0-4])(?:\s|$)',
           multiLine: true,
         ).hasMatch(text);
 
@@ -88,8 +88,7 @@ class BaseRosterParser implements BaseParser {
     if (activeFrom == null) {
       warnings.add(
         const ParseWarning(
-          message:
-              'The Base Roster commencement Sunday is required before duties can be generated.',
+          message: 'The Base Roster commencement Sunday is required before duties can be generated.',
           severity: ParseWarningSeverity.blocking,
         ),
       );
@@ -108,21 +107,19 @@ class BaseRosterParser implements BaseParser {
     if (requestedRosterNumber.isEmpty) {
       warnings.add(
         const ParseWarning(
-          message:
-              'A roster number is required to locate the correct Base Roster line.',
+          message: 'A roster number is required to locate the correct Base Roster line.',
           severity: ParseWarningSeverity.blocking,
         ),
       );
     }
 
     final ExtractedTable table = tableExtractor.extract(pageText);
-    final List<_BaseRosterWeek> weeks = _extractWeeks(table);
+    final List<_BaseRosterWeek> weeks = _extractWeeks(table, warnings);
 
     if (weeks.isEmpty) {
       warnings.add(
         const ParseWarning(
-          message:
-              'No Base Roster week rows were detected. Check that the full roster grid is visible.',
+          message: 'No Base Roster week rows were detected. Check that the full roster grid is visible.',
           severity: ParseWarningSeverity.blocking,
         ),
       );
@@ -219,8 +216,7 @@ class BaseRosterParser implements BaseParser {
     if (duties.isEmpty) {
       warnings.add(
         const ParseWarning(
-          message:
-              'The correct Base Roster line was found, but no usable Sunday-to-Friday duties were detected.',
+          message: 'The correct Base Roster line was found, but no usable Sunday-to-Saturday duties were detected.',
           severity: ParseWarningSeverity.blocking,
         ),
       );
@@ -260,7 +256,10 @@ class BaseRosterParser implements BaseParser {
     return (startingIndex + calendarWeek) % rosterLength;
   }
 
-  List<_BaseRosterWeek> _extractWeeks(ExtractedTable table) {
+  List<_BaseRosterWeek> _extractWeeks(
+    ExtractedTable table,
+    List<ParseWarning> warnings,
+  ) {
     final List<ExtractedTableRow> rows = table.rows
         .where((ExtractedTableRow row) => !row.isLikelyHeader && !row.isEmpty)
         .toList(growable: false);
@@ -300,6 +299,13 @@ class BaseRosterParser implements BaseParser {
       }
 
       if (identityRow == null) {
+        warnings.add(
+          ParseWarning(
+            message:
+                'Base Roster line $weekNumber on page ${dutyRow.pageNumber} has no readable driver number.',
+            severity: ParseWarningSeverity.blocking,
+          ),
+        );
         continue;
       }
 
@@ -310,8 +316,33 @@ class BaseRosterParser implements BaseParser {
       }
 
       final List<_BaseRosterDayCell> cells = _extractDayCells(dutyRow);
+      if (cells.any(
+        (cell) =>
+            cell.rawText.isNotEmpty &&
+            !RegExp(
+              r'^(?:NO\s*DUTY|RD|REST(?: DAY)?|OFF)$',
+              caseSensitive: false,
+            ).hasMatch(cell.rawText.trim()) &&
+            (cell.bookOn == null || cell.bookOff == null),
+      )) {
+        warnings.add(
+          ParseWarning(
+            message:
+                'Check the times on Base Roster line $weekNumber, page ${dutyRow.pageNumber}.',
+            severity: ParseWarningSeverity.blocking,
+          ),
+        );
+        continue;
+      }
 
-      if (cells.length != 6) {
+      if (cells.length != 6 && cells.length != 7) {
+        warnings.add(
+          ParseWarning(
+            message:
+                'The day columns on Base Roster line $weekNumber, page ${dutyRow.pageNumber}, could not be read.',
+            severity: ParseWarningSeverity.blocking,
+          ),
+        );
         continue;
       }
 
@@ -369,6 +400,9 @@ class BaseRosterParser implements BaseParser {
       }
     }
 
+    final leading = RegExp(r'^\s*(\d{4})\b').firstMatch(row.rawText);
+    if (leading != null) return leading.group(1);
+
     final Match? labelled = RegExp(
       r'\b(?:DRIVER|DRV)\s*(?:NO|NUMBER)?\s*[:\-]?\s*(\d{2,8})\b',
       caseSensitive: false,
@@ -401,11 +435,18 @@ class BaseRosterParser implements BaseParser {
               .toList(growable: false)
         : const <String>[];
 
+    if (pipeColumns.length == 8) {
+      return pipeColumns
+          .skip(1)
+          .map(_BaseRosterDayCell.fromCombinedText)
+          .toList();
+    }
+
     if (pipeColumns.length >= 25) {
       final List<String> dutyColumns = pipeColumns.sublist(1);
       final List<_BaseRosterDayCell> cells = <_BaseRosterDayCell>[];
 
-      for (int day = 0; day < 6; day++) {
+      for (int day = 0; day < (pipeColumns.length >= 29 ? 7 : 6); day++) {
         final int start = day * 4;
 
         cells.add(
@@ -456,7 +497,7 @@ class BaseRosterParser implements BaseParser {
     final String upper = cell.rawText.toUpperCase();
 
     final bool explicitlyRest = RegExp(
-      r'\b(?:RD|REST|REST DAY|OFF)\b',
+      r'\b(?:RD|REST|REST DAY|OFF|NO\s*DUTY)\b',
     ).hasMatch(upper);
 
     final bool hasDutyInformation =
@@ -534,6 +575,22 @@ class _BaseRosterDayCell {
   }
 
   factory _BaseRosterDayCell.fromCombinedText(String value) {
+    // Printed cells often have no spaces: 15:1100:5609:45211.
+    final compact = RegExp(
+      r'^\s*([0-2]\d[:.]?[0-5]\d)\s*([0-2]\d[:.]?[0-5]\d)\s*(\d{1,2}[:.][0-5]\d)\s*(Sp|\d{2,4})\s*$',
+      caseSensitive: false,
+    ).firstMatch(value);
+    if (compact != null) {
+      return _BaseRosterDayCell(
+        rawText: value.trim(),
+        bookOn: ParserUtils.normaliseTime(compact.group(1)),
+        bookOff: ParserUtils.normaliseTime(compact.group(2)),
+        rosteredMinutes: ParserUtils.parseRosteredMinutes(compact.group(3)),
+        turnNumber: compact.group(4)!.toUpperCase() == 'SP'
+            ? 'Sp'
+            : compact.group(4),
+      );
+    }
     final List<String> times = ParserUtils.extractTimes(value);
     final String? bookOn = times.isNotEmpty ? times[0] : null;
     final String? bookOff = times.length > 1 ? times[1] : null;

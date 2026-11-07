@@ -5,6 +5,49 @@ import 'package:roster_buddy/features/smart_scan/smart_scan_result.dart';
 
 void main() {
   group('SmartScanPageTextReconstructor', () {
+    test('base grid retains blank Sunday and separate driver identity', () {
+      SmartScanTextLine line(String text, double x, double y) =>
+          SmartScanTextLine(
+            text: text,
+            left: x,
+            top: y,
+            right: x + 50,
+            bottom: y + 10,
+          );
+      final result = SmartScanResult(
+        fullText: '',
+        lines: [
+          for (final entry in [
+            'Monday',
+            'Tuesday',
+            'Wednesday',
+            'Thursday',
+            'Friday',
+            'Saturday',
+          ].asMap().entries)
+            line(entry.value, 200 + entry.key * 100, 10),
+          line('1', 10, 40),
+          line('No Duty', 200, 40),
+          line('15:1100:5609:45211', 400, 40),
+          line('3535', 10, 55),
+          line('Liverpool,Lich,Ruge', 400, 55),
+        ],
+      );
+      final rows = SmartScanPageTextReconstructor.reconstructBaseRoster(result)
+          .split('\n');
+      expect(rows[1].split('|').map((s) => s.trim()).toList(), [
+        '1',
+        '',
+        'No Duty',
+        '',
+        '15:1100:5609:45211',
+        '',
+        '',
+        '',
+      ]);
+      expect(rows[2].split('|').first.trim(), '3535');
+    });
+
     test('reconstructs rows from top-to-bottom and left-to-right', () {
       const SmartScanResult result = SmartScanResult(
         fullText: 'Fallback text',

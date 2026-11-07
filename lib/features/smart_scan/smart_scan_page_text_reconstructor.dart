@@ -12,6 +12,59 @@ class SmartScanPageTextReconstructor {
         .toList(growable: false);
   }
 
+  /// Preserve empty day cells using the printed weekday column positions.
+  static String reconstructBaseRoster(SmartScanResult result) {
+    const days = [
+      'SUNDAY',
+      'MONDAY',
+      'TUESDAY',
+      'WEDNESDAY',
+      'THURSDAY',
+      'FRIDAY',
+      'SATURDAY',
+    ];
+    final anchors = <int, double>{};
+    for (final line in result.lines) {
+      final text = line.text.trim().toUpperCase();
+      final day = days.indexOf(text);
+      if (day >= 0) anchors[day] = line.left;
+    }
+    // Do not guess column positions unless the Monday–Saturday headings exist.
+    if (!List.generate(6, (i) => i + 1).every(anchors.containsKey)) {
+      return reconstruct(result);
+    }
+    final spacing = (anchors[6]! - anchors[1]!) / 5;
+    if (spacing <= 0) return reconstruct(result);
+    final sunday = anchors[1]! - spacing;
+    final lines = List<SmartScanTextLine>.from(result.lines)
+      ..sort((a, b) => a.top.compareTo(b.top));
+    final rows = <List<SmartScanTextLine>>[];
+    for (final line in lines) {
+      if (rows.isEmpty ||
+          (line.top - rows.last.first.top).abs() >
+              math.max(2, (line.bottom - line.top) * 0.55)) {
+        rows.add([line]);
+      } else {
+        rows.last.add(line);
+      }
+    }
+    return rows
+        .map((row) {
+          final cells = List.generate(8, (_) => <String>[]);
+          row.sort((a, b) => a.left.compareTo(b.left));
+          for (final line in row) {
+            final day = ((line.left - sunday + spacing * 0.15) / spacing)
+                .floor();
+            final column = line.left < sunday - spacing * 0.15
+                ? 0
+                : day.clamp(0, 6) + 1;
+            cells[column].add(line.text.trim());
+          }
+          return cells.map((cell) => cell.join(' ')).join(' | ');
+        })
+        .join('\n');
+  }
+
   static String reconstruct(SmartScanResult result) {
     if (result.lines.isEmpty) {
       return result.fullText;
