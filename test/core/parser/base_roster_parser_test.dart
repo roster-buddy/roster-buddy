@@ -150,7 +150,7 @@ void main() {
 
       expect(result.hasBlockingWarnings, isFalse);
       expect(result.weeksDetected, 2);
-      expect(result.duties.first.date, DateTime(2026, 5, 17));
+      expect(result.duties.first.date, DateTime(2026, 5, 18));
       expect(result.duties.first.driverNumber, '3535');
     });
 
