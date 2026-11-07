@@ -72,7 +72,8 @@ class UploadService {
   ) async {
     if (first.fileName.toLowerCase().endsWith('.pdf')) return first;
     final pages = <PickedUpload>[first];
-    while (context.mounted) {
+    while (true) {
+      if (!context.mounted) return null;
       final add = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -104,7 +105,6 @@ class UploadService {
         }
       }
     }
-    return null;
   }
 
   static Future<bool> uploadPickedDocument(
