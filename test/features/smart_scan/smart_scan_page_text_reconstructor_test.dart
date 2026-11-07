@@ -35,7 +35,7 @@ void main() {
       );
       final rows = SmartScanPageTextReconstructor.reconstructBaseRoster(result)
           .split('\n');
-      expect(rows[1].split('|').map((s) => s.trim()).toList(), [
+      expect(rows[0].split('|').map((s) => s.trim()).toList(), [
         '1',
         '',
         'No Duty',
@@ -45,7 +45,7 @@ void main() {
         '',
         '',
       ]);
-      expect(rows[2].split('|').first.trim(), '3535');
+      expect(rows[1].split('|').first.trim(), '3535');
     });
 
     test('base grid accepts imperfect headings and ignores duty numbers', () {
