@@ -29,4 +29,16 @@ F Six 1006 WOD RL RL 13:00 21:45 8.45
 ''';
     expect(SmartScanQuality.needsLocalRescue(text), isFalse);
   });
+
+  test('re-reads a base roster whose driver numbers use separate rows', () {
+    const text = '''
+Sunday Monday Tuesday Wednesday Thursday Friday Saturday
+1 No Duty No Duty 15:11 00:56 09:45 211
+3535 Liverpool Lichfield Rugeley
+2 08:11 17:10 08:59 208 No Duty No Duty
+3518 Shrewsbury Redditch
+''';
+
+    expect(SmartScanQuality.needsLocalRescue(text), isTrue);
+  });
 }

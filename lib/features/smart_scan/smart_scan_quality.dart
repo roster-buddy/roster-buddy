@@ -17,6 +17,20 @@ class SmartScanQuality {
   /// receives a local rescue reading when too many identified payroll rows
   /// lack either two clocks or a recognised non-working code.
   static bool needsLocalRescue(String text) {
+    final upper = text.toUpperCase();
+    final weekdayHeadings = const [
+      'SUNDAY',
+      'MONDAY',
+      'TUESDAY',
+      'WEDNESDAY',
+      'THURSDAY',
+      'FRIDAY',
+      'SATURDAY',
+    ].where(upper.contains).length;
+    if (weekdayHeadings >= 3 && upper.contains('NO DUTY')) {
+      return true;
+    }
+
     final rows = text.split(RegExp(r'\r?\n'))
         .where((row) => _identity.hasMatch(row))
         .toList(growable: false);
