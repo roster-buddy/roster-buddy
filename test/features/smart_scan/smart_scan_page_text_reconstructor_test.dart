@@ -79,6 +79,43 @@ void main() {
       expect(rows.last.split('|').first.trim(), '3535');
     });
 
+    test('base grid derives columns when weekday headings are merged', () {
+      SmartScanTextLine line(
+        String text,
+        double x,
+        double y, {
+        double width = 40,
+      }) => SmartScanTextLine(
+        text: text,
+        left: x,
+        top: y,
+        right: x + width,
+        bottom: y + 10,
+      );
+      final result = SmartScanResult(fullText: '', lines: [
+        line('Monday Tuesday Wednesday Thursday Friday Saturday', 80, 10,
+            width: 660),
+        line('35', 4, 40, width: 18),
+        line('07:4413:3805:542', 50, 40, width: 100),
+        line('15:0023:4508:45Sp', 190, 40, width: 115),
+        line('No Duty', 480, 40, width: 70),
+        line('14:1523:0008:45Sp', 770, 40, width: 120),
+        line('13:3022:1508:45Sp', 930, 40, width: 120),
+        line('3535', 4, 55, width: 35),
+        line('Walsall', 50, 55, width: 60),
+        line('(1)', 190, 55, width: 20),
+      ]);
+
+      final rows = SmartScanPageTextReconstructor.reconstructBaseRoster(
+        result,
+      ).split('\n');
+
+      expect(rows, hasLength(2));
+      expect(rows.first.split('|').first.trim(), '35');
+      expect(rows.last.split('|').first.trim(), '3535');
+      expect(rows.first, contains('No Duty'));
+    });
+
     test('reconstructs rows from top-to-bottom and left-to-right', () {
       const SmartScanResult result = SmartScanResult(
         fullText: 'Fallback text',

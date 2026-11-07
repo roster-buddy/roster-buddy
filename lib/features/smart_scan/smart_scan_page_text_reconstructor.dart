@@ -30,19 +30,43 @@ class SmartScanPageTextReconstructor {
         if (text.contains(days[day])) anchors[day] = line.left;
       }
     }
-    if (anchors.length < 3) {
-      return reconstruct(result);
-    }
-
-    final anchorDays = anchors.keys.toList()..sort();
-    final firstDay = anchorDays.first;
-    final lastDay = anchorDays.last;
-    final spacing =
-        (anchors[lastDay]! - anchors[firstDay]!) / (lastDay - firstDay);
-    if (spacing <= 0) return reconstruct(result);
-    final sunday = anchors[firstDay]! - spacing * firstDay;
     final lines = List<SmartScanTextLine>.from(result.lines)
       ..sort((a, b) => a.top.compareTo(b.top));
+    if (lines.isEmpty) return result.fullText;
+
+    final maxRight = lines.map((line) => line.right).reduce(math.max);
+    final numericLabels = lines.where((line) {
+      final digits = line.text.replaceAll(RegExp(r'[^0-9]'), '');
+      return digits.isNotEmpty &&
+          digits.length <= 4 &&
+          line.left < maxRight * 0.2;
+    }).toList();
+
+    double sunday;
+    double spacing;
+    final anchorDays = anchors.keys.toList()..sort();
+    final hasSeparatedHeadings = anchorDays.length >= 3 &&
+        anchors[anchorDays.last]! > anchors[anchorDays.first]!;
+    if (hasSeparatedHeadings) {
+      final firstDay = anchorDays.first;
+      final lastDay = anchorDays.last;
+      spacing =
+          (anchors[lastDay]! - anchors[firstDay]!) / (lastDay - firstDay);
+      sunday = anchors[firstDay]! - spacing * firstDay;
+    } else if (numericLabels.isNotEmpty) {
+      final leftEdge = numericLabels.map((line) => line.left).reduce(math.min);
+      final mainGridLabels = numericLabels.where(
+        (line) => line.left <= leftEdge + maxRight * 0.04,
+      );
+      final identityRight = mainGridLabels
+          .map((line) => line.right)
+          .reduce(math.max);
+      sunday = identityRight + maxRight * 0.005;
+      spacing = (maxRight - sunday) / 7;
+    } else {
+      return reconstruct(result);
+    }
+    if (spacing <= 0) return reconstruct(result);
     final rows = <List<SmartScanTextLine>>[];
     for (final line in lines) {
       if (rows.isEmpty ||
@@ -60,7 +84,7 @@ class SmartScanPageTextReconstructor {
           for (final line in row) {
             final day = ((line.left - sunday + spacing * 0.15) / spacing)
                 .floor();
-            final column = line.left < sunday - spacing * 0.15
+            final column = line.left < sunday - spacing * 0.03
                 ? 0
                 : day.clamp(0, 6) + 1;
             cells[column].add(line.text.trim());
