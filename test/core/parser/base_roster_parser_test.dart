@@ -133,6 +133,27 @@ void main() {
       },
     );
 
+    test('orders photographed pages and ignores appended duplicate lines', () async {
+      final result = await BaseRosterParser(
+        commencementDate: DateTime(2026, 5, 17),
+        rosterNumber: '3535',
+      ).parse(
+        pageText: [
+          '2 | | 08:1117:1008:59208 | 07:0015:1408:14217 | No Duty | No Duty | 06:1815:3809:20207 | 06:0014:4508:45Sp\n'
+              '3518 | | Shrew,Redd | Sb | | | Liverpool | (8)',
+          '1 | | No Duty | No Duty | 15:1100:5609:45211 | 15:1500:0008:45Sp | 17:1101:3108:20215 | 16:0000:4508:45Sp\n'
+              '3535 | | | | Liverpool,Lich,Ruge | (7) | Ruge,Redd,xcity | (2)\n'
+              '1 | | No Duty | No Duty | 04:4812:1007:22202 | 06:1815:3809:20207 | 08:1117:1008:59208 | No Duty\n'
+              '3426 | | | | Bromsgro,Lich,Ruge | Liverpool | Shrew,Redd |',
+        ],
+      );
+
+      expect(result.hasBlockingWarnings, isFalse);
+      expect(result.weeksDetected, 2);
+      expect(result.duties.first.date, DateTime(2026, 5, 17));
+      expect(result.duties.first.driverNumber, '3535');
+    });
+
     test('blocks import when the roster number is not found', () async {
       final BaseRosterParser parser = BaseRosterParser(
         commencementDate: DateTime(2026, 5, 3),

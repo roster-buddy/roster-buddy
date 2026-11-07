@@ -356,6 +356,16 @@ class BaseRosterParser implements BaseParser {
       );
     }
 
+    weeks.sort(
+      (_BaseRosterWeek first, _BaseRosterWeek second) =>
+          first.printedWeekNumber.compareTo(second.printedWeekNumber),
+    );
+
+    final seenLineNumbers = <int>{};
+    weeks.removeWhere(
+      (_BaseRosterWeek week) => !seenLineNumbers.add(week.printedWeekNumber),
+    );
+
     return weeks;
   }
 

@@ -25,17 +25,22 @@ class SmartScanPageTextReconstructor {
     ];
     final anchors = <int, double>{};
     for (final line in result.lines) {
-      final text = line.text.trim().toUpperCase();
-      final day = days.indexOf(text);
-      if (day >= 0) anchors[day] = line.left;
+      final text = line.text.toUpperCase().replaceAll(RegExp(r'[^A-Z]'), '');
+      for (var day = 0; day < days.length; day++) {
+        if (text.contains(days[day])) anchors[day] = line.left;
+      }
     }
-    // Do not guess column positions unless the Monday–Saturday headings exist.
-    if (!List.generate(6, (i) => i + 1).every(anchors.containsKey)) {
+    if (anchors.length < 3) {
       return reconstruct(result);
     }
-    final spacing = (anchors[6]! - anchors[1]!) / 5;
+
+    final anchorDays = anchors.keys.toList()..sort();
+    final firstDay = anchorDays.first;
+    final lastDay = anchorDays.last;
+    final spacing =
+        (anchors[lastDay]! - anchors[firstDay]!) / (lastDay - firstDay);
     if (spacing <= 0) return reconstruct(result);
-    final sunday = anchors[1]! - spacing;
+    final sunday = anchors[firstDay]! - spacing * firstDay;
     final lines = List<SmartScanTextLine>.from(result.lines)
       ..sort((a, b) => a.top.compareTo(b.top));
     final rows = <List<SmartScanTextLine>>[];
@@ -61,6 +66,13 @@ class SmartScanPageTextReconstructor {
             cells[column].add(line.text.trim());
           }
           return cells.map((cell) => cell.join(' ')).join(' | ');
+        })
+        .where((row) {
+          final firstCell = row.split('|').first.trim();
+          final digits = firstCell.replaceAll(RegExp(r'[^0-9]'), '');
+          if (digits.length == 4) return true;
+          final lineNumber = int.tryParse(digits);
+          return lineNumber != null && lineNumber >= 1 && lineNumber <= 54;
         })
         .join('\n');
   }

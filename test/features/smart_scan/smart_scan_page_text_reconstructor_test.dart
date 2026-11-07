@@ -48,6 +48,37 @@ void main() {
       expect(rows[2].split('|').first.trim(), '3535');
     });
 
+    test('base grid accepts imperfect headings and ignores duty numbers', () {
+      SmartScanTextLine line(String text, double x, double y) =>
+          SmartScanTextLine(
+            text: text,
+            left: x,
+            top: y,
+            right: x + 50,
+            bottom: y + 10,
+          );
+      final result = SmartScanResult(fullText: '', lines: [
+        line('[Monday', 200, 10),
+        line('Tuesday', 300, 10),
+        line('Wednsday', 400, 10),
+        line('Thursday', 500, 10),
+        line('Friday', 600, 10),
+        line('(Saturday', 700, 10),
+        line('1', 10, 40),
+        line('15:1100:5609:45211', 400, 40),
+        line('3535', 10, 55),
+        line('51', 410, 70),
+      ]);
+
+      final rows = SmartScanPageTextReconstructor.reconstructBaseRoster(
+        result,
+      ).split('\n');
+
+      expect(rows, hasLength(2));
+      expect(rows.first.split('|').first.trim(), '1');
+      expect(rows.last.split('|').first.trim(), '3535');
+    });
+
     test('reconstructs rows from top-to-bottom and left-to-right', () {
       const SmartScanResult result = SmartScanResult(
         fullText: 'Fallback text',
