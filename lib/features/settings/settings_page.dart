@@ -4320,7 +4320,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
                             title: const Text(
                               'Permanently unavailable Sundays',
                               style: TextStyle(
-                                color: navy,
+                                color: Theme.of(context).colorScheme.onSurface,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
@@ -4724,7 +4724,7 @@ class _BaseRosterSetupPageState extends State<BaseRosterSetupPage> {
                     const Text(
                       'Which line supplies the commencement week?',
                       style: TextStyle(
-                        color: navy,
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
