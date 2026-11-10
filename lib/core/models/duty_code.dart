@@ -156,8 +156,9 @@ class DutyCodeLibrary {
     ),
     DutyCodeDefinition(
       code: 'D3',
-      crewplanMeaning: 'Safety Related Incident',
-      traincrewUnavailabilityMeaning: 'Safety Related Incident',
+      crewplanMeaning: 'Light Duties — Not attending',
+      traincrewUnavailabilityMeaning: 'Light Duties — Not attending',
+      dutyType: DutyType.unavailable,
     ),
     DutyCodeDefinition(
       code: 'D4',
