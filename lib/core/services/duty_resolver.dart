@@ -80,7 +80,11 @@ class DutyResolver {
       return const [];
     }
 
-    final List<dynamic> response = await _supabase
+    final dutyFilter = applicableDutyFilter(
+      payrollNumber: payrollNumber,
+      rosterNumber: rosterNumber,
+    );
+    final dutyQuery = _supabase
         .from(_dutyTableName)
         .select(
           'duty_date, source, duty_type, turn_number, book_on, book_off, '
@@ -88,6 +92,9 @@ class DutyResolver {
           'driver_name, depot, amendment_code, mileage, page_number, raw_text',
         )
         .eq('duty_date', _databaseDate(date));
+    final List<dynamic> response = await (dutyFilter == null
+        ? dutyQuery
+        : dutyQuery.or(dutyFilter));
 
     final List<Duty> duties = response
         .whereType<Map<String, dynamic>>()
@@ -295,9 +302,15 @@ class DutyResolver {
     final String databaseStart = _databaseDate(start);
     final String databaseEnd = _databaseDate(end);
 
-    // These reads share only the profile/range and can run together.
-    final responses = await Future.wait<Object?>([
-      _supabase
+    // Filter the shared duty table on the server before PostgREST applies
+    // its default result limit (typically 1000 rows). A 42-day calendar
+    // containing every driver's shifts can exceed that limit and otherwise
+    // silently omit the signed-in driver's shift.
+    final dutyFilter = applicableDutyFilter(
+      payrollNumber: payrollNumber,
+      rosterNumber: rosterNumber,
+    );
+    final dutyQuery = _supabase
         .from(_dutyTableName)
         .select(
           'duty_date, source, duty_type, turn_number, book_on, book_off, '
@@ -305,7 +318,11 @@ class DutyResolver {
           'driver_name, depot, amendment_code, mileage, page_number, raw_text',
         )
         .gte('duty_date', databaseStart)
-        .lte('duty_date', databaseEnd),
+        .lte('duty_date', databaseEnd);
+
+    // These reads share only the profile/range and can run together.
+    final responses = await Future.wait<Object?>([
+      dutyFilter == null ? dutyQuery : dutyQuery.or(dutyFilter),
       driverNumber == null ? Future.value(<dynamic>[]) : _supabase
           .from(_annualLeavePeriodTableName)
           .select(
@@ -1011,6 +1028,768 @@ class DutyResolver {
 
   static DateTime _dateOnly(DateTime value) {
     return DateTime(value.year, value.month, value.day);
+  }
+
+  /// Server-side candidate filter for shared roster sheets. Daily sheets
+  /// print only the final four payroll digits (1910 vs a profile of 21910).
+  /// Filter the suffix but keep the existing client-side matching and source
+  /// priority rules. Include Base Roster rows by roster number.
+  ///
+  /// Identifiers must be numeric before entering a PostgREST logic string.
+  /// An unsupported format falls back to the original unfiltered read.
+  static String? applicableDutyFilter({
+    required String? payrollNumber,
+    required String? rosterNumber,
+  }) {
+    final payroll = payrollNumber?.trim();
+    final roster = rosterNumber?.trim();
+    if (payroll != null && payroll.isNotEmpty &&
+        !RegExp(r'^\\d{4,}
+    required Map<String, dynamic> row,
+    required String? payrollNumber,
+    required String? rosterNumber,
+  }) {
+    final RosterSource source = _rosterSource(row['source']);
+
+    if (source == RosterSource.baseRoster) {
+      final String? rowRosterNumber = _normaliseIdentifier(
+        row['driver_number'],
+      );
+
+      return rosterNumber != null &&
+          rowRosterNumber != null &&
+          rosterNumber == rowRosterNumber;
+    }
+
+    final String? rowPayrollNumber = _normaliseIdentifier(
+      row['payroll_number'],
+    );
+
+    return payrollNumber != null &&
+        rowPayrollNumber != null &&
+        PrintedRosterIdentity.payrollMatches(payrollNumber, rowPayrollNumber);
+  }
+
+  static Duty _floatingAnnualLeaveDutyFromRow(Map<String, dynamic> row) {
+    final String? dateValue = _nullableString(row['leave_date']);
+
+    if (dateValue == null) {
+      throw const DutyResolverException(
+        'A granted annual leave request is missing its leave date.',
+      );
+    }
+
+    final String? notes = _nullableString(row['notes']);
+
+    return Duty(
+      date: DateTime.parse(dateValue),
+      source: RosterSource.annualLeave,
+      dutyType: DutyType.annualLeave,
+      remarks: notes == null
+          ? 'Floating annual leave'
+          : 'Floating annual leave – $notes',
+      rawText: _nullableString(row['id']),
+    );
+  }
+
+  static Map<String, dynamic>? _latestManualDutyForDate(
+    Iterable<dynamic> rows,
+  ) {
+    Map<String, dynamic>? latest;
+
+    for (final dynamic value in rows) {
+      if (value is! Map<String, dynamic>) {
+        continue;
+      }
+
+      if (latest == null || _isLaterManualDuty(value, latest)) {
+        latest = value;
+      }
+    }
+
+    return latest;
+  }
+
+  static List<Map<String, dynamic>> _latestManualDutiesByDate(
+    Iterable<dynamic> rows,
+  ) {
+    final Map<String, Map<String, dynamic>> latestByDate =
+        <String, Map<String, dynamic>>{};
+
+    for (final dynamic value in rows) {
+      if (value is! Map<String, dynamic>) {
+        continue;
+      }
+
+      final String? dutyDate = _nullableString(value['duty_date']);
+
+      if (dutyDate == null) {
+        continue;
+      }
+
+      final Map<String, dynamic>? existing = latestByDate[dutyDate];
+
+      if (existing == null || _isLaterManualDuty(value, existing)) {
+        latestByDate[dutyDate] = value;
+      }
+    }
+
+    final List<Map<String, dynamic>> result = latestByDate.values.toList();
+
+    result.sort((first, second) {
+      final String firstDate = _nullableString(first['duty_date']) ?? '';
+      final String secondDate = _nullableString(second['duty_date']) ?? '';
+      return firstDate.compareTo(secondDate);
+    });
+
+    return result;
+  }
+
+  static bool _isLaterManualDuty(
+    Map<String, dynamic> candidate,
+    Map<String, dynamic> existing,
+  ) {
+    final DateTime? candidateUpdatedAt = DateTime.tryParse(
+      _nullableString(candidate['updated_at']) ?? '',
+    );
+    final DateTime? existingUpdatedAt = DateTime.tryParse(
+      _nullableString(existing['updated_at']) ?? '',
+    );
+
+    if (candidateUpdatedAt != null && existingUpdatedAt != null) {
+      final int comparison = candidateUpdatedAt.compareTo(existingUpdatedAt);
+
+      if (comparison != 0) {
+        return comparison > 0;
+      }
+    } else if (candidateUpdatedAt != null) {
+      return true;
+    } else if (existingUpdatedAt != null) {
+      return false;
+    }
+
+    // Deterministic fallback for older rows without updated_at.
+    return _manualChangePriority(candidate['manual_change_type']) >
+        _manualChangePriority(existing['manual_change_type']);
+  }
+
+  static int _manualChangePriority(Object? value) {
+    switch (_nullableString(value)) {
+      case 'manual_change':
+        return 4;
+      case 'edited_times':
+        return 3;
+      case 'selected_turn':
+        return 2;
+      case 'rest_day_worked':
+        return 1;
+      default:
+        return 0;
+    }
+  }
+
+  static Duty _manualDutyFromRow(Map<String, dynamic> row) {
+    final String? dateValue = _nullableString(row['duty_date']);
+
+    if (dateValue == null) {
+      throw const DutyResolverException(
+        'A manual duty is missing its duty date.',
+      );
+    }
+
+    return Duty(
+      date: DateTime.parse(dateValue),
+      source: RosterSource.manual,
+      dutyType: _dutyType(row['duty_type']),
+      turnNumber: _nullableString(row['turn_number']),
+      bookOn: _databaseTimeToAppTime(row['book_on']),
+      bookOff: _databaseTimeToAppTime(row['book_off']),
+      rosteredMinutes: _nullableInt(row['rostered_minutes']),
+      remarks: _nullableString(row['remarks']),
+      rawText: _nullableString(row['manual_change_type']),
+    );
+  }
+
+  static Duty? _annualLeaveDutyFromRow({
+    required Map<String, dynamic> row,
+    required DateTime date,
+  }) {
+    final Object? relatedValue = row['annual_leave_allocations'];
+    Map<String, dynamic>? allocation;
+
+    if (relatedValue is Map<String, dynamic>) {
+      allocation = relatedValue;
+    } else if (relatedValue is Map) {
+      allocation = Map<String, dynamic>.from(relatedValue);
+    } else if (relatedValue is List && relatedValue.isNotEmpty) {
+      final Object? first = relatedValue.first;
+
+      if (first is Map<String, dynamic>) {
+        allocation = first;
+      } else if (first is Map) {
+        allocation = Map<String, dynamic>.from(first);
+      }
+    }
+
+    if (allocation == null) {
+      return null;
+    }
+
+    final String? driverNumber = _nullableString(allocation['driver_number']);
+
+    if (driverNumber == null) {
+      return null;
+    }
+
+    final String periodLabel = _annualLeavePeriodLabel(row['period_type']);
+
+    return Duty(
+      date: DateTime(date.year, date.month, date.day),
+      source: RosterSource.annualLeave,
+      dutyType: DutyType.annualLeave,
+      remarks: periodLabel,
+      driverNumber: driverNumber,
+      driverName: _nullableString(allocation['surname']),
+      depot: _nullableString(allocation['depot']),
+      pageNumber: _nullableInt(allocation['page_number']),
+      rawText:
+          '${_nullableString(row['start_date']) ?? ''} - '
+          '${_nullableString(row['end_date']) ?? ''}',
+    );
+  }
+
+  static String _annualLeavePeriodLabel(Object? value) {
+    switch (_nullableString(value)) {
+      case 'spring':
+        return 'Spring block annual leave';
+      case 'summer_first_week':
+        return 'Summer block annual leave – first week';
+      case 'summer_second_week':
+        return 'Summer block annual leave – second week';
+      case 'winter':
+        return 'Winter block annual leave';
+      default:
+        return 'Block annual leave';
+    }
+  }
+
+  static Duty _dutyFromRow(Map<String, dynamic> row) {
+    final String? dateValue = _nullableString(row['duty_date']);
+
+    if (dateValue == null) {
+      throw const DutyResolverException(
+        'A stored duty is missing its duty date.',
+      );
+    }
+
+    return Duty(
+      date: DateTime.parse(dateValue),
+      source: _rosterSource(row['source']),
+      dutyType: _dutyType(row['duty_type']),
+      turnNumber: _nullableString(row['turn_number']),
+      bookOn: _databaseTimeToAppTime(row['book_on']),
+      bookOff: _databaseTimeToAppTime(row['book_off']),
+      rosteredMinutes: _nullableInt(row['rostered_minutes']),
+      remarks: _nullableString(row['remarks']),
+      driverNumber: _nullableString(row['driver_number']),
+      payrollNumber: _nullableString(row['payroll_number']),
+      driverName: _nullableString(row['driver_name']),
+      depot: _nullableString(row['depot']),
+      amendmentCode: _nullableString(row['amendment_code']),
+      mileage: _nullableString(row['mileage']),
+      pageNumber: _nullableInt(row['page_number']),
+      rawText: _nullableString(row['raw_text']),
+    );
+  }
+
+  static RosterSource _rosterSource(Object? value) {
+    switch (_nullableString(value)) {
+      case 'base_roster':
+        return RosterSource.baseRoster;
+      case '10_day':
+        return RosterSource.tenDay;
+      case '7_day':
+        return RosterSource.sevenDay;
+      case '48_hour':
+        return RosterSource.fortyEightHour;
+      case 'annual_leave':
+        return RosterSource.annualLeave;
+      default:
+        throw DutyResolverException(
+          'Unsupported stored roster source: ${value ?? 'null'}.',
+        );
+    }
+  }
+
+  static DutyType _dutyType(Object? value) {
+    switch (_nullableString(value)) {
+      case 'working':
+        return DutyType.working;
+      case 'training':
+        return DutyType.training;
+      case 'medical':
+        return DutyType.medical;
+      case 'rest_day':
+        return DutyType.restDay;
+      case 'annual_leave':
+        return DutyType.annualLeave;
+      case 'sick':
+        return DutyType.sick;
+      case 'public_holiday':
+        return DutyType.publicHoliday;
+      case 'unavailable':
+        return DutyType.unavailable;
+      case 'unknown':
+        return DutyType.unknown;
+      default:
+        throw DutyResolverException(
+          'Unsupported stored duty type: ${value ?? 'null'}.',
+        );
+    }
+  }
+
+  static String _databaseDate(DateTime value) {
+    final String year = value.year.toString().padLeft(4, '0');
+    final String month = value.month.toString().padLeft(2, '0');
+    final String day = value.day.toString().padLeft(2, '0');
+
+    return '$year-$month-$day';
+  }
+
+  static String? _databaseTimeToAppTime(Object? value) {
+    final String? time = _nullableString(value);
+
+    if (time == null) {
+      return null;
+    }
+
+    return time.length >= 5 ? time.substring(0, 5) : time;
+  }
+
+  static String? _normaliseIdentifier(Object? value) {
+    final String? identifier = _nullableString(value);
+
+    if (identifier == null) {
+      return null;
+    }
+
+    return identifier.replaceAll(RegExp(r'\s+'), '').toUpperCase();
+  }
+
+  static String? _nullableString(Object? value) {
+    if (value == null) {
+      return null;
+    }
+
+    final String cleaned = value.toString().trim();
+
+    return cleaned.isEmpty ? null : cleaned;
+  }
+
+  static int? _nullableInt(Object? value) {
+    if (value == null) {
+      return null;
+    }
+
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(value.toString().trim());
+  }
+}
+
+class DutyResolverException implements Exception {
+  const DutyResolverException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+).hasMatch(payroll)) return null;
+    if (roster != null && roster.isNotEmpty &&
+        !RegExp(r'^\\d+
+    required Map<String, dynamic> row,
+    required String? payrollNumber,
+    required String? rosterNumber,
+  }) {
+    final RosterSource source = _rosterSource(row['source']);
+
+    if (source == RosterSource.baseRoster) {
+      final String? rowRosterNumber = _normaliseIdentifier(
+        row['driver_number'],
+      );
+
+      return rosterNumber != null &&
+          rowRosterNumber != null &&
+          rosterNumber == rowRosterNumber;
+    }
+
+    final String? rowPayrollNumber = _normaliseIdentifier(
+      row['payroll_number'],
+    );
+
+    return payrollNumber != null &&
+        rowPayrollNumber != null &&
+        PrintedRosterIdentity.payrollMatches(payrollNumber, rowPayrollNumber);
+  }
+
+  static Duty _floatingAnnualLeaveDutyFromRow(Map<String, dynamic> row) {
+    final String? dateValue = _nullableString(row['leave_date']);
+
+    if (dateValue == null) {
+      throw const DutyResolverException(
+        'A granted annual leave request is missing its leave date.',
+      );
+    }
+
+    final String? notes = _nullableString(row['notes']);
+
+    return Duty(
+      date: DateTime.parse(dateValue),
+      source: RosterSource.annualLeave,
+      dutyType: DutyType.annualLeave,
+      remarks: notes == null
+          ? 'Floating annual leave'
+          : 'Floating annual leave – $notes',
+      rawText: _nullableString(row['id']),
+    );
+  }
+
+  static Map<String, dynamic>? _latestManualDutyForDate(
+    Iterable<dynamic> rows,
+  ) {
+    Map<String, dynamic>? latest;
+
+    for (final dynamic value in rows) {
+      if (value is! Map<String, dynamic>) {
+        continue;
+      }
+
+      if (latest == null || _isLaterManualDuty(value, latest)) {
+        latest = value;
+      }
+    }
+
+    return latest;
+  }
+
+  static List<Map<String, dynamic>> _latestManualDutiesByDate(
+    Iterable<dynamic> rows,
+  ) {
+    final Map<String, Map<String, dynamic>> latestByDate =
+        <String, Map<String, dynamic>>{};
+
+    for (final dynamic value in rows) {
+      if (value is! Map<String, dynamic>) {
+        continue;
+      }
+
+      final String? dutyDate = _nullableString(value['duty_date']);
+
+      if (dutyDate == null) {
+        continue;
+      }
+
+      final Map<String, dynamic>? existing = latestByDate[dutyDate];
+
+      if (existing == null || _isLaterManualDuty(value, existing)) {
+        latestByDate[dutyDate] = value;
+      }
+    }
+
+    final List<Map<String, dynamic>> result = latestByDate.values.toList();
+
+    result.sort((first, second) {
+      final String firstDate = _nullableString(first['duty_date']) ?? '';
+      final String secondDate = _nullableString(second['duty_date']) ?? '';
+      return firstDate.compareTo(secondDate);
+    });
+
+    return result;
+  }
+
+  static bool _isLaterManualDuty(
+    Map<String, dynamic> candidate,
+    Map<String, dynamic> existing,
+  ) {
+    final DateTime? candidateUpdatedAt = DateTime.tryParse(
+      _nullableString(candidate['updated_at']) ?? '',
+    );
+    final DateTime? existingUpdatedAt = DateTime.tryParse(
+      _nullableString(existing['updated_at']) ?? '',
+    );
+
+    if (candidateUpdatedAt != null && existingUpdatedAt != null) {
+      final int comparison = candidateUpdatedAt.compareTo(existingUpdatedAt);
+
+      if (comparison != 0) {
+        return comparison > 0;
+      }
+    } else if (candidateUpdatedAt != null) {
+      return true;
+    } else if (existingUpdatedAt != null) {
+      return false;
+    }
+
+    // Deterministic fallback for older rows without updated_at.
+    return _manualChangePriority(candidate['manual_change_type']) >
+        _manualChangePriority(existing['manual_change_type']);
+  }
+
+  static int _manualChangePriority(Object? value) {
+    switch (_nullableString(value)) {
+      case 'manual_change':
+        return 4;
+      case 'edited_times':
+        return 3;
+      case 'selected_turn':
+        return 2;
+      case 'rest_day_worked':
+        return 1;
+      default:
+        return 0;
+    }
+  }
+
+  static Duty _manualDutyFromRow(Map<String, dynamic> row) {
+    final String? dateValue = _nullableString(row['duty_date']);
+
+    if (dateValue == null) {
+      throw const DutyResolverException(
+        'A manual duty is missing its duty date.',
+      );
+    }
+
+    return Duty(
+      date: DateTime.parse(dateValue),
+      source: RosterSource.manual,
+      dutyType: _dutyType(row['duty_type']),
+      turnNumber: _nullableString(row['turn_number']),
+      bookOn: _databaseTimeToAppTime(row['book_on']),
+      bookOff: _databaseTimeToAppTime(row['book_off']),
+      rosteredMinutes: _nullableInt(row['rostered_minutes']),
+      remarks: _nullableString(row['remarks']),
+      rawText: _nullableString(row['manual_change_type']),
+    );
+  }
+
+  static Duty? _annualLeaveDutyFromRow({
+    required Map<String, dynamic> row,
+    required DateTime date,
+  }) {
+    final Object? relatedValue = row['annual_leave_allocations'];
+    Map<String, dynamic>? allocation;
+
+    if (relatedValue is Map<String, dynamic>) {
+      allocation = relatedValue;
+    } else if (relatedValue is Map) {
+      allocation = Map<String, dynamic>.from(relatedValue);
+    } else if (relatedValue is List && relatedValue.isNotEmpty) {
+      final Object? first = relatedValue.first;
+
+      if (first is Map<String, dynamic>) {
+        allocation = first;
+      } else if (first is Map) {
+        allocation = Map<String, dynamic>.from(first);
+      }
+    }
+
+    if (allocation == null) {
+      return null;
+    }
+
+    final String? driverNumber = _nullableString(allocation['driver_number']);
+
+    if (driverNumber == null) {
+      return null;
+    }
+
+    final String periodLabel = _annualLeavePeriodLabel(row['period_type']);
+
+    return Duty(
+      date: DateTime(date.year, date.month, date.day),
+      source: RosterSource.annualLeave,
+      dutyType: DutyType.annualLeave,
+      remarks: periodLabel,
+      driverNumber: driverNumber,
+      driverName: _nullableString(allocation['surname']),
+      depot: _nullableString(allocation['depot']),
+      pageNumber: _nullableInt(allocation['page_number']),
+      rawText:
+          '${_nullableString(row['start_date']) ?? ''} - '
+          '${_nullableString(row['end_date']) ?? ''}',
+    );
+  }
+
+  static String _annualLeavePeriodLabel(Object? value) {
+    switch (_nullableString(value)) {
+      case 'spring':
+        return 'Spring block annual leave';
+      case 'summer_first_week':
+        return 'Summer block annual leave – first week';
+      case 'summer_second_week':
+        return 'Summer block annual leave – second week';
+      case 'winter':
+        return 'Winter block annual leave';
+      default:
+        return 'Block annual leave';
+    }
+  }
+
+  static Duty _dutyFromRow(Map<String, dynamic> row) {
+    final String? dateValue = _nullableString(row['duty_date']);
+
+    if (dateValue == null) {
+      throw const DutyResolverException(
+        'A stored duty is missing its duty date.',
+      );
+    }
+
+    return Duty(
+      date: DateTime.parse(dateValue),
+      source: _rosterSource(row['source']),
+      dutyType: _dutyType(row['duty_type']),
+      turnNumber: _nullableString(row['turn_number']),
+      bookOn: _databaseTimeToAppTime(row['book_on']),
+      bookOff: _databaseTimeToAppTime(row['book_off']),
+      rosteredMinutes: _nullableInt(row['rostered_minutes']),
+      remarks: _nullableString(row['remarks']),
+      driverNumber: _nullableString(row['driver_number']),
+      payrollNumber: _nullableString(row['payroll_number']),
+      driverName: _nullableString(row['driver_name']),
+      depot: _nullableString(row['depot']),
+      amendmentCode: _nullableString(row['amendment_code']),
+      mileage: _nullableString(row['mileage']),
+      pageNumber: _nullableInt(row['page_number']),
+      rawText: _nullableString(row['raw_text']),
+    );
+  }
+
+  static RosterSource _rosterSource(Object? value) {
+    switch (_nullableString(value)) {
+      case 'base_roster':
+        return RosterSource.baseRoster;
+      case '10_day':
+        return RosterSource.tenDay;
+      case '7_day':
+        return RosterSource.sevenDay;
+      case '48_hour':
+        return RosterSource.fortyEightHour;
+      case 'annual_leave':
+        return RosterSource.annualLeave;
+      default:
+        throw DutyResolverException(
+          'Unsupported stored roster source: ${value ?? 'null'}.',
+        );
+    }
+  }
+
+  static DutyType _dutyType(Object? value) {
+    switch (_nullableString(value)) {
+      case 'working':
+        return DutyType.working;
+      case 'training':
+        return DutyType.training;
+      case 'medical':
+        return DutyType.medical;
+      case 'rest_day':
+        return DutyType.restDay;
+      case 'annual_leave':
+        return DutyType.annualLeave;
+      case 'sick':
+        return DutyType.sick;
+      case 'public_holiday':
+        return DutyType.publicHoliday;
+      case 'unavailable':
+        return DutyType.unavailable;
+      case 'unknown':
+        return DutyType.unknown;
+      default:
+        throw DutyResolverException(
+          'Unsupported stored duty type: ${value ?? 'null'}.',
+        );
+    }
+  }
+
+  static String _databaseDate(DateTime value) {
+    final String year = value.year.toString().padLeft(4, '0');
+    final String month = value.month.toString().padLeft(2, '0');
+    final String day = value.day.toString().padLeft(2, '0');
+
+    return '$year-$month-$day';
+  }
+
+  static String? _databaseTimeToAppTime(Object? value) {
+    final String? time = _nullableString(value);
+
+    if (time == null) {
+      return null;
+    }
+
+    return time.length >= 5 ? time.substring(0, 5) : time;
+  }
+
+  static String? _normaliseIdentifier(Object? value) {
+    final String? identifier = _nullableString(value);
+
+    if (identifier == null) {
+      return null;
+    }
+
+    return identifier.replaceAll(RegExp(r'\s+'), '').toUpperCase();
+  }
+
+  static String? _nullableString(Object? value) {
+    if (value == null) {
+      return null;
+    }
+
+    final String cleaned = value.toString().trim();
+
+    return cleaned.isEmpty ? null : cleaned;
+  }
+
+  static int? _nullableInt(Object? value) {
+    if (value == null) {
+      return null;
+    }
+
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(value.toString().trim());
+  }
+}
+
+class DutyResolverException implements Exception {
+  const DutyResolverException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+).hasMatch(roster)) return null;
+
+    final terms = <String>[];
+    if (payroll != null && payroll.length >= 4) {
+      terms.add('payroll_number.like.%${payroll.substring(payroll.length - 4)}');
+    }
+    if (roster != null && roster.isNotEmpty) {
+      terms.add('driver_number.eq.$roster');
+    }
+    return terms.isEmpty ? null : terms.join(',');
   }
 
   static bool matchesProfile({
