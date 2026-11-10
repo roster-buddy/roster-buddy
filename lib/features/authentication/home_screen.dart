@@ -641,8 +641,6 @@ class _PendingActionsPage extends StatefulWidget {
 }
 
 class _PendingActionsPageState extends State<_PendingActionsPage> {
-  static const Color navy = Color(0xFF102A43);
-  static const Color background = Color(0xFFF4F7FA);
   static const Color leaveRed = Color(0xFFD64545);
   static const Color textGrey = Color(0xFF52667A);
 
