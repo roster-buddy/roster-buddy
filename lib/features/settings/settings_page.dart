@@ -235,26 +235,27 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
     return ColoredBox(
-      color: background,
+      color: dark ? Theme.of(context).scaffoldBackgroundColor : background,
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 680),
           child: ListView(
             padding: const EdgeInsets.all(20),
             children: [
-              const Text(
+              Text(
                 'Settings',
                 style: TextStyle(
-                  color: navy,
+                  color: dark ? Colors.white : navy,
                   fontSize: 28,
                   fontWeight: FontWeight.w800,
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 'Manage your driver details, roster setup and app preferences.',
-                style: TextStyle(color: textGrey, height: 1.4),
+                style: TextStyle(color: dark ? const Color(0xFFB5C2D1) : textGrey, height: 1.4),
               ),
               const SizedBox(height: 22),
               Card(
