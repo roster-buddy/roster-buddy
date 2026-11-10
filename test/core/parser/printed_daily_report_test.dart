@@ -54,7 +54,7 @@ E Other 1890 WOD ALD 08:45
     expect(result.duties, isEmpty);
     expect(result.canImport, isFalse);
   });
-  test('recovers the printed D3 time from same-row corroborated OCR', () async {
+  test('damaged D3 row is light duties with no book-on or book-off', () async {
     final result = await parser.parse(pageText: const [
       'Report for Thursday 12/11/26 in All Links\n'
       'NAJ Macpherson 3075 WOD D3 D3= 2041904 “13:22 8.28\n'
@@ -65,20 +65,34 @@ E Other 1890 WOD ALD 08:45
     final macpherson = result.duties.singleWhere(
       (duty) => duty.payrollNumber == '3075',
     );
-    expect(macpherson.bookOn, '04:54');
-    expect(macpherson.bookOff, '13:22');
     expect(macpherson.amendmentCode, 'D3');
-    expect(macpherson.rosteredMinutes, 508);
+    expect(macpherson.dutyType, DutyType.unavailable);
+    expect(macpherson.bookOn, isNull);
+    expect(macpherson.bookOff, isNull);
+    expect(macpherson.turnNumber, isNull);
+    expect(macpherson.rosteredMinutes, isNull);
+    final peers = result.duties.singleWhere(
+      (duty) => duty.payrollNumber == '3524',
+    );
+    expect(peers.bookOn, '04:56');
+    expect(peers.bookOff, '12:58');
   });
 
-  test('does not recover a damaged D3 clock without corroborating hour', () async {
+  test('even severely damaged D3 clock stays light duties', () async {
     final result = await parser.parse(pageText: const [
       'Report for Thursday 12/11/26 in All Links\n'
       'NAJ Macpherson 3075 WOD D3 D3= 2041999 “13:22 8.28\n'
       'RMF Peers 3524 WOD ALLOC 204 04:56 12:58 8.02'
     ]);
-    expect(result.hasBlockingWarnings, isTrue);
-    expect(result.duties.map((duty) => duty.payrollNumber), ['3524']);
+    expect(result.hasBlockingWarnings, isFalse);
+    expect(result.duties, hasLength(2));
+    final d3 = result.duties.singleWhere(
+      (duty) => duty.payrollNumber == '3075',
+    );
+    expect(d3.dutyType, DutyType.unavailable);
+    expect(d3.amendmentCode, 'D3');
+    expect(d3.bookOn, isNull);
+    expect(d3.bookOff, isNull);
   });
 
   test('an incomplete working row blocks the whole import', () async {
@@ -258,8 +272,7 @@ B Moore 1910 WOD RDW 208 08:11 17:10 8.59
       documentType: DocumentType.fortyEightHourAmendment,
     ).parse(pageText: const ['''
 Report for Thursday 12/11/26 in All Links
-NAJ Macpherson 3075 WOD D3 D3 04:54 13:22 8.28
-''']);
+NAJ Macpherson 3075 WOD D3 D3 04:54 13:22 8.28\n''']);
     expect(result.canImport, isTrue);
     final duty = result.duties.single;
     expect(duty.dutyType, DutyType.unavailable);
