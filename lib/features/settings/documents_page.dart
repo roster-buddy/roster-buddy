@@ -74,7 +74,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min, children: [
               Text(row['original_filename']?.toString() ?? 'Document',
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF102A43))),
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Theme.of(sheetContext).colorScheme.onSurface)),
               const SizedBox(height: 16),
               Text('Uploaded ${displayStoredDate(row['created_at']?.toString().split('T').first)}'),
               const SizedBox(height: 8),
@@ -113,11 +113,11 @@ class _DocumentsPageState extends State<DocumentsPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Documents')),
-    backgroundColor: const Color(0xFFF4F7FA),
+    backgroundColor: Theme.of(context).scaffoldBackgroundColor,
     body: RefreshIndicator(onRefresh: () => _load(refresh: true),
       child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 900),
         child: ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(20), children: [
-          const Text('Your uploaded rosters, amendments and job cards.', style: TextStyle(color: Color(0xFF52667A))),
+          Text('Your uploaded rosters, amendments and job cards.', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
           const SizedBox(height: 16),
           for (final row in _documents) Card(child: ListTile(
             leading: const Icon(Icons.description_outlined, color: Color(0xFF1769AA)),
