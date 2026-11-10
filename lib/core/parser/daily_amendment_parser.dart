@@ -515,7 +515,9 @@ class DailyAmendmentParser implements BaseParser {
     final durationMatch = RegExp(r'^[0-9]{1,2}[.:][0-9]{2}')
         .firstMatch(suffix);
     if (durationMatch == null ||
-        durationMatch.group(0) != suffix) return null;
+        durationMatch.group(0) != suffix) {
+      return null;
+    }
     final minutes = ParserUtils.parseRosteredMinutes(suffix);
     if (minutes == null || minutes < 240 || minutes > 720) return null;
 
@@ -529,7 +531,9 @@ class DailyAmendmentParser implements BaseParser {
     final fused = RegExp(r'^D3D3=([0-9]{5,10})')
         .firstMatch(cleanedPrefix);
     if (fused == null || fused.group(0) != cleanedPrefix ||
-        !fusedPattern.hasMatch(prefix)) return null;
+        !fusedPattern.hasMatch(prefix)) {
+      return null;
+    }
 
     final offParts = off.split(':');
     final offTotal = int.parse(offParts[0]) * 60 + int.parse(offParts[1]);
@@ -538,7 +542,7 @@ class DailyAmendmentParser implements BaseParser {
     final onMinute = (onTotal % 60).toString().padLeft(2, '0');
     if (!fused.group(1)!.endsWith(onHour)) return null;
     return (
-      bookOn: onHour + ':' + onMinute,
+      bookOn: '$onHour:$onMinute',
       bookOff: off,
       rosteredMinutes: minutes,
     );
