@@ -1040,11 +1040,10 @@ class DutyResolver {
     final roster = rosterNumber?.trim();
     final parts = <String>[];
     if (payroll != null && RegExp(r'^[0-9]{4,}$').hasMatch(payroll)) {
-      parts.add('payroll_number.like.%' +
-          payroll.substring(payroll.length - 4));
+      parts.add('payroll_number.like.%${payroll.substring(payroll.length - 4)}');
     }
     if (roster != null && RegExp(r'^[0-9]+$').hasMatch(roster)) {
-      parts.add('driver_number.eq.' + roster);
+      parts.add('driver_number.eq.$roster');
     }
     return parts.isEmpty ? null : parts.join(',');
   }
