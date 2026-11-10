@@ -2613,7 +2613,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
           ],
 
           const Divider(height: 1),
-          const Padding(
+          Padding(
             padding: EdgeInsets.fromLTRB(16, 12, 16, 16),
             child: Text(
               'Tap a block week for an agreed move or a mutual '
@@ -2730,7 +2730,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const ListTile(
+                ListTile(
                   title: Text(
                     'Edit block weeks',
                     style: TextStyle(
@@ -2890,7 +2890,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
           ),
           const Divider(height: 1),
           if (floatingRequests.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.all(18),
               child: Text(
                 'You have no active floating annual leave requests '
@@ -2922,7 +2922,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
             ),
           if (floatingRequests.isNotEmpty) ...[
             const Divider(height: 1),
-            const Padding(
+            Padding(
               padding: EdgeInsets.all(16),
               child: Text(
                 'Tap granted leave to cancel or action a pending cancellation. '
@@ -2954,7 +2954,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
           Text(MaterialLocalizations.of(context).formatFullDate(request.leaveDate),
             style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 22, fontWeight: FontWeight.w900)),
           const SizedBox(height: 18),
-          const Row(children: [
+          Row(children: [
             Icon(Icons.circle, size: 12, color: leaveRed), SizedBox(width: 8),
             Text('Annual Leave', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 20, fontWeight: FontWeight.w800)),
             Spacer(), Chip(label: Text('ALD')),
@@ -3358,7 +3358,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const ListTile(
+          ListTile(
             leading: CircleAvatar(
               backgroundColor: Color(0x1AF59E0B),
               child: Icon(Icons.schedule_send_outlined, color: abeyanceAmber),
@@ -3371,7 +3371,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
           ),
           const Divider(height: 1),
           if (_scheduledRequests.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.all(18),
               child: Text(
                 'You have no annual leave requests waiting for the '
@@ -3436,7 +3436,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
             }),
           if (_scheduledRequests.isNotEmpty) ...[
             const Divider(height: 1),
-            const Padding(
+            Padding(
               padding: EdgeInsets.all(16),
               child: Text(
                 'Queued requests do not use a floating day until they are '
