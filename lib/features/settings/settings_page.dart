@@ -4317,7 +4317,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
                               Icons.event_busy_outlined,
                               color: railwayBlue,
                             ),
-                            title: const Text(
+                            title: Text(
                               'Permanently unavailable Sundays',
                               style: TextStyle(
                                 color: Theme.of(context).colorScheme.onSurface,
@@ -4721,7 +4721,7 @@ class _BaseRosterSetupPageState extends State<BaseRosterSetupPage> {
                       validator: _validateSwapPartner,
                     ),
                     const SizedBox(height: 20),
-                    const Text(
+                    Text(
                       'Which line supplies the commencement week?',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.onSurface,
