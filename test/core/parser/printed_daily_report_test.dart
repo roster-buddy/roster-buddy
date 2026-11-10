@@ -51,6 +51,33 @@ E Other 1890 WOD ALD 08:45
     expect(result.duties, isEmpty);
     expect(result.canImport, isFalse);
   });
+  test('recovers the printed D3 time from same-row corroborated OCR', () async {
+    final result = await parser.parse(pageText: const [
+      'Report for Thursday 12/11/26 in All Links\n'
+      'NAJ Macpherson 3075 WOD D3 D3= 2041904 “13:22 8.28\n'
+      'RMF Peers 3524 WOD ALLOC 204 04:56 12:58 8.02'
+    ]);
+    expect(result.hasBlockingWarnings, isFalse);
+    expect(result.duties, hasLength(2));
+    final macpherson = result.duties.singleWhere(
+      (duty) => duty.payrollNumber == '3075',
+    );
+    expect(macpherson.bookOn, '04:54');
+    expect(macpherson.bookOff, '13:22');
+    expect(macpherson.amendmentCode, 'D3');
+    expect(macpherson.rosteredMinutes, 508);
+  });
+
+  test('does not recover a damaged D3 clock without corroborating hour', () async {
+    final result = await parser.parse(pageText: const [
+      'Report for Thursday 12/11/26 in All Links\n'
+      'NAJ Macpherson 3075 WOD D3 D3= 2041999 “13:22 8.28\n'
+      'RMF Peers 3524 WOD ALLOC 204 04:56 12:58 8.02'
+    ]);
+    expect(result.hasBlockingWarnings, isTrue);
+    expect(result.duties.map((duty) => duty.payrollNumber), ['3524']);
+  });
+
   test('an incomplete working row blocks the whole import', () async {
     final result = await parser.parse(
       pageText: const [
