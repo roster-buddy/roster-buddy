@@ -89,3 +89,19 @@ test('partly read roster pages receive an enlarged detail pass', () => {
   assert.equal(needsDetailedRosterPass(partial), true);
   assert.equal(needsDetailedRosterPass(complete), false);
 });
+
+test('36-row 48-hour report rereads one damaged D3 clock', () => {
+  const report = [
+    'NAJ Macpherson 3075 WOD D3 D3= 2041904 “13:22 8.28',
+    ...Array.from({length: 32}, (_, i) =>
+      `A Driver ${(4000 + i)} WOD ALLOC 201 04:25 12:53 8.28`),
+    'G Aitken 1890 WOD ALD ALD 08:45',
+    'A Passmore 4365 WOD ALW ALW 08:20',
+    'S Rose 1190 WOD ALW ALW 08:45',
+  ].join('\n');
+  assert.equal(countPayrollRosterRows(report), 36);
+  assert.equal(needsDetailedRosterPass(report), true);
+  assert.equal(needsDetailedRosterPass(report.replace(
+    'D3= 2041904 “13:22', 'D3 04:54 13:22'
+  )), false);
+});
