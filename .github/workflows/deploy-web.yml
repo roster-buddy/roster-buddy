@@ -39,7 +39,9 @@ jobs:
         run: flutter test
 
       - name: Prepare browser scanner
-        timeout-minutes: 10
+        # Playwright's Ubuntu browser dependencies can take longer than ten
+        # minutes on a fresh runner. Keep real browser checks enabled.
+        timeout-minutes: 30
         run: |
           npm ci --prefix browser-scanner
           npm test --prefix browser-scanner
