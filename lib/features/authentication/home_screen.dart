@@ -7660,7 +7660,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                           color: railwayBlue.withValues(alpha: 0.25),
                         ),
                       ),
-                      child: const Row(
+                      child: Row(
                         children: [
                           Icon(
                             Icons.schedule_send_outlined,
@@ -9503,7 +9503,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                 borderRadius: BorderRadius.circular(11),
                 border: Border.all(color: restYellow.withValues(alpha: 0.8)),
               ),
-              child: const Row(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(Icons.info_outline, color: navy, size: 21),
