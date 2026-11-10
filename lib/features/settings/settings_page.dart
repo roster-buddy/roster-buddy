@@ -751,13 +751,14 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: background,
+      backgroundColor: dark ? Theme.of(context).scaffoldBackgroundColor : background,
       appBar: widget.embedded
           ? null
           : AppBar(
-              backgroundColor: Colors.white,
-              foregroundColor: navy,
+              backgroundColor: dark ? const Color(0xFF101C2B) : Colors.white,
+              foregroundColor: dark ? Colors.white : navy,
               elevation: 0,
               title: const Text(
                 'Annual Leave',
@@ -867,8 +868,8 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                   Text(
                     '$_leaveYear Annual Leave',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: navy,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 21,
                       fontWeight: FontWeight.w900,
                     ),
@@ -877,7 +878,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                   Text(
                     '1 January $_leaveYear – 31 December $_leaveYear',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: textGrey, fontSize: 12),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
                   ),
                 ],
               ),
@@ -898,16 +899,16 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          const ListTile(
-            leading: CircleAvatar(
+          ListTile(
+            leading: const CircleAvatar(
               backgroundColor: Color(0x1A1769AA),
               child: Icon(Icons.flight_takeoff, color: railwayBlue),
             ),
             title: Text(
               'Floating days left',
-              style: TextStyle(color: navy, fontWeight: FontWeight.w900),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900),
             ),
-            subtitle: Text('Full days available to take this leave year'),
+            subtitle: const Text('Full days available to take this leave year'),
           ),
           const Divider(height: 1),
           Padding(
@@ -929,8 +930,8 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                       ? 'floating day left to take'
                       : 'floating days left to take',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: navy,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
                   ),
@@ -938,7 +939,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                 const SizedBox(height: 4),
                 Text(
                   '$_leaveYear leave year',
-                  style: const TextStyle(color: textGrey, fontSize: 12),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
                 ),
                 const SizedBox(height: 20),
                 SizedBox(
@@ -4822,8 +4823,8 @@ class _SettingsSectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       title,
-      style: const TextStyle(
-        color: Color(0xFF102A43),
+      style: TextStyle(
+        color: Theme.of(context).colorScheme.onSurface,
         fontSize: 18,
         fontWeight: FontWeight.w800,
       ),
