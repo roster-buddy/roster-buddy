@@ -2618,7 +2618,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                         child: Text(
                           'Hidden 18 check',
                           style: TextStyle(
-                            color: navy,
+                            color: Theme.of(context).colorScheme.onSurface,
                             fontSize: 20,
                             fontWeight: FontWeight.w900,
                           ),
@@ -2627,17 +2627,17 @@ class _DashboardPageState extends State<_DashboardPage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  const Text(
+                  Text(
                     'No Hidden 18 warnings are currently detected in the '
                     'roster period checked.',
-                    style: TextStyle(color: textGrey, height: 1.4),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.4),
                   ),
                   const SizedBox(height: 14),
                   Text(
                     'Current consecutive working days: '
                     '${result.consecutiveDaysWorked}',
-                    style: const TextStyle(
-                      color: navy,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -2645,8 +2645,8 @@ class _DashboardPageState extends State<_DashboardPage> {
                   Text(
                     'Current rolling 7-day total: '
                     '${_formatHidden18Minutes(result.rollingSevenDayMinutes)}',
-                    style: const TextStyle(
-                      color: navy,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -2682,7 +2682,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                         child: Text(
                           'Hidden 18 warnings',
                           style: TextStyle(
-                            color: navy,
+                            color: Theme.of(context).colorScheme.onSurface,
                             fontSize: 20,
                             fontWeight: FontWeight.w900,
                           ),
@@ -2709,8 +2709,8 @@ class _DashboardPageState extends State<_DashboardPage> {
                         ),
                         title: Text(
                           _hidden18WarningTitle(warning.type),
-                          style: const TextStyle(
-                            color: navy,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -2729,8 +2729,8 @@ class _DashboardPageState extends State<_DashboardPage> {
                   child: Text(
                     '${result.warnings.length} warning'
                     '${result.warnings.length == 1 ? '' : 's'} detected.',
-                    style: const TextStyle(
-                      color: textGrey,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -3009,7 +3009,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                                     ? 'ABE'
                                     : 'ABE #${leaveRequest.queuePosition}'
                               : 'AL REQ',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: Colors.white,
                             fontSize: 7,
                             fontWeight: FontWeight.w900,
@@ -3185,7 +3185,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                     const SizedBox(height: 4),
                     Text(
                       presentation.description,
-                      style: const TextStyle(color: textGrey),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
                     if (presentation.detail != null) ...[
                       const SizedBox(height: 4),
@@ -3219,7 +3219,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                           );
                         },
                         icon: const Icon(Icons.add_circle_outline),
-                        label: const Text('Allocate shift – RDW'),
+                        label: Text('Allocate shift – RDW'),
                         style: FilledButton.styleFrom(
                           backgroundColor: workingGreen,
                         ),
@@ -3369,7 +3369,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                                 );
                               },
                               icon: const Icon(Icons.description_outlined),
-                              label: const Text('Open Job Card'),
+                              label: Text('Open Job Card'),
                             ),
                           );
                         },
@@ -3396,7 +3396,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                         );
                       },
                       icon: const Icon(Icons.flight_takeoff),
-                      label: const Text('Request annual leave'),
+                      label: Text('Request annual leave'),
                       style: FilledButton.styleFrom(backgroundColor: leaveRed),
                     ),
                   )),
@@ -3428,7 +3428,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                         );
                       },
                       icon: const Icon(Icons.event_note_outlined),
-                      label: const Text('Action annual leave'),
+                      label: Text('Action annual leave'),
                       style: FilledButton.styleFrom(backgroundColor: leaveRed),
                     ),
                   )),
@@ -3456,7 +3456,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                         );
                       },
                       icon: const Icon(Icons.cancel_outlined),
-                      label: const Text('Cancel annual leave'),
+                      label: Text('Cancel annual leave'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: leaveRed,
                       ),
@@ -3482,7 +3482,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                       );
                     },
                     icon: const Icon(Icons.more_horiz),
-                    label: const Text('More day actions'),
+                    label: Text('More day actions'),
                   ),
                 )),
           ],
@@ -3499,7 +3499,7 @@ class _DashboardPageState extends State<_DashboardPage> {
       context: context,
       builder: (BuildContext popupContext) {
         return CupertinoActionSheet(
-          title: const Text('Action annual leave'),
+          title: Text('Action annual leave'),
           message: Text(_fullDate(date)),
           actions: [
             CupertinoActionSheetAction(
@@ -3507,7 +3507,7 @@ class _DashboardPageState extends State<_DashboardPage> {
               onPressed: () {
                 Navigator.of(popupContext).pop('grant');
               },
-              child: const Text('Grant'),
+              child: Text('Grant'),
             ),
             CupertinoActionSheetAction(
               onPressed: () {
@@ -3524,14 +3524,14 @@ class _DashboardPageState extends State<_DashboardPage> {
               onPressed: () {
                 Navigator.of(popupContext).pop('cancel');
               },
-              child: const Text('Cancel request'),
+              child: Text('Cancel request'),
             ),
           ],
           cancelButton: CupertinoActionSheetAction(
             onPressed: () {
               Navigator.of(popupContext).pop();
             },
-            child: const Text('Back'),
+            child: Text('Back'),
           ),
         );
       },
@@ -3547,7 +3547,7 @@ class _DashboardPageState extends State<_DashboardPage> {
           context: context,
           builder: (BuildContext dialogContext) {
             return RosterDecisionSheet(
-              title: const Text('Annual leave confirmed?'),
+              title: Text('Annual leave confirmed?'),
               content: Text(
                 'Has the annual leave for ${_fullDate(date)} already been '
                 'confirmed by Rosters / DTCM?',
@@ -3557,14 +3557,14 @@ class _DashboardPageState extends State<_DashboardPage> {
                   onPressed: () {
                     Navigator.of(dialogContext).pop(false);
                   },
-                  child: const Text('No'),
+                  child: Text('No'),
                 ),
                 CupertinoDialogAction(
                   isDefaultAction: true,
                   onPressed: () {
                     Navigator.of(dialogContext).pop(true);
                   },
-                  child: const Text('Yes'),
+                  child: Text('Yes'),
                 ),
               ],
             );
@@ -3669,7 +3669,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                     void Function(void Function()) setDialogState,
                   ) {
                     return AlertDialog(
-                      title: const Text('Abeyance queue position'),
+                      title: Text('Abeyance queue position'),
                       content: TextField(
                         controller: controller,
                         keyboardType: TextInputType.number,
@@ -3685,7 +3685,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                           onPressed: () {
                             Navigator.of(dialogContext).pop();
                           },
-                          child: const Text('Cancel'),
+                          child: Text('Cancel'),
                         ),
                         FilledButton(
                           onPressed: () {
@@ -3703,7 +3703,7 @@ class _DashboardPageState extends State<_DashboardPage> {
 
                             Navigator.of(dialogContext).pop(value);
                           },
-                          child: const Text('Save'),
+                          child: Text('Save'),
                         ),
                       ],
                     );
@@ -3743,7 +3743,7 @@ class _DashboardPageState extends State<_DashboardPage> {
           context: context,
           builder: (BuildContext dialogContext) {
             return RosterDecisionSheet(
-              title: const Text('Cancellation confirmed?'),
+              title: Text('Cancellation confirmed?'),
               content: Text(
                 'Has the cancellation of your annual leave request for '
                 '${_fullDate(date)} already been confirmed by Rosters / DTCM?',
@@ -3753,14 +3753,14 @@ class _DashboardPageState extends State<_DashboardPage> {
                   onPressed: () {
                     Navigator.of(dialogContext).pop(false);
                   },
-                  child: const Text('No'),
+                  child: Text('No'),
                 ),
                 CupertinoDialogAction(
                   isDefaultAction: true,
                   onPressed: () {
                     Navigator.of(dialogContext).pop(true);
                   },
-                  child: const Text('Yes'),
+                  child: Text('Yes'),
                 ),
               ],
             );
@@ -3836,7 +3836,7 @@ class _DashboardPageState extends State<_DashboardPage> {
       context: context,
       builder: (BuildContext dialogContext) {
         return RosterDecisionSheet(
-          title: const Text('Cancellation confirmed?'),
+          title: Text('Cancellation confirmed?'),
           content: Text(
             'Has the cancellation of ${_fullDate(date)} already been '
             'confirmed by Rosters / DTCM?',
@@ -3846,14 +3846,14 @@ class _DashboardPageState extends State<_DashboardPage> {
               onPressed: () {
                 Navigator.of(dialogContext).pop(false);
               },
-              child: const Text('No'),
+              child: Text('No'),
             ),
             CupertinoDialogAction(
               isDefaultAction: true,
               onPressed: () {
                 Navigator.of(dialogContext).pop(true);
               },
-              child: const Text('Yes'),
+              child: Text('Yes'),
             ),
           ],
         );
@@ -3977,7 +3977,7 @@ class _DashboardPageState extends State<_DashboardPage> {
               onPressed: () {
                 Navigator.of(popupContext).pop();
               },
-              child: const Text('No roster information'),
+              child: Text('No roster information'),
             ),
           );
         } else if (duty.dutyType == DutyType.restDay) {
@@ -3991,7 +3991,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                   );
                 });
               },
-              child: const Text('Allocate shift'),
+              child: Text('Allocate shift'),
             ),
           );
         } else if (duty.dutyType.countsAsWorking) {
@@ -4002,7 +4002,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                   _showDashboardEditDutyDialog(date: date, originalDuty: duty);
                 });
               },
-              child: const Text('Edit book-on/off time'),
+              child: Text('Edit book-on/off time'),
             ),
             CupertinoActionSheetAction(
               onPressed: () {
@@ -4013,7 +4013,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                   );
                 });
               },
-              child: const Text('Select turn number'),
+              child: Text('Select turn number'),
             ),
             CupertinoActionSheetAction(
               onPressed: () {
@@ -4024,7 +4024,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                   );
                 });
               },
-              child: const Text('Manual change'),
+              child: Text('Manual change'),
             ),
             CupertinoActionSheetAction(
               onPressed: () {
@@ -4032,7 +4032,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                   widget.onCalendarAction(date, _CalendarDayAction.shiftSwap);
                 });
               },
-              child: const Text('Mutual Swap'),
+              child: Text('Mutual Swap'),
             ),
             CupertinoActionSheetAction(
               isDestructiveAction: true,
@@ -4044,7 +4044,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                   );
                 });
               },
-              child: const Text('Move rest day here'),
+              child: Text('Move rest day here'),
             ),
             CupertinoActionSheetAction(
               onPressed: () {
@@ -4055,7 +4055,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                   );
                 });
               },
-              child: const Text('Request annual leave'),
+              child: Text('Request annual leave'),
             ),
           ]);
         } else {
@@ -4064,7 +4064,7 @@ class _DashboardPageState extends State<_DashboardPage> {
               onPressed: () {
                 Navigator.of(popupContext).pop();
               },
-              child: const Text('View duty details'),
+              child: Text('View duty details'),
             ),
           );
         }
@@ -4079,7 +4079,7 @@ class _DashboardPageState extends State<_DashboardPage> {
             onPressed: () {
               Navigator.of(popupContext).pop();
             },
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
         );
       },
@@ -4191,10 +4191,10 @@ class _DashboardPageState extends State<_DashboardPage> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'Edit duty',
                             style: TextStyle(
-                              color: navy,
+                              color: Theme.of(context).colorScheme.onSurface,
                               fontSize: 22,
                               fontWeight: FontWeight.w900,
                             ),
@@ -4202,7 +4202,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                           const SizedBox(height: 4),
                           Text(
                             _fullDate(date),
-                            style: const TextStyle(color: textGrey),
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                           ),
                           const SizedBox(height: 18),
                           TextField(
@@ -4260,7 +4260,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                             const SizedBox(height: 12),
                             Text(
                               errorMessage!,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: leaveRed,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -4436,10 +4436,10 @@ class _DashboardPageState extends State<_DashboardPage> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'Allocate shift – RDW',
                             style: TextStyle(
-                              color: navy,
+                              color: Theme.of(context).colorScheme.onSurface,
                               fontSize: 22,
                               fontWeight: FontWeight.w900,
                             ),
@@ -4447,7 +4447,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                           const SizedBox(height: 4),
                           Text(
                             _fullDate(date),
-                            style: const TextStyle(color: textGrey),
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                           ),
                           const SizedBox(height: 18),
 
@@ -4555,18 +4555,18 @@ class _DashboardPageState extends State<_DashboardPage> {
 
                           const SizedBox(height: 10),
 
-                          const Text(
+                          Text(
                             'Selecting a Job Card fills its booked times '
                             'automatically. Manual or cross-depot duties '
                             'can still be entered.',
-                            style: TextStyle(color: textGrey, height: 1.35),
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.35),
                           ),
 
                           if (errorMessage != null) ...[
                             const SizedBox(height: 12),
                             Text(
                               errorMessage!,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: leaveRed,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -4657,8 +4657,8 @@ class _DashboardPageState extends State<_DashboardPage> {
             Expanded(
               child: Text(
                 message,
-                style: const TextStyle(
-                  color: navy,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -4682,10 +4682,10 @@ class _DashboardPageState extends State<_DashboardPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Unable to load roster information',
                     style: TextStyle(
-                      color: navy,
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 17,
                       fontWeight: FontWeight.w800,
                     ),
@@ -4693,13 +4693,13 @@ class _DashboardPageState extends State<_DashboardPage> {
                   const SizedBox(height: 5),
                   Text(
                     _loadError!,
-                    style: const TextStyle(color: textGrey, height: 1.35),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.35),
                   ),
                   const SizedBox(height: 10),
                   TextButton.icon(
                     onPressed: _loadDashboardDuties,
                     icon: const Icon(Icons.refresh),
-                    label: const Text('Try again'),
+                    label: Text('Try again'),
                   ),
                 ],
               ),
@@ -4737,14 +4737,14 @@ class _DashboardPageState extends State<_DashboardPage> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      color: navy,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(description, style: const TextStyle(color: textGrey)),
+                  Text(description, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 ],
               ),
             ),
