@@ -373,7 +373,8 @@ class DailyAmendmentParser implements BaseParser {
     final clocks = _printedClock.allMatches(tail).toList();
     final recoveredClocks = clocks.length == 2
         ? null
-        : _recoverFusedClocks(tail);
+        : _recoverFusedClocks(tail) ??
+            _recoverDamagedStartClock(tail, clocks);
     final prefix = clocks.isEmpty
         ? tail
         : tail.substring(0, clocks.first.start);
@@ -497,6 +498,467 @@ class DailyAmendmentParser implements BaseParser {
       bookOn: '${value.substring(0, 2)}:${value.substring(2, 4)}',
       bookOff: '${value.substring(4, 6)}:${value.substring(6, 8)}',
       rosteredMinutes: rosteredMinutes,
+    );
+  }
+
+  // Some 48-hour sheet photos fuse the turn and book-on columns, e.g.
+  // "D3= 2041904 “13:22 8.28". This is a conservative recovery, NOT a
+  // general licence to invent times from rostered hours: the damaged same-row
+  // token must still visibly contain the derived book-on HOUR at its end.
+  // The final book-off and rostered duration must be legible and consistent.
+  ({String bookOn, String bookOff, int rosteredMinutes})?
+      _recoverDamagedStartClock(String tail, List<RegExpMatch> clocks) {
+    if (clocks.length != 1) return null;
+    final offMatch = clocks.single;
+    final off = ParserUtils.normaliseTime(offMatch.group(0));
+    if (off == null) return null;
+    final suffix = tail.substring(offMatch.end);
+    final duration = RegExp(r'^\\s*([0-9]{1,2}[.:][0-9]{2})\\s*
+    final joined = <ExtractedTableRow>[];
+    for (final row in rows) {
+      // Only numeric clocks/hours and the standard remark can continue a row.
+      // A new named driver, vacancy, heading or unknown text starts its own row.
+      final continuation = RegExp(
+        r'^(?:(?:[0-9]{1,2}[:.;][0-9]{2})\s*)*(?:Amended\s+Turn)?$',
+        caseSensitive: false,
+      ).hasMatch(row.rawText);
+      if (continuation && joined.isNotEmpty &&
+          _printedRow.hasMatch(joined.last.rawText)) {
+        final previous = joined.removeLast();
+        joined.add(ExtractedTableRow(
+          pageNumber: previous.pageNumber,
+          lineNumber: previous.lineNumber,
+          rawText: '${previous.rawText} ${row.rawText}',
+          columns: [...previous.columns, ...row.columns],
+        ));
+      } else {
+        joined.add(row);
+      }
+    }
+    return joined;
+  }
+
+  DateTime? _extractPageDate(String pageText) {
+    // Screenshot viewer timestamps may precede a partially cropped report heading.
+    // A weekday followed by a date is still a report heading when "Report" is cut off.
+    final headings = RegExp(
+      r'\b(?:REPORT\s+FOR|MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY)\b[^\n]*',
+      caseSensitive: false,
+    ).allMatches(pageText);
+    for (final heading in headings) {
+      final dates = ParserUtils.extractDates(heading.group(0)!);
+      if (dates.isNotEmpty) return dates.first;
+    }
+    final dates = ParserUtils.extractDates(pageText);
+
+    if (dates.isEmpty) {
+      return null;
+    }
+
+    return dates.first;
+  }
+
+  String _correctNoDutyCode(String code) {
+    if (code == 'NONA') return 'NDNA';
+    if (code == 'NO') return 'ND';
+    // Sunday sheets print ZS in a narrow column. OCR commonly reads either
+    // character as a similar digit or letter when the page is shadowed.
+    if (const {'2S', '28', 'Z8', 'IS'}.contains(code)) return 'ZS';
+    return code;
+  }
+
+  String _normalisePrintedTail(String value) {
+    // Narrow printed columns commonly split NDNA into separate OCR words.
+    // "Exchanged" belongs to the depot indicator, so it can safely remain in
+    // the row while the actual no-duty code is joined for normal parsing.
+    return value.replaceAllMapped(
+      RegExp(r'\bN\s*D\s*N\s*A\b', caseSensitive: false),
+      (_) => 'NDNA',
+    );
+  }
+
+  String? _normaliseAmendmentCode(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return null;
+    }
+
+    final scannedCode = DutyCodeLibrary.normaliseCode(value);
+    final code = _correctNoDutyCode(scannedCode);
+
+    if (code.isEmpty) {
+      return null;
+    }
+
+    if (DutyCodeLibrary.contains(code)) {
+      return code;
+    }
+
+    for (final match in RegExp(r'[A-Z]{1,3}\d?').allMatches(code)) {
+      final candidate = match.group(0);
+
+      if (candidate != null && DutyCodeLibrary.contains(candidate)) {
+        return candidate;
+      }
+    }
+
+    return null;
+  }
+
+  bool _isPlausiblePayrollNumber(String? value) {
+    if (value == null) {
+      return false;
+    }
+
+    return RegExp(r'^\d{4,8}$').hasMatch(value);
+  }
+
+  bool _hasDutyInformation({
+    required String? turnNumber,
+    required String? amendmentCode,
+    required String? bookOn,
+    required String? bookOff,
+  }) {
+    return turnNumber != null ||
+        amendmentCode != null ||
+        bookOn != null ||
+        bookOff != null;
+  }
+
+  DutyType _determineDutyType({
+    required DutyCodeDefinition? codeDefinition,
+    required String rawText,
+    required bool hasTimes,
+  }) {
+    if (codeDefinition != null && codeDefinition.dutyType != DutyType.unknown) {
+      return codeDefinition.dutyType;
+    }
+
+    final text = rawText.toUpperCase();
+
+    if (text.contains('ANNUAL LEAVE') ||
+        text.contains(' A/L ') ||
+        text.contains(' ALD ') ||
+        text.contains(' ALW ')) {
+      return DutyType.annualLeave;
+    }
+
+    if (text.contains('SICK')) {
+      return DutyType.sick;
+    }
+
+    if (text.contains('REST DAY') || text.contains('RESTDAY')) {
+      return DutyType.restDay;
+    }
+
+    if (text.contains('TRAINING') ||
+        text.contains('COURSE') ||
+        text.contains('BRIEF')) {
+      return DutyType.training;
+    }
+
+    if (text.contains('MEDICAL')) {
+      return DutyType.medical;
+    }
+
+    if (text.contains('BANK HOLIDAY') || text.contains('PUBLIC HOLIDAY')) {
+      return DutyType.publicHoliday;
+    }
+
+    if (hasTimes) {
+      return DutyType.working;
+    }
+
+    return DutyType.unknown;
+  }
+
+  String? _buildRemarks({
+    required String? codeMeaning,
+    required String? printedRemarks,
+  }) {
+    final meaning = _cleanOptionalValue(codeMeaning);
+    final remarks = _cleanOptionalValue(printedRemarks);
+
+    if (meaning == null) {
+      return remarks;
+    }
+
+    if (remarks == null) {
+      return meaning;
+    }
+
+    if (remarks.toUpperCase() == meaning.toUpperCase()) {
+      return remarks;
+    }
+
+    return '$meaning — $remarks';
+  }
+
+  String? _cleanOptionalValue(String? value) {
+    if (value == null) {
+      return null;
+    }
+
+    final cleaned = ParserUtils.normaliseWhitespace(value);
+
+    return cleaned.isEmpty ? null : cleaned;
+  }
+
+  bool _looksLikeSundaySheet(String text) {
+    final containsSunday =
+        text.contains('SUNDAY') || RegExp(r'\bSUN\b').hasMatch(text);
+
+    final containsDailyColumns =
+        text.contains('PAY NO') ||
+        text.contains('PAYROLL') ||
+        text.contains('PAY NUMBER');
+
+    final explicitlyAnotherType =
+        text.contains('10 DAY') ||
+        text.contains('10-DAY') ||
+        text.contains('TEN DAY') ||
+        text.contains('7 DAY') ||
+        text.contains('7-DAY') ||
+        text.contains('SEVEN DAY');
+
+    return containsSunday && containsDailyColumns && !explicitlyAnotherType;
+  }
+}
+)
+        .firstMatch(suffix);
+    final minutes = ParserUtils.parseRosteredMinutes(duration?.group(1));
+    if (minutes == null || minutes < 4 * 60 || minutes > 12 * 60) {
+      return null;
+    }
+
+    final prefix = tail.substring(0, offMatch.start).trim();
+    // Only recover an OCR-fused clock on the exact D3 duty structure.
+    // Avoid accepting stray times, payrolls or neighbouring driver rows.
+    if (!RegExp(r'^D3\\s+D3\\s*=\\s*[0-9]{5,10}\\s*[“\"\']?\\s*
+    final joined = <ExtractedTableRow>[];
+    for (final row in rows) {
+      // Only numeric clocks/hours and the standard remark can continue a row.
+      // A new named driver, vacancy, heading or unknown text starts its own row.
+      final continuation = RegExp(
+        r'^(?:(?:[0-9]{1,2}[:.;][0-9]{2})\s*)*(?:Amended\s+Turn)?$',
+        caseSensitive: false,
+      ).hasMatch(row.rawText);
+      if (continuation && joined.isNotEmpty &&
+          _printedRow.hasMatch(joined.last.rawText)) {
+        final previous = joined.removeLast();
+        joined.add(ExtractedTableRow(
+          pageNumber: previous.pageNumber,
+          lineNumber: previous.lineNumber,
+          rawText: '${previous.rawText} ${row.rawText}',
+          columns: [...previous.columns, ...row.columns],
+        ));
+      } else {
+        joined.add(row);
+      }
+    }
+    return joined;
+  }
+
+  DateTime? _extractPageDate(String pageText) {
+    // Screenshot viewer timestamps may precede a partially cropped report heading.
+    // A weekday followed by a date is still a report heading when "Report" is cut off.
+    final headings = RegExp(
+      r'\b(?:REPORT\s+FOR|MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY)\b[^\n]*',
+      caseSensitive: false,
+    ).allMatches(pageText);
+    for (final heading in headings) {
+      final dates = ParserUtils.extractDates(heading.group(0)!);
+      if (dates.isNotEmpty) return dates.first;
+    }
+    final dates = ParserUtils.extractDates(pageText);
+
+    if (dates.isEmpty) {
+      return null;
+    }
+
+    return dates.first;
+  }
+
+  String _correctNoDutyCode(String code) {
+    if (code == 'NONA') return 'NDNA';
+    if (code == 'NO') return 'ND';
+    // Sunday sheets print ZS in a narrow column. OCR commonly reads either
+    // character as a similar digit or letter when the page is shadowed.
+    if (const {'2S', '28', 'Z8', 'IS'}.contains(code)) return 'ZS';
+    return code;
+  }
+
+  String _normalisePrintedTail(String value) {
+    // Narrow printed columns commonly split NDNA into separate OCR words.
+    // "Exchanged" belongs to the depot indicator, so it can safely remain in
+    // the row while the actual no-duty code is joined for normal parsing.
+    return value.replaceAllMapped(
+      RegExp(r'\bN\s*D\s*N\s*A\b', caseSensitive: false),
+      (_) => 'NDNA',
+    );
+  }
+
+  String? _normaliseAmendmentCode(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return null;
+    }
+
+    final scannedCode = DutyCodeLibrary.normaliseCode(value);
+    final code = _correctNoDutyCode(scannedCode);
+
+    if (code.isEmpty) {
+      return null;
+    }
+
+    if (DutyCodeLibrary.contains(code)) {
+      return code;
+    }
+
+    for (final match in RegExp(r'[A-Z]{1,3}\d?').allMatches(code)) {
+      final candidate = match.group(0);
+
+      if (candidate != null && DutyCodeLibrary.contains(candidate)) {
+        return candidate;
+      }
+    }
+
+    return null;
+  }
+
+  bool _isPlausiblePayrollNumber(String? value) {
+    if (value == null) {
+      return false;
+    }
+
+    return RegExp(r'^\d{4,8}$').hasMatch(value);
+  }
+
+  bool _hasDutyInformation({
+    required String? turnNumber,
+    required String? amendmentCode,
+    required String? bookOn,
+    required String? bookOff,
+  }) {
+    return turnNumber != null ||
+        amendmentCode != null ||
+        bookOn != null ||
+        bookOff != null;
+  }
+
+  DutyType _determineDutyType({
+    required DutyCodeDefinition? codeDefinition,
+    required String rawText,
+    required bool hasTimes,
+  }) {
+    if (codeDefinition != null && codeDefinition.dutyType != DutyType.unknown) {
+      return codeDefinition.dutyType;
+    }
+
+    final text = rawText.toUpperCase();
+
+    if (text.contains('ANNUAL LEAVE') ||
+        text.contains(' A/L ') ||
+        text.contains(' ALD ') ||
+        text.contains(' ALW ')) {
+      return DutyType.annualLeave;
+    }
+
+    if (text.contains('SICK')) {
+      return DutyType.sick;
+    }
+
+    if (text.contains('REST DAY') || text.contains('RESTDAY')) {
+      return DutyType.restDay;
+    }
+
+    if (text.contains('TRAINING') ||
+        text.contains('COURSE') ||
+        text.contains('BRIEF')) {
+      return DutyType.training;
+    }
+
+    if (text.contains('MEDICAL')) {
+      return DutyType.medical;
+    }
+
+    if (text.contains('BANK HOLIDAY') || text.contains('PUBLIC HOLIDAY')) {
+      return DutyType.publicHoliday;
+    }
+
+    if (hasTimes) {
+      return DutyType.working;
+    }
+
+    return DutyType.unknown;
+  }
+
+  String? _buildRemarks({
+    required String? codeMeaning,
+    required String? printedRemarks,
+  }) {
+    final meaning = _cleanOptionalValue(codeMeaning);
+    final remarks = _cleanOptionalValue(printedRemarks);
+
+    if (meaning == null) {
+      return remarks;
+    }
+
+    if (remarks == null) {
+      return meaning;
+    }
+
+    if (remarks.toUpperCase() == meaning.toUpperCase()) {
+      return remarks;
+    }
+
+    return '$meaning — $remarks';
+  }
+
+  String? _cleanOptionalValue(String? value) {
+    if (value == null) {
+      return null;
+    }
+
+    final cleaned = ParserUtils.normaliseWhitespace(value);
+
+    return cleaned.isEmpty ? null : cleaned;
+  }
+
+  bool _looksLikeSundaySheet(String text) {
+    final containsSunday =
+        text.contains('SUNDAY') || RegExp(r'\bSUN\b').hasMatch(text);
+
+    final containsDailyColumns =
+        text.contains('PAY NO') ||
+        text.contains('PAYROLL') ||
+        text.contains('PAY NUMBER');
+
+    final explicitlyAnotherType =
+        text.contains('10 DAY') ||
+        text.contains('10-DAY') ||
+        text.contains('TEN DAY') ||
+        text.contains('7 DAY') ||
+        text.contains('7-DAY') ||
+        text.contains('SEVEN DAY');
+
+    return containsSunday && containsDailyColumns && !explicitlyAnotherType;
+  }
+}
+,
+            caseSensitive: false).hasMatch(prefix)) {
+      return null;
+    }
+    final fused = RegExp(r'=\\s*([0-9]{5,10})').firstMatch(prefix)?.group(1);
+    if (fused == null) return null;
+    final parts = off.split(':');
+    final offTotal = int.parse(parts[0]) * 60 + int.parse(parts[1]);
+    final onTotal = (offTotal - minutes + 24 * 60) % (24 * 60);
+    final hour = (onTotal ~/ 60).toString().padLeft(2, '0');
+    final minute = (onTotal % 60).toString().padLeft(2, '0');
+    if (!fused.endsWith(hour)) return null;
+    return (
+      bookOn: '$hour:$minute',
+      bookOff: off,
+      rosteredMinutes: minutes,
     );
   }
 
