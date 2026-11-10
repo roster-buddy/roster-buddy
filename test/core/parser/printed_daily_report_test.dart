@@ -35,7 +35,10 @@ E Other 1890 WOD ALD 08:45
       expect(working.bookOff, '13:08');
       expect(result.duties[1].bookOn, '05:00');
       expect(result.duties[2].turnNumber, isNull);
-      expect(result.duties[2].bookOn, '15:41');
+      expect(result.duties[2].dutyType, DutyType.unavailable);
+      expect(result.duties[2].amendmentCode, 'D3');
+      expect(result.duties[2].bookOn, isNull);
+      expect(result.duties[2].bookOff, isNull);
       for (final d in result.duties.skip(3)) {
         expect(d.dutyType, DutyType.annualLeave);
         expect(d.bookOn, isNull);
@@ -225,4 +228,45 @@ A Tester 1910 WOD ALLOC 213 16:53 01:11 8.45
     expect(result.duties.last.amendmentCode, 'NDNA');
     expect(result.duties.last.dutyType, DutyType.unavailable);
   });
+  test('damaged Macpherson D3 row imports as light duties without clocks', () async {
+    final result = await DailyAmendmentParser(
+      documentType: DocumentType.fortyEightHourAmendment,
+    ).parse(pageText: const ['''
+Report for Thursday 12/11/26 in All Links
+NAJ Macpherson 3075 WOD D3 D3= 2041904 “13:22 8.28
+B Moore 1910 WOD RDW 208 08:11 17:10 8.59
+''']);
+    expect(result.canImport, isTrue);
+    expect(result.hasBlockingWarnings, isFalse);
+    expect(result.duties, hasLength(2));
+    final d3 = result.duties.singleWhere((d) => d.payrollNumber == '3075');
+    expect(d3.date, DateTime(2026, 11, 12));
+    expect(d3.dutyType, DutyType.unavailable);
+    expect(d3.amendmentCode, 'D3');
+    expect(d3.remarks, 'Light Duties — Not attending');
+    expect(d3.turnNumber, isNull);
+    expect(d3.bookOn, isNull);
+    expect(d3.bookOff, isNull);
+    expect(d3.rosteredMinutes, isNull);
+    final moore = result.duties.singleWhere((d) => d.payrollNumber == '1910');
+    expect(moore.bookOn, '08:11');
+    expect(moore.bookOff, '17:10');
+  });
+
+  test('clean D3 printed times are also ignored', () async {
+    final result = await DailyAmendmentParser(
+      documentType: DocumentType.fortyEightHourAmendment,
+    ).parse(pageText: const ['''
+Report for Thursday 12/11/26 in All Links
+NAJ Macpherson 3075 WOD D3 D3 04:54 13:22 8.28
+''']);
+    expect(result.canImport, isTrue);
+    final duty = result.duties.single;
+    expect(duty.dutyType, DutyType.unavailable);
+    expect(duty.amendmentCode, 'D3');
+    expect(duty.bookOn, isNull);
+    expect(duty.bookOff, isNull);
+  });
+
+
 }
