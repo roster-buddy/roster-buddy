@@ -298,6 +298,23 @@ class DailyAmendmentParser implements BaseParser {
       hasTimes: bookOn != null || bookOff != null,
     );
 
+    // D3 means Light Duties (not attending), even if the printed sheet
+    // contains nominal clocks. Do not save times or a working shift.
+    if (amendmentCode == 'D3') {
+      return Duty(
+        date: date,
+        source: rosterSource,
+        dutyType: DutyType.unavailable,
+        payrollNumber: payrollNumber,
+        driverName: _cleanOptionalValue(columnMap.nameValue(row)),
+        depot: _cleanOptionalValue(columnMap.depotValue(row)),
+        amendmentCode: 'D3',
+        pageNumber: row.pageNumber,
+        rawText: row.rawText,
+        remarks: 'Light Duties — Not attending',
+      );
+    }
+
     final printedRosteredMinutes = ParserUtils.parseRosteredMinutes(
       columnMap.rosteredHoursValue(row),
     );
@@ -370,6 +387,24 @@ class DailyAmendmentParser implements BaseParser {
     )
         .replaceAll(RegExp(r'\[\s*\d+\s*\]|\(\s*\d+\s*\)'), ' ')
         .trim();
+    // Recognise D3 independently of damaged clocks or a fused turn column.
+    // A printed D3 is Light Duties — not attending, so nominal times on
+    // the sheet must not be imported into the calendar.
+    if (RegExp(r'^D3(?:\\s|$)', caseSensitive: false).hasMatch(tail)) {
+      return Duty(
+        date: date,
+        source: rosterSource,
+        dutyType: DutyType.unavailable,
+        payrollNumber: payroll,
+        driverName: name,
+        depot: depot,
+        amendmentCode: 'D3',
+        pageNumber: row.pageNumber,
+        rawText: row.rawText,
+        remarks: 'Light Duties — Not attending',
+      );
+    }
+
     final clocks = _printedClock.allMatches(tail).toList();
     final recoveredClocks = clocks.length == 2
         ? null
