@@ -207,7 +207,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
       padding: EdgeInsets.fromLTRB(20, 4, 20, 28),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Roster Buddy', style: TextStyle(color: navy, fontSize: 24, fontWeight: FontWeight.w800)),
+          Text('Roster Buddy', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 24, fontWeight: FontWeight.w800)),
           SizedBox(height: 8),
           Text(AppBuild.label),
           SizedBox(height: 4),
