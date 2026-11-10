@@ -5773,7 +5773,7 @@ class _CalendarPageState extends State<_CalendarPage> {
             ],
           ),
           const SizedBox(height: 7),
-          const Text(
+          Text(
             'Tap each working date you want to request. You can move between months and your selections will stay selected.',
             style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.35),
           ),
@@ -5817,7 +5817,7 @@ class _CalendarPageState extends State<_CalendarPage> {
               children: [
                 const Icon(Icons.event_busy_outlined, color: leaveRed),
                 const SizedBox(width: 10),
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Select granted leave to cancel',
                     style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
@@ -5836,7 +5836,7 @@ class _CalendarPageState extends State<_CalendarPage> {
               ],
             ),
             const SizedBox(height: 7),
-            const Text(
+            Text(
               'Tap each granted annual leave date you want to cancel. '
               'You can move between months and your selections will stay selected.',
               style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.35),
@@ -7192,7 +7192,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'Enter turn manually',
                             style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                               fontSize: 22,
@@ -8365,7 +8365,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'Manual change',
                               style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                                 fontSize: 22,
@@ -8378,7 +8378,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                               style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ),
                             const SizedBox(height: 18),
-                            const Text(
+                            Text(
                               'Duty type',
                               style: TextStyle(
                                 fontSize: 13,
@@ -9818,7 +9818,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'Manage annual leave',
                             style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                               fontSize: 22,
@@ -10276,7 +10276,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Allocate shift – RDW',
                         style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                           fontSize: 22,
@@ -10387,7 +10387,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                       ),
 
                       const SizedBox(height: 10),
-                      const Text(
+                      Text(
                         'Selecting a Job Card fills its booked times automatically. '
                         'Manual or cross-depot duties can still be entered.',
                         style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.35),
