@@ -11166,7 +11166,7 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
   }
   @override
   Widget build(BuildContext context) {
-    const navy = Color(0xFF102A43);
+    final navy = Theme.of(context).colorScheme.onSurface;
     const weekdays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     final on = _start.text.trim();
@@ -11217,7 +11217,7 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
           ? 'Start or finish time is missing or unclear. Check the uploaded document and use More day actions to correct it.'
           : 'Duty details need checking. Open Documents to check the source, then use More day actions to correct this day.';
     Widget clock(String label, String? value, bool nextDay) => Expanded(child: Column(children: [
-      Text(label, style: const TextStyle(color: navy, fontWeight: FontWeight.w700)),
+      Text(label, style: TextStyle(color: navy, fontWeight: FontWeight.w700)),
       const SizedBox(height: 4),
       TextField(
         controller: label == 'Start' ? _start : _finish,
@@ -11245,7 +11245,7 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
     ]));
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (!_editing) Text('${weekdays[date.weekday-1]} ${date.day} ${months[date.month-1]} ${date.year}',
-        style: const TextStyle(color: navy, fontSize: 20, fontWeight: FontWeight.w900)),
+        style: TextStyle(color: navy, fontSize: 20, fontWeight: FontWeight.w900)),
       if (!_editing) const SizedBox(height: 8),
       if (timed) ...[
         Row(children: [
@@ -11271,10 +11271,10 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
             ),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(type, style: const TextStyle(color: navy, fontSize: 20, fontWeight: FontWeight.w800)),
+              Text(type, style: TextStyle(color: navy, fontSize: 20, fontWeight: FontWeight.w800)),
               if (statusDetail.isNotEmpty) ...[
                 const SizedBox(height: 4),
-                Text(statusDetail, style: const TextStyle(color: navy)),
+                Text(statusDetail, style: TextStyle(color: navy)),
               ],
             ])),
             if (!annualLeave && duty != null) ...[
@@ -11296,13 +11296,13 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Row(children: [
+              Row(children: [
                 Icon(Icons.info_outline, color: Color(0xFF1769AA), size: 20),
                 SizedBox(width: 8),
                 Text('Needs review', style: TextStyle(color: navy, fontWeight: FontWeight.w800)),
               ]),
               const SizedBox(height: 6),
-              Text(reviewDetail, style: const TextStyle(color: navy)),
+              Text(reviewDetail, style: TextStyle(color: navy)),
             ]),
           ),
         ),
@@ -11319,7 +11319,7 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
           const Divider(),
           Row(children: [
             Expanded(child: Text(duty?.turnNumber?.trim().isNotEmpty == true ? 'Turn ${duty!.turnNumber}' : '',
-              textAlign: TextAlign.center, style: const TextStyle(color: navy, fontWeight: FontWeight.w800))),
+              textAlign: TextAlign.center, style: TextStyle(color: navy, fontWeight: FontWeight.w800))),
             Expanded(child: canEditShiftTimes(date, on, off, DateTime.now()) && duty?.dutyType.countsAsWorking == true
               ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 if (_editing) IconButton(tooltip: 'Cancel time edit', onPressed: _saving ? null : () {
