@@ -5371,7 +5371,7 @@ class _CalendarPageState extends State<_CalendarPage> {
       child: SafeArea(top: false, child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(_restDaySelectionTitle, style: const TextStyle(color: navy, fontWeight: FontWeight.bold)),
+          Text(_restDaySelectionTitle, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Row(children: [
             Expanded(child: OutlinedButton(
@@ -5766,8 +5766,7 @@ class _CalendarPageState extends State<_CalendarPage> {
               Expanded(
                 child: Text(
                   'Select annual leave dates',
-                  style: const TextStyle(
-                    color: navy,
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
                   ),
@@ -6965,7 +6964,7 @@ class _CalendarPageState extends State<_CalendarPage> {
             Text(
               _loadError!,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: textGrey),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 10),
             FilledButton.icon(
@@ -7214,7 +7213,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                           const SizedBox(height: 4),
                           Text(
                             _fullDate(date),
-                            style: const TextStyle(color: textGrey),
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                           ),
                           const SizedBox(height: 18),
                           TextField(
@@ -8390,7 +8389,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                             const SizedBox(height: 4),
                             Text(
                               _fullDate(date),
-                              style: const TextStyle(color: textGrey),
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ),
                             const SizedBox(height: 18),
                             const Text(
@@ -9410,14 +9409,13 @@ class _CalendarPageState extends State<_CalendarPage> {
           const SizedBox(height: 7),
           Text(
             description,
-            style: const TextStyle(color: textGrey, height: 1.35),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.35),
           ),
           if (request.notes?.trim().isNotEmpty == true) ...[
             const SizedBox(height: 8),
             Text(
               request.notes!.trim(),
-              style: const TextStyle(
-                color: navy,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),
@@ -9846,7 +9844,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                           const SizedBox(height: 4),
                           Text(
                             _fullDate(date),
-                            style: const TextStyle(color: textGrey),
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                           ),
                           const SizedBox(height: 18),
                           Container(
@@ -10072,8 +10070,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                         children: [
                           Text(
                             'Edit duty',
-                            style: const TextStyle(
-                              color: navy,
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                               fontSize: 22,
                               fontWeight: FontWeight.w900,
                             ),
@@ -10081,7 +10078,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                           const SizedBox(height: 4),
                           Text(
                             _fullDate(date),
-                            style: const TextStyle(color: textGrey),
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                           ),
                           const SizedBox(height: 18),
                           TextField(
@@ -10306,7 +10303,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                       const SizedBox(height: 4),
                       Text(
                         _fullDate(date),
-                        style: const TextStyle(color: textGrey),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                       const SizedBox(height: 18),
 
