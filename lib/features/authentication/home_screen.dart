@@ -2151,17 +2151,17 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                   ),
                 )
               else if (!hasPendingActions)
-                const Card(
+                Card(
                   child: Padding(
-                    padding: EdgeInsets.all(22),
+                    padding: const EdgeInsets.all(22),
                     child: Column(
                       children: [
-                        Icon(Icons.inbox_outlined, color: textGrey, size: 34),
+                        Icon(Icons.inbox_outlined, color: Theme.of(context).colorScheme.onSurfaceVariant, size: 34),
                         SizedBox(height: 10),
                         Text(
                           'No pending actions',
                           style: TextStyle(
-                            color: navy,
+                            color: Theme.of(context).colorScheme.onSurface,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -2170,7 +2170,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                           'Annual leave decisions, block leave changes and mutual '
                           'shift swaps awaiting action will appear here.',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: textGrey),
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                         ),
                       ],
                     ),
