@@ -2062,10 +2062,10 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
         _shiftSwaps.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: navy,
+        backgroundColor: Theme.of(context).appBarTheme.backgroundColor ?? Theme.of(context).colorScheme.surface,
+        foregroundColor: Theme.of(context).colorScheme.onSurface,
         elevation: 0,
         title: const Text(
           'Notifications & actions',
