@@ -203,7 +203,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
 
   Future<void> _openAbout() => showModalBottomSheet<void>(
     context: context, showDragHandle: true,
-    builder: (_) => const SafeArea(child: Padding(
+    builder: (_) => SafeArea(child: Padding(
       padding: EdgeInsets.fromLTRB(20, 4, 20, 28),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
         children: [
