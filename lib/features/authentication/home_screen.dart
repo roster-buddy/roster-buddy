@@ -1227,7 +1227,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                             const SizedBox(height: 10),
                             const Text(
                               'Enter times as 4 digits, for example 0800 or 1630.',
-                              style: TextStyle(color: textGrey, fontSize: 12),
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
                             ),
                           ],
                         ),
@@ -1461,8 +1461,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                 const Expanded(
                   child: Text(
                     'Mutual shift swap',
-                    style: TextStyle(
-                      color: navy,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 16,
                       fontWeight: FontWeight.w900,
                     ),
@@ -1492,26 +1491,26 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
             Text(
               'Your duty: ${_dateLabel(swap.originalDate)}'
               '${swap.originalTurnNumber == null ? '' : ' • Turn ${swap.originalTurnNumber}'}',
-              style: const TextStyle(color: navy, fontWeight: FontWeight.w700),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 6),
             Text(
               'Requested duty: ${_dateLabel(swap.requestedDate)}'
               '${swap.requestedTurnNumber == null ? '' : ' • Turn ${swap.requestedTurnNumber}'}',
-              style: const TextStyle(color: navy, fontWeight: FontWeight.w700),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w700),
             ),
             if (otherDriver != null) ...[
               const SizedBox(height: 6),
               Text(
                 'Other driver: $otherDriver'
                 '${otherPayroll == null ? '' : ' • Payroll $otherPayroll'}',
-                style: const TextStyle(color: textGrey),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ],
             const SizedBox(height: 8),
             const Text(
               'Awaiting confirmation from Rosters / DTCM.',
-              style: TextStyle(color: textGrey),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 16),
             SizedBox(
@@ -1773,8 +1772,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                 Expanded(
                   child: Text(
                     _blockPeriodLabel(action),
-                    style: const TextStyle(
-                      color: navy,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 16,
                       fontWeight: FontWeight.w900,
                     ),
@@ -1803,37 +1801,37 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
             const SizedBox(height: 8),
             Text(
               '${_blockChangeTypeLabel(action)} • ${action.leaveYear}',
-              style: const TextStyle(color: navy, fontWeight: FontWeight.w800),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
             Text(
               'Current: ${_dateLabel(action.originalStartDate)} – '
               '${_dateLabel(action.originalEndDate)}',
-              style: const TextStyle(color: textGrey),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 4),
             Text(
               'Requested: ${_dateLabel(action.proposedStartDate)} – '
               '${_dateLabel(action.proposedEndDate)}',
-              style: const TextStyle(color: navy, fontWeight: FontWeight.w700),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w700),
             ),
             if (mutualSwap && action.swapDriverNumber != null) ...[
               const SizedBox(height: 6),
               Text(
                 'Other driver: ${action.swapDriverNumber}',
-                style: const TextStyle(color: textGrey),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ],
             if (action.swapReference != null) ...[
               const SizedBox(height: 4),
               Text(
                 'Reference: ${action.swapReference}',
-                style: const TextStyle(color: textGrey),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ],
             if (action.notes != null) ...[
               const SizedBox(height: 4),
-              Text(action.notes!, style: const TextStyle(color: textGrey)),
+              Text(action.notes!, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
             ],
 
             if (scheduled) ...[
@@ -1861,8 +1859,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                     const SizedBox(height: 5),
                     Text(
                       'Due to send ${_blockScheduledTimeLabel(action)}',
-                      style: const TextStyle(
-                        color: navy,
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -1878,8 +1875,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                       'Automatic email sending is not yet active. '
                       'The email details and send time are safely stored, '
                       'but the server-side sender still needs to be connected.',
-                      style: TextStyle(
-                        color: textGrey,
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 12,
                         height: 1.35,
                       ),
@@ -1942,12 +1938,12 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text(_dateLabel(request.leaveDate),
-              style: const TextStyle(color: navy, fontWeight: FontWeight.w900, fontSize: 16)),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900, fontSize: 16)),
             const SizedBox(height: 8),
             const Text('Pending cancellation', style: TextStyle(color: leaveRed, fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
             const Text('Awaiting Rosters / DTCM approval. Leave stays granted until confirmed.',
-              style: TextStyle(color: textGrey)),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
             const SizedBox(height: 12),
             FilledButton(
               onPressed: () async {
@@ -1986,8 +1982,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                 Expanded(
                   child: Text(
                     _dateLabel(request.leaveDate),
-                    style: const TextStyle(
-                      color: navy,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 16,
                       fontWeight: FontWeight.w900,
                     ),
@@ -2020,7 +2015,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
               isAbeyance
                   ? 'Floating annual leave held in abeyance.'
                   : 'Floating annual leave awaiting a decision from Rosters.',
-              style: const TextStyle(color: textGrey),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 16),
             Row(
@@ -2093,8 +2088,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
             children: [
               const Text(
                 'Notifications',
-                style: TextStyle(
-                  color: navy,
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
                 ),
@@ -2103,7 +2097,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
               const Text(
                 'View roster updates or review outstanding annual leave '
                 'and shift-swap actions.',
-                style: TextStyle(color: textGrey),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
               const SizedBox(height: 16),
               RosterUpdatesSection(
@@ -2112,7 +2106,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                 onOpenDocument: _openRosterDocument,
               ),
               if (_rosterUpdates.any((notice) => notice.needsInvestigation)) ...[
-                const Text('Needs investigation', style: TextStyle(color: navy, fontWeight: FontWeight.w900)),
+                const Text('Needs investigation', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900)),
                 for (final notice in _rosterUpdates.where((notice) => notice.needsInvestigation))
                   RosterUpdateCard(notice: notice,
                     onOpenDocument: () => _openRosterDocument(notice),
@@ -2139,7 +2133,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                         Text(
                           _errorMessage!,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(color: textGrey),
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                         ),
                         const SizedBox(height: 12),
                         FilledButton(
@@ -2183,8 +2177,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                     SizedBox(width: 8),
                     Text(
                       'Floating annual leave',
-                      style: TextStyle(
-                        color: navy,
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 17,
                         fontWeight: FontWeight.w900,
                       ),
@@ -2194,7 +2187,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                 const SizedBox(height: 4),
                 const Text(
                   'Individual ALD requests awaiting a decision from Rosters.',
-                  style: TextStyle(color: textGrey),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 12),
                 if (_requests.isEmpty)
@@ -2208,7 +2201,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                           Expanded(
                             child: Text(
                               'No floating annual leave actions.',
-                              style: TextStyle(color: textGrey),
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ),
                           ),
                         ],
@@ -2226,8 +2219,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                     SizedBox(width: 8),
                     Text(
                       'Mutual shift swaps',
-                      style: TextStyle(
-                        color: navy,
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 17,
                         fontWeight: FontWeight.w900,
                       ),
@@ -2237,7 +2229,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                 const SizedBox(height: 4),
                 const Text(
                   'Shift swaps waiting for a decision from Rosters / DTCM.',
-                  style: TextStyle(color: textGrey),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 12),
                 if (_shiftSwaps.isEmpty)
@@ -2251,7 +2243,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                           Expanded(
                             child: Text(
                               'No pending mutual shift swaps.',
-                              style: TextStyle(color: textGrey),
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ),
                           ),
                         ],
@@ -2269,8 +2261,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                     SizedBox(width: 8),
                     Text(
                       'Block annual leave',
-                      style: TextStyle(
-                        color: navy,
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 17,
                         fontWeight: FontWeight.w900,
                       ),
@@ -2281,7 +2272,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                 const Text(
                   'Block moves, mutual swaps and future requests waiting '
                   'in the Union send queue.',
-                  style: TextStyle(color: textGrey),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 12),
                 if (_blockActions.isEmpty)
@@ -2295,7 +2286,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                           Expanded(
                             child: Text(
                               'No block annual leave actions.',
-                              style: TextStyle(color: textGrey),
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ),
                           ),
                         ],
