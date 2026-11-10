@@ -27,8 +27,23 @@ class SmartScanQuality {
       'FRIDAY',
       'SATURDAY',
     ].where(upper.contains).length;
-    if (weekdayHeadings >= 3 && upper.contains('NO DUTY')) {
-      return true;
+    if (weekdayHeadings >= 3) {
+      if (upper.contains('NO DUTY')) return true;
+
+      // Printed Base Rosters often have a numbered duty row followed by
+      // a separate four-digit roster identity/route row. A cloud OCR pass
+      // can preserve the text while losing the positions needed to pair
+      // the rows into seven day columns. Request positioned local OCR.
+      final lines = text.split(RegExp(r'\\r?\\n'));
+      final weekLine = RegExp(r'^\\s*(?:WEEK\\s*)?(?:[1-9]|[1-4][0-9]|5[0-4])\\s+(?=\\S)', caseSensitive: false);
+      final rosterLine = RegExp(r'^\\s*\\d{4}\\b');
+      for (var i = 0; i < lines.length - 1; i++) {
+        if (!weekLine.hasMatch(lines[i])) continue;
+        for (var j = i + 1; j < lines.length && j <= i + 3; j++) {
+          if (weekLine.hasMatch(lines[j])) break;
+          if (rosterLine.hasMatch(lines[j])) return true;
+        }
+      }
     }
 
     final rows = text.split(RegExp(r'\r?\n'))
