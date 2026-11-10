@@ -1,4 +1,5 @@
 import '../../core/app_build.dart';
+import '../../core/services/roster_theme_preference.dart';
 import '../notifications/shift_reminder_preferences.dart';
 import 'documents_page.dart';
 import '../../core/formatters/roster_date_format.dart';
@@ -305,6 +306,55 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                       onTap: _openBaseRoster,
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: 22),
+              const _SettingsSectionTitle(title: 'Appearance'),
+              const SizedBox(height: 10),
+              Card(
+                clipBehavior: Clip.antiAlias,
+                child: ValueListenableBuilder<ThemeMode>(
+                  valueListenable: RosterThemePreference.mode,
+                  builder: (context, mode, _) => Column(
+                    children: [
+                      RadioListTile<ThemeMode>(
+                        title: const Text('Use iPhone setting'),
+                        subtitle: const Text('Automatically follows your device'),
+                        secondary: const Icon(Icons.brightness_auto_outlined),
+                        value: ThemeMode.system,
+                        groupValue: mode,
+                        onChanged: (value) {
+                          if (value != null) {
+                            RosterThemePreference.setMode(value);
+                          }
+                        },
+                      ),
+                      const Divider(height: 1),
+                      RadioListTile<ThemeMode>(
+                        title: const Text('Dark mode on'),
+                        secondary: const Icon(Icons.dark_mode_outlined),
+                        value: ThemeMode.dark,
+                        groupValue: mode,
+                        onChanged: (value) {
+                          if (value != null) {
+                            RosterThemePreference.setMode(value);
+                          }
+                        },
+                      ),
+                      const Divider(height: 1),
+                      RadioListTile<ThemeMode>(
+                        title: const Text('Dark mode off'),
+                        secondary: const Icon(Icons.light_mode_outlined),
+                        value: ThemeMode.light,
+                        groupValue: mode,
+                        onChanged: (value) {
+                          if (value != null) {
+                            RosterThemePreference.setMode(value);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 22),
