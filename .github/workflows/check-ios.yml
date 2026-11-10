@@ -33,4 +33,4 @@ jobs:
       - name: Compile native scanner and plugins
         # Compile validation only. This unsigned build cannot be installed
         # on an iPhone; device testing still needs Apple code signing.
-        run: flutter build ios --release --no-codesign
+        run: flutter build ios --simulator --debug --no-codesign
