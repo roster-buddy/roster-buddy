@@ -760,7 +760,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               backgroundColor: dark ? const Color(0xFF101C2B) : Colors.white,
               foregroundColor: dark ? Colors.white : navy,
               elevation: 0,
-              title: const Text(
+              title: Text(
                 'Annual Leave',
                 style: TextStyle(fontWeight: FontWeight.w800),
               ),
@@ -908,7 +908,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               'Floating days left',
               style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900),
             ),
-            subtitle: const Text('Full days available to take this leave year'),
+            subtitle: Text('Full days available to take this leave year'),
           ),
           const Divider(height: 1),
           Padding(
@@ -917,7 +917,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               children: [
                 Text(
                   '$_remainingDays',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: leaveRed,
                     fontSize: 48,
                     height: 1,
@@ -947,7 +947,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                   child: OutlinedButton.icon(
                     onPressed: _showFloatingBalanceBreakdown,
                     icon: const Icon(Icons.tune_outlined),
-                    label: const Text('Breakdown & edit'),
+                    label: Text('Breakdown & edit'),
                   ),
                 ),
               ],
@@ -983,9 +983,9 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                   ),
                 ),
                 const SizedBox(height: 6),
-                const Text(
+                Text(
                   'Allowance breakdown',
-                  style: TextStyle(color: textGrey),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 20),
                 Container(
@@ -1050,7 +1050,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                       _showBalanceSetupDialog();
                     },
                     icon: const Icon(Icons.edit_outlined),
-                    label: const Text('Edit floating allowance'),
+                    label: Text('Edit floating allowance'),
                   ),
                 ),
               ],
@@ -1196,9 +1196,9 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      const Text(
+                      Text(
                         'Normal yearly entitlement: 14 days',
-                        style: TextStyle(color: textGrey),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                       const SizedBox(height: 20),
                       TextField(
@@ -1264,7 +1264,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                           ),
                           child: Text(
                             errorMessage!,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: leaveRed,
                               fontWeight: FontWeight.w700,
                             ),
@@ -1474,10 +1474,10 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                             ),
                           ),
                           const SizedBox(height: 6),
-                          const Text(
+                          Text(
                             'Choose the block number allocated to you on the '
                             'Annual Leave Roster.',
-                            style: TextStyle(color: textGrey, height: 1.4),
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.4),
                           ),
                           const SizedBox(height: 20),
                           DropdownButtonFormField<int>(
@@ -1530,7 +1530,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                             const SizedBox(height: 14),
                             Text(
                               errorMessage!,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: leaveRed,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -1768,12 +1768,12 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                             ),
                           ),
                           const SizedBox(height: 6),
-                          const Text(
+                          Text(
                             'Use this when your official Annual Leave Roster '
                             'has not been uploaded yet. Choose a date in each '
                             'block week; Roster Buddy will use the Monday to '
                             'Saturday of that week.',
-                            style: TextStyle(color: textGrey, height: 1.4),
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.4),
                           ),
                           const SizedBox(height: 18),
 
@@ -1802,7 +1802,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                                   ),
                                 ),
                                 subtitle: starts[type] == null
-                                    ? const Text('Not set')
+                                    ? Text('Not set')
                                     : Text(
                                         '${_displayDate(starts[type]!)} – '
                                         '${_displayDate(starts[type]!.add(const Duration(days: 5)))}',
@@ -1816,7 +1816,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                             const SizedBox(height: 4),
                             Text(
                               errorMessage!,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: leaveRed,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -2137,7 +2137,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                 final bool? unionConfirmed = await showCupertinoModalPopup<bool>(
                   context: sheetContext,
                   builder: (BuildContext dialogContext) => CupertinoActionSheet(
-                    title: const Text('Has this been actioned by the Union?'),
+                    title: Text('Has this been actioned by the Union?'),
                     actions: <Widget>[
                       CupertinoActionSheetAction(
                         onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -2149,12 +2149,12 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                           emailOpening = _openBlockUnionEmail(subject: preparedEmail.subject, body: preparedEmail.body);
                           Navigator.of(dialogContext).pop(false);
                         },
-                        child: const Text('No – email the Union'),
+                        child: Text('No – email the Union'),
                       ),
                     ],
                     cancelButton: CupertinoActionSheetAction(
                       onPressed: () => Navigator.of(dialogContext).pop(),
-                      child: const Text('Cancel'),
+                      child: Text('Cancel'),
                     ),
                   ),
                 );
@@ -2354,7 +2354,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                         'allocation: '
                         '${_displayDate(period.start)} – '
                         '${_displayDate(period.end)}',
-                        style: const TextStyle(color: textGrey, height: 1.35),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.35),
                       ),
                       const SizedBox(height: 20),
                       DropdownButtonFormField<AnnualLeaveBlockChangeType>(
@@ -2446,7 +2446,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                         const SizedBox(height: 14),
                         Text(
                           errorMessage!,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: leaveRed,
                             fontWeight: FontWeight.w700,
                           ),
@@ -2516,9 +2516,9 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               backgroundColor: Color(0x1AD64545),
               child: Icon(Icons.date_range_outlined, color: leaveRed),
             ),
-            title: const Text(
+            title: Text(
               'Block annual leave',
-              style: TextStyle(color: navy, fontWeight: FontWeight.w900),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900),
             ),
             subtitle: Text(
               _blockCycle == null
@@ -2543,9 +2543,9 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'No block dates available',
-                    style: TextStyle(color: navy, fontWeight: FontWeight.w900),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900),
                   ),
                   const SizedBox(height: 6),
                   Text(
@@ -2555,7 +2555,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                               '$_leaveYear. You can enter your four block '
                               'weeks manually until the Annual Leave Roster '
                               'is available.',
-                    style: const TextStyle(color: textGrey, height: 1.4),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.4),
                   ),
                 ],
               ),
@@ -2606,7 +2606,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                 child: OutlinedButton.icon(
                   onPressed: _showBlockWeekPicker,
                   icon: const Icon(Icons.swap_horiz_outlined),
-                  label: const Text('Move or swap a block week'),
+                  label: Text('Move or swap a block week'),
                 ),
               ),
             ),
@@ -2619,7 +2619,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               'Tap a block week for an agreed move or a mutual '
               'swap. Changes apply only to your own leave; the uploaded '
               'Annual Leave Roster remains unchanged.',
-              style: TextStyle(color: textGrey, fontSize: 12, height: 1.4),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12, height: 1.4),
             ),
           ),
         ],
@@ -2674,7 +2674,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                         ),
                         child: Text(
                           _blockChangeLabel(override.changeType),
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: railwayBlue,
                             fontSize: 10,
                             fontWeight: FontWeight.w900,
@@ -2697,14 +2697,14 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                   period.isOfficial
                       ? 'Official Annual Leave Roster'
                       : 'Manual allocation',
-                  style: const TextStyle(color: textGrey, fontSize: 11),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
                 ),
                 if (override != null && period.isOfficial) ...[
                   const SizedBox(height: 4),
                   Text(
                     'Official: ${_displayDate(period.start)} – '
                     '${_displayDate(period.end)}',
-                    style: const TextStyle(color: textGrey, fontSize: 11),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
                   ),
                 ],
               ],
@@ -2734,7 +2734,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                   title: Text(
                     'Edit block weeks',
                     style: TextStyle(
-                      color: navy,
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
                     ),
@@ -2822,7 +2822,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                             padding: const EdgeInsets.only(top: 3),
                             child: Text(
                               'Queue position ${request.queuePosition}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: abeyanceAmber,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -2877,9 +2877,9 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               backgroundColor: Color(0x1A1769AA),
               child: Icon(Icons.list_alt_outlined, color: railwayBlue),
             ),
-            title: const Text(
+            title: Text(
               'Floating leave requests',
-              style: TextStyle(color: navy, fontWeight: FontWeight.w900),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900),
             ),
             subtitle: Text(
               abeyanceCount == 0
@@ -2895,7 +2895,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               child: Text(
                 'You have no active floating annual leave requests '
                 'for this leave year.',
-                style: TextStyle(color: textGrey, height: 1.4),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.4),
               ),
             )
           else
@@ -2906,7 +2906,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               child: OutlinedButton.icon(
                 onPressed: () => setState(() => _showTakenDays = !_showTakenDays),
                 icon: Icon(_showTakenDays ? Icons.expand_less : Icons.expand_more),
-                label: const Text('Days already taken'),
+                label: Text('Days already taken'),
               ),
             ),
             if (_showTakenDays) ...takenRequests.map(requestRow),
@@ -2917,7 +2917,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               child: OutlinedButton.icon(
                 onPressed: _selectFloatingCancellations,
                 icon: const Icon(Icons.checklist),
-                label: const Text('Cancel / action multiple dates'),
+                label: Text('Cancel / action multiple dates'),
               ),
             ),
           if (floatingRequests.isNotEmpty) ...[
@@ -2927,7 +2927,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               child: Text(
                 'Tap granted leave to cancel or action a pending cancellation. '
                 'Use Cancel / action multiple dates to prepare one email for several days.',
-                style: TextStyle(color: textGrey, fontSize: 12, height: 1.4),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12, height: 1.4),
               ),
             ),
           ],
@@ -2956,7 +2956,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
           const SizedBox(height: 18),
           const Row(children: [
             Icon(Icons.circle, size: 12, color: leaveRed), SizedBox(width: 8),
-            Text('Annual Leave', style: TextStyle(color: navy, fontSize: 20, fontWeight: FontWeight.w800)),
+            Text('Annual Leave', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 20, fontWeight: FontWeight.w800)),
             Spacer(), Chip(label: Text('ALD')),
           ]),
           const SizedBox(height: 18),
@@ -2968,12 +2968,12 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               border: Border.all(color: leaveRed.withValues(alpha: 0.35))),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(request.cancellationPending ? 'Cancellation pending' : 'Annual leave granted',
-                style: const TextStyle(color: leaveRed, fontSize: 18, fontWeight: FontWeight.w800)),
+                style: TextStyle(color: leaveRed, fontSize: 18, fontWeight: FontWeight.w800)),
               const SizedBox(height: 8),
               Text(request.cancellationPending
                 ? 'Leave stays granted until Rosters confirms cancellation.'
                 : 'This annual leave request has been granted.',
-                style: const TextStyle(color: textGrey)),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
             ]),
           ),
           const SizedBox(height: 18),
@@ -2994,12 +2994,12 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
         message: Text(MaterialLocalizations.of(context).formatFullDate(request.leaveDate)),
         actions: [
           CupertinoActionSheetAction(onPressed: () => Navigator.pop(popupContext, 'single'),
-            child: const Text('Just this date')),
+            child: Text('Just this date')),
           CupertinoActionSheetAction(onPressed: () => Navigator.pop(popupContext, 'multiple'),
-            child: const Text('Multiple dates')),
+            child: Text('Multiple dates')),
         ],
         cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.pop(popupContext), child: const Text('Back')),
+          onPressed: () => Navigator.pop(popupContext), child: Text('Back')),
       ),
     );
     if (!mounted) return;
@@ -3018,8 +3018,8 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
         builder: (context, setSheetState) => SafeArea(child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const Text('Select floating leave dates',
-              style: TextStyle(color: navy, fontSize: 22, fontWeight: FontWeight.w900)),
+            Text('Select floating leave dates',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 22, fontWeight: FontWeight.w900)),
             const SizedBox(height: 12),
             ConstrainedBox(
               constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.5),
@@ -3039,7 +3039,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
             FilledButton(
               onPressed: selected.isEmpty ? null : () => Navigator.pop(sheetContext, true),
               child: Text('Continue (${selected.length})')),
-            TextButton(onPressed: () => Navigator.pop(sheetContext, false), child: const Text('Back')),
+            TextButton(onPressed: () => Navigator.pop(sheetContext, false), child: Text('Back')),
           ]),
         )),
       ),
@@ -3078,8 +3078,8 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                     Icons.event_available_outlined,
                     color: leaveRed,
                   ),
-                  title: const Text('Mark granted'),
-                  subtitle: const Text(
+                  title: Text('Mark granted'),
+                  subtitle: Text(
                     'Confirm that Rosters has granted this leave.',
                   ),
                   onTap: () {
@@ -3097,7 +3097,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                         ? 'Change abeyance position'
                         : 'Move to abeyance',
                   ),
-                  subtitle: const Text(
+                  subtitle: Text(
                     'Record your current position in the waiting list.',
                   ),
                   onTap: () {
@@ -3107,8 +3107,8 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                 ),
                 ListTile(
                   leading: const Icon(Icons.cancel_outlined, color: leaveRed),
-                  title: const Text('Cancel request'),
-                  subtitle: const Text(
+                  title: Text('Cancel request'),
+                  subtitle: Text(
                     'Return this floating day to your available balance.',
                   ),
                   onTap: () {
@@ -3215,10 +3215,10 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Annual leave abeyance',
                           style: TextStyle(
-                            color: navy,
+                            color: Theme.of(context).colorScheme.onSurface,
                             fontSize: 22,
                             fontWeight: FontWeight.w900,
                           ),
@@ -3226,7 +3226,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                         const SizedBox(height: 6),
                         Text(
                           _displayDate(request.leaveDate),
-                          style: const TextStyle(color: textGrey),
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                         ),
                         const SizedBox(height: 18),
                         TextField(
@@ -3247,7 +3247,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                           const SizedBox(height: 12),
                           Text(
                             errorMessage!,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: leaveRed,
                               fontWeight: FontWeight.w700,
                             ),
@@ -3365,7 +3365,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
             ),
             title: Text(
               'Scheduled annual leave',
-              style: TextStyle(color: navy, fontWeight: FontWeight.w900),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900),
             ),
             subtitle: Text('Requests more than 365 days ahead'),
           ),
@@ -3376,7 +3376,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               child: Text(
                 'You have no annual leave requests waiting for the '
                 '365-day send window in this leave year.',
-                style: TextStyle(color: textGrey, height: 1.4),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.4),
               ),
             )
           else
@@ -3443,7 +3443,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                 'actually sent. If Rosters grants a queued date before then, '
                 'use Confirm granted to record it immediately and remove the '
                 'email from the send queue.',
-                style: TextStyle(color: textGrey, fontSize: 12, height: 1.4),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12, height: 1.4),
               ),
             ),
           ],
@@ -3473,7 +3473,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                       fontWeight: FontWeight.w900,
                     ),
                   ),
-                  subtitle: const Text('Scheduled annual leave request'),
+                  subtitle: Text('Scheduled annual leave request'),
                 ),
                 const Divider(height: 1),
                 ListTile(
@@ -3481,8 +3481,8 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                     Icons.event_available_outlined,
                     color: leaveRed,
                   ),
-                  title: const Text('Confirm granted'),
-                  subtitle: const Text(
+                  title: Text('Confirm granted'),
+                  subtitle: Text(
                     'Record the leave as granted and remove the queued email.',
                   ),
                   onTap: () {
@@ -3492,8 +3492,8 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                 ),
                 ListTile(
                   leading: const Icon(Icons.cancel_outlined, color: leaveRed),
-                  title: const Text('Cancel queued request'),
-                  subtitle: const Text(
+                  title: Text('Cancel queued request'),
+                  subtitle: Text(
                     'Remove this email from the future send queue.',
                   ),
                   onTap: () {
@@ -3605,7 +3605,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Back'),
+              child: Text('Back'),
             ),
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -3645,13 +3645,13 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
             Text(
               _loadError!,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: textGrey, height: 1.4),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.4),
             ),
             const SizedBox(height: 14),
             FilledButton.icon(
               onPressed: _load,
               icon: const Icon(Icons.refresh),
-              label: const Text('Try again'),
+              label: Text('Try again'),
             ),
           ],
         ),
