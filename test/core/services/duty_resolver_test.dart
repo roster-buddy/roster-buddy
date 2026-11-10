@@ -6,6 +6,24 @@ import 'package:roster_buddy/core/models/roster_source.dart';
 import 'package:roster_buddy/core/services/duty_resolver.dart';
 
 void main() {
+  test('filters 1000+ shared daily records by final four payroll digits', () {
+    expect(
+      DutyResolver.applicableDutyFilter(
+        payrollNumber: '21910', rosterNumber: '3524'),
+      'payroll_number.like.%1910,driver_number.eq.3524',
+    );
+    expect(
+      DutyResolver.applicableDutyFilter(
+        payrollNumber: '1910', rosterNumber: null),
+      'payroll_number.like.%1910',
+    );
+    expect(
+      DutyResolver.applicableDutyFilter(
+        payrollNumber: null, rosterNumber: '3524'),
+      'driver_number.eq.3524',
+    );
+  });
+
   profileMatchingTests();
   rangeResolutionTests();
   blockAnnualLeaveTests();
