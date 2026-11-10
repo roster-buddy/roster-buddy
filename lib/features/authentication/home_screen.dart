@@ -498,8 +498,9 @@ class _HomeScreenState extends State<HomeScreen> {
       'Settings',
     ];
 
+    final dark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: background,
+      backgroundColor: dark ? Theme.of(context).scaffoldBackgroundColor : background,
       appBar: AppBar(
         automaticallyImplyLeading: false,
         leading: _selectedIndex == 3 && _annualLeaveFromSettings
@@ -508,8 +509,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 _selectedIndex = 4;
               }))
             : null,
-        backgroundColor: Colors.white,
-        foregroundColor: navy,
+        backgroundColor: dark ? const Color(0xFF101C2B) : Colors.white,
+        foregroundColor: dark ? Colors.white : navy,
         elevation: 0,
         title: Row(
           children: [
@@ -1869,7 +1870,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                       const SizedBox(height: 4),
                       Text(
                         'To: ${action.recipientEmail}',
-                        style: const TextStyle(color: textGrey),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                     ],
                     const SizedBox(height: 7),
@@ -2568,7 +2569,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                     Text(
                       title,
                       style: TextStyle(
-                        color: hasBreach ? leaveRed : navy,
+                        color: hasBreach ? leaveRed : Theme.of(context).colorScheme.onSurface,
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
                       ),
@@ -2576,7 +2577,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                     const SizedBox(height: 4),
                     Text(
                       subtitle,
-                      style: const TextStyle(color: textGrey, height: 1.35),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.35),
                     ),
                   ],
                 ),
@@ -2777,16 +2778,16 @@ class _DashboardPageState extends State<_DashboardPage> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(20),
             children: [
-              const Text(
+              Text(
                 'Welcome back',
                 style: TextStyle(
-                  color: navy,
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 26,
                   fontWeight: FontWeight.w800,
                 ),
               ),
               const SizedBox(height: 4),
-              Text(widget.email, style: const TextStyle(color: textGrey)),
+              Text(widget.email, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
               const SizedBox(height: 22),
 
               const SectionTitle(icon: Icons.today_outlined, title: 'Today'),
@@ -3175,8 +3176,8 @@ class _DashboardPageState extends State<_DashboardPage> {
                   children: [
                     Text(
                       presentation.title,
-                      style: const TextStyle(
-                        color: navy,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 19,
                         fontWeight: FontWeight.w800,
                       ),
@@ -5720,8 +5721,8 @@ class _CalendarPageState extends State<_CalendarPage> {
                   Text(
                     _monthTitle(_displayedMonth),
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: navy,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
                     ),
@@ -10878,8 +10879,8 @@ class SectionTitle extends StatelessWidget {
         const SizedBox(width: 9),
         Text(
           title,
-          style: const TextStyle(
-            color: Color(0xFF102A43),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
             fontSize: 18,
             fontWeight: FontWeight.w800,
           ),
