@@ -6653,8 +6653,8 @@ class _CalendarPageState extends State<_CalendarPage> {
               child: Center(
                 child: Text(
                   weekday,
-                  style: const TextStyle(
-                    color: navy,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
                   ),
