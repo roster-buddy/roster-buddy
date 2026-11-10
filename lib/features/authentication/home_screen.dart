@@ -2610,7 +2610,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Row(
+                  Row(
                     children: [
                       Icon(Icons.check_circle_outline, color: workingGreen),
                       SizedBox(width: 10),
@@ -2672,7 +2672,7 @@ class _DashboardPageState extends State<_DashboardPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Padding(
+                Padding(
                   padding: EdgeInsets.fromLTRB(20, 4, 20, 12),
                   child: Row(
                     children: [
