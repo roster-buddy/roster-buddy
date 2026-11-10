@@ -63,4 +63,24 @@ Tuesday 10 November 2026
     expect(SmartScanQuality.needsLocalRescue(text), isFalse);
   });
 
+  test('rescues one damaged book-on time among 36 payroll shifts', () {
+    final lines = <String>[
+      'NAJ Macpherson 3075 WOD D3 D3= 2041904 “13:22 8.28',
+      for (var i = 0; i < 35; i++)
+        'A Driver ${(4000 + i)} WOD ALLOC 201 04:25 12:53 8.28',
+    ];
+    expect(SmartScanQuality.needsLocalRescue(lines.join('\\n')), isTrue);
+  });
+
+  test('accepts a complete daily roster with leave and rest codes', () {
+    const rows = '''
+A Driver 4001 WOD D3 D3 04:54 13:22 8.28
+B Driver 4002 WOD ALLOC 201 04:25 12:53 8.28
+C Driver 4003 WOD ALD ALD 08:45
+D Driver 4004 WOD ND ND
+E Driver 4005 WOD NONA NONA
+''';
+    expect(SmartScanQuality.needsLocalRescue(rows), isFalse);
+  });
+
 }
