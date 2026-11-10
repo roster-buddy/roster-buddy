@@ -47,6 +47,21 @@ class RosterBuddyApp extends StatelessWidget {
           cardTheme: const CardThemeData(
             color: Color(0xFF182637),
           ),
+          textTheme: const TextTheme(
+            bodyLarge: TextStyle(color: Color(0xFFE7EDF5)),
+            bodyMedium: TextStyle(color: Color(0xFFD5DFEA)),
+            bodySmall: TextStyle(color: Color(0xFFB8C8D8)),
+            titleLarge: TextStyle(color: Color(0xFFF4F7FC)),
+            titleMedium: TextStyle(color: Color(0xFFF4F7FC)),
+            titleSmall: TextStyle(color: Color(0xFFE7EDF5)),
+          ),
+          inputDecorationTheme: const InputDecorationTheme(
+            filled: true,
+            fillColor: Color(0xFF182637),
+            labelStyle: TextStyle(color: Color(0xFFD5DFEA)),
+            hintStyle: TextStyle(color: Color(0xFFB8C8D8)),
+          ),
+          dividerColor: const Color(0xFF405165),
           appBarTheme: const AppBarTheme(
             backgroundColor: Color(0xFF101C2B),
             foregroundColor: Colors.white,
