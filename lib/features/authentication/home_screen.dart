@@ -5775,7 +5775,7 @@ class _CalendarPageState extends State<_CalendarPage> {
           const SizedBox(height: 7),
           const Text(
             'Tap each working date you want to request. You can move between months and your selections will stay selected.',
-            style: TextStyle(color: textGrey, height: 1.35),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.35),
           ),
           const SizedBox(height: 12),
           Row(
@@ -5820,8 +5820,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                 const Expanded(
                   child: Text(
                     'Select granted leave to cancel',
-                    style: TextStyle(
-                      color: navy,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 16,
                       fontWeight: FontWeight.w900,
                     ),
@@ -5840,7 +5839,7 @@ class _CalendarPageState extends State<_CalendarPage> {
             const Text(
               'Tap each granted annual leave date you want to cancel. '
               'You can move between months and your selections will stay selected.',
-              style: TextStyle(color: textGrey, height: 1.35),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.35),
             ),
             const SizedBox(height: 12),
             Row(
@@ -7195,8 +7194,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                         children: [
                           const Text(
                             'Enter turn manually',
-                            style: TextStyle(
-                              color: navy,
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                               fontSize: 22,
                               fontWeight: FontWeight.w900,
                             ),
@@ -7675,16 +7673,14 @@ class _CalendarPageState extends State<_CalendarPage> {
                               children: [
                                 Text(
                                   'Annual leave queued',
-                                  style: TextStyle(
-                                    color: navy,
+                                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                                     fontWeight: FontWeight.w900,
                                   ),
                                 ),
                                 SizedBox(height: 3),
                                 Text(
                                   'This request is waiting for its 365-day send date.',
-                                  style: TextStyle(
-                                    color: textGrey,
+                                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant,
                                     height: 1.3,
                                   ),
                                 ),
@@ -8371,8 +8367,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                           children: [
                             const Text(
                               'Manual change',
-                              style: TextStyle(
-                                color: navy,
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                                 fontSize: 22,
                                 fontWeight: FontWeight.w900,
                               ),
@@ -8388,7 +8383,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
-                                color: textGrey,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -9519,8 +9514,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                       'block leave week, so you are currently marked '
                       'unavailable. Make yourself available if you want '
                       'to work your booked Sunday duty.',
-                      style: TextStyle(
-                        color: navy,
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                         height: 1.35,
                         fontWeight: FontWeight.w600,
                       ),
@@ -9826,8 +9820,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                         children: [
                           const Text(
                             'Manage annual leave',
-                            style: TextStyle(
-                              color: navy,
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                               fontSize: 22,
                               fontWeight: FontWeight.w900,
                             ),
@@ -10285,8 +10278,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                     children: [
                       const Text(
                         'Allocate shift – RDW',
-                        style: TextStyle(
-                          color: navy,
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                           fontSize: 22,
                           fontWeight: FontWeight.w900,
                         ),
@@ -10398,7 +10390,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                       const Text(
                         'Selecting a Job Card fills its booked times automatically. '
                         'Manual or cross-depot duties can still be entered.',
-                        style: TextStyle(color: textGrey, height: 1.35),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.35),
                       ),
 
                       if (formError != null) ...[
