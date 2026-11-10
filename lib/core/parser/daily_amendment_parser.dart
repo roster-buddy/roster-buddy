@@ -373,7 +373,7 @@ class DailyAmendmentParser implements BaseParser {
     final clocks = _printedClock.allMatches(tail).toList();
     final recoveredClocks = clocks.length == 2
         ? null
-        : _recoverFusedClocks(tail);
+        : _recoverFusedClocks(tail) ?? _recoverDamagedStartClock(tail, clocks);
     final prefix = clocks.isEmpty
         ? tail
         : tail.substring(0, clocks.first.start);
@@ -497,6 +497,50 @@ class DailyAmendmentParser implements BaseParser {
       bookOn: '${value.substring(0, 2)}:${value.substring(2, 4)}',
       bookOff: '${value.substring(4, 6)}:${value.substring(6, 8)}',
       rosteredMinutes: rosteredMinutes,
+    );
+  }
+
+
+  // Recover an OCR-fused D3 start only when book-off, rostered duration,
+  // and the surviving start-hour digits all independently agree.
+  // All evidence must be on one driver row.
+  ({String bookOn, String bookOff, int rosteredMinutes})?
+      _recoverDamagedStartClock(String tail, List<RegExpMatch> clocks) {
+    if (clocks.length != 1) return null;
+    final offMatch = clocks.single;
+    final off = ParserUtils.normaliseTime(offMatch.group(0));
+    if (off == null) return null;
+    final prefix = tail.substring(0, offMatch.start).trim();
+    final suffix = tail.substring(offMatch.end).trim();
+    final durationMatch = RegExp(r'^[0-9]{1,2}[.:][0-9]{2}')
+        .firstMatch(suffix);
+    if (durationMatch == null ||
+        durationMatch.group(0) != suffix) return null;
+    final minutes = ParserUtils.parseRosteredMinutes(suffix);
+    if (minutes == null || minutes < 240 || minutes > 720) return null;
+
+    final fusedPattern = RegExp(
+      r'^D3\s+D3\s*=\s*[0-9]{5,10}',
+      caseSensitive: false,
+    );
+    final cleanedPrefix = prefix.replaceAll(
+      RegExp(r'[\s“”"‘’]+'), '',
+    );
+    final fused = RegExp(r'^D3D3=([0-9]{5,10})')
+        .firstMatch(cleanedPrefix);
+    if (fused == null || fused.group(0) != cleanedPrefix ||
+        !fusedPattern.hasMatch(prefix)) return null;
+
+    final offParts = off.split(':');
+    final offTotal = int.parse(offParts[0]) * 60 + int.parse(offParts[1]);
+    final onTotal = (offTotal - minutes + 1440) % 1440;
+    final onHour = (onTotal ~/ 60).toString().padLeft(2, '0');
+    final onMinute = (onTotal % 60).toString().padLeft(2, '0');
+    if (!fused.group(1)!.endsWith(onHour)) return null;
+    return (
+      bookOn: onHour + ':' + onMinute,
+      bookOff: off,
+      rosteredMinutes: minutes,
     );
   }
 
