@@ -976,8 +976,8 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               children: [
                 Text(
                   '$_leaveYear floating leave',
-                  style: const TextStyle(
-                    color: navy,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
                   ),
