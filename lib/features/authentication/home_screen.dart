@@ -11232,6 +11232,8 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
         onTap: () { final controller = label == 'Start' ? _start : _finish; controller.selection = TextSelection(baseOffset: 0, extentOffset: controller.text.length); },
         textAlign: TextAlign.center,
         decoration: InputDecoration(
+          filled: false,
+          fillColor: Colors.transparent,
           hintText: _editing ? 'HHMM' : '—',
           semanticCounterText: label,
           isDense: true,
