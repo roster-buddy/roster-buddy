@@ -49,12 +49,19 @@ class SmartScanQuality {
     final rows = text.split(RegExp(r'\r?\n'))
         .where((row) => _identity.hasMatch(row))
         .toList(growable: false);
-    if (rows.length < 5) return false;
-    final complete = rows.where((row) {
+    if (rows.isEmpty) return false;
+
+    final incomplete = rows.where((row) {
+      if (_noDuty.hasMatch(row)) return false;
       final clocks = _clock.allMatches(row).length;
       final clockOrHours = _clockOrHours.allMatches(row).length;
-      return clocks >= 2 || clockOrHours >= 3 || _noDuty.hasMatch(row);
+      return clocks < 2 && clockOrHours < 3;
     }).length;
-    return complete < (rows.length * .85).ceil();
+
+    // One damaged book-on time among 36 shifts must still trigger a second
+    // positioned reading. Previously the 85% threshold silently accepted it.
+    // The parser continues to block import if that second reading also fails:
+    // never calculate or borrow a missing time from another driver's row.
+    return incomplete > 0;
   }
 }
