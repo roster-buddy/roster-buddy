@@ -34,9 +34,20 @@ export function countPayrollRosterRows(text) {
 // the slower enlarged band pass unless nearly all of those rows have both
 // clocks. The two readings are then offered to the row parser independently.
 export function needsDetailedRosterPass(text) {
-  const payrollRows = countPayrollRosterRows(text);
-  if (payrollRows < 5) return countStructuredRosterRows(text) < 3;
-  return countStructuredRosterRows(text) < Math.ceil(payrollRows * 0.85);
+  const rows = (text || '').split(/\\r?\\n/).filter(line =>
+    /\\b\\d{4,8}\\s+[A-Za-z]{2,5}\\b/.test(line));
+  if (rows.length < 5) return countStructuredRosterRows(text) < 3;
+
+  // A 36-driver page with 35 good clocks still needs detailed OCR for
+  // its one unreadable row. Do not treat hours (8.28) as a book-on time.
+  // Leave and non-working codes legitimately have no pair of clocks.
+  const noShift = /\\b(?:ALD|ALW|AW|ND|NDNA|NONA|NO|ZS|SF|RD)\\b/i;
+  return rows.some(row => {
+    if (noShift.test(row)) return false;
+    const clocks = (row.match(/\\b(?:[01]?\\d|2[0-3]):[0-5]\\d\\b/g) || []).length;
+    const clocksOrHours = (row.match(/\\b(?:[01]?\\d|2[0-3])[:.][0-5]\\d\\b/g) || []).length;
+    return clocks < 2 && clocksOrHours < 3;
+  });
 }
 
 export function normaliseRecognition(data, region) {
