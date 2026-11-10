@@ -1190,8 +1190,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                     children: [
                       Text(
                         '$_leaveYear floating leave',
-                        style: const TextStyle(
-                          color: navy,
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                           fontSize: 22,
                           fontWeight: FontWeight.w900,
                         ),
@@ -1469,8 +1468,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                         children: [
                           Text(
                             '$_leaveYear block allocation',
-                            style: const TextStyle(
-                              color: navy,
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                               fontSize: 22,
                               fontWeight: FontWeight.w900,
                             ),
@@ -1523,8 +1521,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                               'Next year: Block '
                               '${AnnualLeaveBlockCycle.advanceWeekIndex(selectedBlock)} '
                               '(moves forward 5 blocks)',
-                              style: const TextStyle(
-                                color: navy,
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
@@ -1765,8 +1762,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                         children: [
                           Text(
                             '$_leaveYear manual block weeks',
-                            style: const TextStyle(
-                              color: navy,
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                               fontSize: 22,
                               fontWeight: FontWeight.w900,
                             ),
@@ -1801,8 +1797,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                                 ),
                                 title: Text(
                                   labelFor(type),
-                                  style: const TextStyle(
-                                    color: navy,
+                                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
@@ -1991,8 +1986,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                         : periodType == AnnualLeaveBlockPeriodType.winter
                         ? 'Choose Winter week'
                         : 'Choose Summer week',
-                    style: const TextStyle(
-                      color: navy,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -2024,8 +2018,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                         title: Text(
                           'Week commencing '
                           '${_displayDate(choice.start)}',
-                          style: const TextStyle(
-                            color: navy,
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -2350,8 +2343,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                     children: [
                       Text(
                         _blockTypeLabel(period.type),
-                        style: const TextStyle(
-                          color: navy,
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                           fontSize: 22,
                           fontWeight: FontWeight.w900,
                         ),
@@ -2665,8 +2657,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                     Expanded(
                       child: Text(
                         _blockTypeLabel(period.type),
-                        style: const TextStyle(
-                          color: navy,
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
@@ -2696,8 +2687,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                 Text(
                   '${_displayDate(displayedStart)} – '
                   '${_displayDate(displayedEnd)}',
-                  style: const TextStyle(
-                    color: navy,
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
                   ),
@@ -2761,8 +2751,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                     ),
                     title: Text(
                       _blockTypeLabel(period.type),
-                      style: const TextStyle(
-                        color: navy,
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -2817,8 +2806,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                     ),
                     title: Text(
                       _displayDate(request.leaveDate),
-                      style: const TextStyle(
-                        color: navy,
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -2964,7 +2952,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           Text(MaterialLocalizations.of(context).formatFullDate(request.leaveDate),
-            style: const TextStyle(color: navy, fontSize: 22, fontWeight: FontWeight.w900)),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 22, fontWeight: FontWeight.w900)),
           const SizedBox(height: 18),
           const Row(children: [
             Icon(Icons.circle, size: 12, color: leaveRed), SizedBox(width: 8),
@@ -3078,8 +3066,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                 ListTile(
                   title: Text(
                     _displayDate(request.leaveDate),
-                    style: const TextStyle(
-                      color: navy,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -3412,8 +3399,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                     ),
                     title: Text(
                       _displayDate(leaveDate),
-                      style: const TextStyle(
-                        color: navy,
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -3483,8 +3469,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                 ListTile(
                   title: Text(
                     _displayDate(leaveDate),
-                    style: const TextStyle(
-                      color: navy,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
