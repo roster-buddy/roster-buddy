@@ -11168,6 +11168,7 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
   Widget build(BuildContext context) {
     final navy = Theme.of(context).colorScheme.onSurface;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final shiftText = isDark ? const Color(0xFF102A20) : navy;
     const weekdays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     final on = _start.text.trim();
@@ -11218,7 +11219,7 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
           ? 'Start or finish time is missing or unclear. Check the uploaded document and use More day actions to correct it.'
           : 'Duty details need checking. Open Documents to check the source, then use More day actions to correct this day.';
     Widget clock(String label, String? value, bool nextDay) => Expanded(child: Column(children: [
-      Text(label, style: TextStyle(color: navy, fontWeight: FontWeight.w700)),
+      Text(label, style: TextStyle(color: shiftText, fontWeight: FontWeight.w700)),
       const SizedBox(height: 4),
       TextField(
         controller: label == 'Start' ? _start : _finish,
@@ -11242,7 +11243,7 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
           enabledBorder: _editing ? const UnderlineInputBorder() : InputBorder.none,
           focusedBorder: _editing ? const UnderlineInputBorder() : InputBorder.none,
         ),
-        style: TextStyle(fontSize: _editing ? 30 : 34, fontWeight: FontWeight.w900, color: navy),
+        style: TextStyle(fontSize: _editing ? 30 : 34, fontWeight: FontWeight.w900, color: shiftText),
       ),
       Text(nextDay ? '+1 day' : '', style: const TextStyle(color: Color(0xFF52667A))),
     ]));
@@ -11314,7 +11315,7 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
       // can move the sheet before the button receives pointer-up on iOS web.
       if (timed) TextFieldTapRegion(child: Container(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: isDark ? const Color(0xFF193A2A) : colour.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(color: isDark ? colour : colour.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(16)),
         child: Column(children: [
           Row(children: [clock('Start', on, false),
             Container(width: 1, height: 65, color: colour.withValues(alpha: 0.2)),
@@ -11322,7 +11323,7 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
           const Divider(),
           Row(children: [
             Expanded(child: Text(duty?.turnNumber?.trim().isNotEmpty == true ? 'Turn ${duty!.turnNumber}' : '',
-              textAlign: TextAlign.center, style: TextStyle(color: navy, fontWeight: FontWeight.w800))),
+              textAlign: TextAlign.center, style: TextStyle(color: shiftText, fontWeight: FontWeight.w800))),
             Expanded(child: canEditShiftTimes(date, on, off, DateTime.now()) && duty?.dutyType.countsAsWorking == true
               ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 if (_editing) IconButton(tooltip: 'Cancel time edit', onPressed: _saving ? null : () {
