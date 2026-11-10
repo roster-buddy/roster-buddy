@@ -80,7 +80,11 @@ class DutyResolver {
       return const [];
     }
 
-    final List<dynamic> response = await _supabase
+    final dutyFilter = applicableDutyFilter(
+      payrollNumber: payrollNumber,
+      rosterNumber: rosterNumber,
+    );
+    final dutyQuery = _supabase
         .from(_dutyTableName)
         .select(
           'duty_date, source, duty_type, turn_number, book_on, book_off, '
@@ -88,6 +92,9 @@ class DutyResolver {
           'driver_name, depot, amendment_code, mileage, page_number, raw_text',
         )
         .eq('duty_date', _databaseDate(date));
+    final List<dynamic> response = await (dutyFilter == null
+        ? dutyQuery
+        : dutyQuery.or(dutyFilter));
 
     final List<Duty> duties = response
         .whereType<Map<String, dynamic>>()
@@ -295,9 +302,13 @@ class DutyResolver {
     final String databaseStart = _databaseDate(start);
     final String databaseEnd = _databaseDate(end);
 
-    // These reads share only the profile/range and can run together.
-    final responses = await Future.wait<Object?>([
-      _supabase
+    // Filtering before PostgREST's default row limit prevents shared
+    // roster sheets for other drivers pushing this user's shifts out.
+    final dutyFilter = applicableDutyFilter(
+      payrollNumber: payrollNumber,
+      rosterNumber: rosterNumber,
+    );
+    final dutyQuery = _supabase
         .from(_dutyTableName)
         .select(
           'duty_date, source, duty_type, turn_number, book_on, book_off, '
@@ -305,7 +316,11 @@ class DutyResolver {
           'driver_name, depot, amendment_code, mileage, page_number, raw_text',
         )
         .gte('duty_date', databaseStart)
-        .lte('duty_date', databaseEnd),
+        .lte('duty_date', databaseEnd);
+
+    // These reads share only the profile/range and can run together.
+    final responses = await Future.wait<Object?>([
+      dutyFilter == null ? dutyQuery : dutyQuery.or(dutyFilter),
       driverNumber == null ? Future.value(<dynamic>[]) : _supabase
           .from(_annualLeavePeriodTableName)
           .select(
@@ -1011,6 +1026,27 @@ class DutyResolver {
 
   static DateTime _dateOnly(DateTime value) {
     return DateTime(value.year, value.month, value.day);
+  }
+
+  /// Restrict a shared sheet to candidate payrolls and the Base Roster
+  /// before PostgREST applies its default 1000-row limit. The printed daily
+  /// sheet contains the last four payroll digits, e.g. 1910 vs 21910.
+  /// Client-side matching continues to enforce the profile and source rules.
+  static String? applicableDutyFilter({
+    required String? payrollNumber,
+    required String? rosterNumber,
+  }) {
+    final payroll = payrollNumber?.trim();
+    final roster = rosterNumber?.trim();
+    final parts = <String>[];
+    if (payroll != null && RegExp(r'^[0-9]{4,}$').hasMatch(payroll)) {
+      parts.add('payroll_number.like.%' +
+          payroll.substring(payroll.length - 4));
+    }
+    if (roster != null && RegExp(r'^[0-9]+$').hasMatch(roster)) {
+      parts.add('driver_number.eq.' + roster);
+    }
+    return parts.isEmpty ? null : parts.join(',');
   }
 
   static bool matchesProfile({
