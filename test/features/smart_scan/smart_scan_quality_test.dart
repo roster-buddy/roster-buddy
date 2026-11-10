@@ -69,7 +69,7 @@ Tuesday 10 November 2026
       for (var i = 0; i < 35; i++)
         'A Driver ${(4000 + i)} WOD ALLOC 201 04:25 12:53 8.28',
     ];
-    expect(SmartScanQuality.needsLocalRescue(lines.join('\\n')), isTrue);
+    expect(SmartScanQuality.needsLocalRescue(lines.join('\n')), isTrue);
   });
 
   test('accepts a complete daily roster with leave and rest codes', () {
