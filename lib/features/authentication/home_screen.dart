@@ -11167,6 +11167,7 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
   @override
   Widget build(BuildContext context) {
     final navy = Theme.of(context).colorScheme.onSurface;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     const weekdays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     final on = _start.text.trim();
@@ -11189,7 +11190,7 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
       onLeave ? const Color(0xFFD64545) :
       needsReview ? const Color(0xFF1769AA) :
       switch (duty!.dutyType) {
-        DutyType.working || DutyType.training || DutyType.medical => const Color(0xFF2E7D32),
+        DutyType.working || DutyType.training || DutyType.medical => isDark ? const Color(0xFF66BB6A) : const Color(0xFF2E7D32),
         DutyType.restDay || DutyType.unavailable => const Color(0xFFB88700),
         DutyType.sick || DutyType.publicHoliday => const Color(0xFFD64545),
         _ => const Color(0xFF1769AA),
@@ -11311,7 +11312,7 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
       // can move the sheet before the button receives pointer-up on iOS web.
       if (timed) TextFieldTapRegion(child: Container(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: colour.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(color: isDark ? const Color(0xFF193A2A) : colour.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(16)),
         child: Column(children: [
           Row(children: [clock('Start', on, false),
             Container(width: 1, height: 65, color: colour.withValues(alpha: 0.2)),
