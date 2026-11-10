@@ -1225,7 +1225,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                               ),
                             ],
                             const SizedBox(height: 10),
-                            const Text(
+                            Text(
                               'Enter times as 4 digits, for example 0800 or 1630.',
                               style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
                             ),
@@ -1458,7 +1458,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
               children: [
                 const Icon(Icons.swap_horiz_outlined, color: Color(0xFF1769AA)),
                 const SizedBox(width: 10),
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Mutual shift swap',
                     style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
@@ -1508,7 +1508,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
               ),
             ],
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Awaiting confirmation from Rosters / DTCM.',
               style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
@@ -1871,7 +1871,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                       ),
                     ],
                     const SizedBox(height: 7),
-                    const Text(
+                    Text(
                       'Automatic email sending is not yet active. '
                       'The email details and send time are safely stored, '
                       'but the server-side sender still needs to be connected.',
@@ -1942,7 +1942,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
             const SizedBox(height: 8),
             const Text('Pending cancellation', style: TextStyle(color: leaveRed, fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
-            const Text('Awaiting Rosters / DTCM approval. Leave stays granted until confirmed.',
+            Text('Awaiting Rosters / DTCM approval. Leave stays granted until confirmed.',
               style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
             const SizedBox(height: 12),
             FilledButton(
@@ -2086,7 +2086,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
             children: [
-              const Text(
+              Text(
                 'Notifications',
                 style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 20,
@@ -2094,7 +2094,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
+              Text(
                 'View roster updates or review outstanding annual leave '
                 'and shift-swap actions.',
                 style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -2106,7 +2106,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                 onOpenDocument: _openRosterDocument,
               ),
               if (_rosterUpdates.any((notice) => notice.needsInvestigation)) ...[
-                const Text('Needs investigation', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900)),
+                Text('Needs investigation', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900)),
                 for (final notice in _rosterUpdates.where((notice) => notice.needsInvestigation))
                   RosterUpdateCard(notice: notice,
                     onOpenDocument: () => _openRosterDocument(notice),
@@ -2171,7 +2171,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                   ),
                 )
               else ...[
-                const Row(
+                Row(
                   children: [
                     Icon(Icons.flight_takeoff, color: leaveRed),
                     SizedBox(width: 8),
@@ -2185,13 +2185,13 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                   ],
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'Individual ALD requests awaiting a decision from Rosters.',
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 12),
                 if (_requests.isEmpty)
-                  const Card(
+                  Card(
                     child: Padding(
                       padding: EdgeInsets.all(16),
                       child: Row(
@@ -2213,7 +2213,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
 
                 const SizedBox(height: 22),
 
-                const Row(
+                Row(
                   children: [
                     Icon(Icons.swap_horiz_outlined, color: Color(0xFF1769AA)),
                     SizedBox(width: 8),
@@ -2227,13 +2227,13 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                   ],
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'Shift swaps waiting for a decision from Rosters / DTCM.',
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 12),
                 if (_shiftSwaps.isEmpty)
-                  const Card(
+                  Card(
                     child: Padding(
                       padding: EdgeInsets.all(16),
                       child: Row(
@@ -2255,7 +2255,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
 
                 const SizedBox(height: 22),
 
-                const Row(
+                Row(
                   children: [
                     Icon(Icons.swap_horiz_outlined, color: leaveRed),
                     SizedBox(width: 8),
@@ -2269,14 +2269,14 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                   ],
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'Block moves, mutual swaps and future requests waiting '
                   'in the Union send queue.',
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 12),
                 if (_blockActions.isEmpty)
-                  const Card(
+                  Card(
                     child: Padding(
                       padding: EdgeInsets.all(16),
                       child: Row(
