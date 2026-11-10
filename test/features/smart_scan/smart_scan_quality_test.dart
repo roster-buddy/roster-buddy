@@ -41,4 +41,26 @@ Sunday Monday Tuesday Wednesday Thursday Friday Saturday
 
     expect(SmartScanQuality.needsLocalRescue(text), isTrue);
   });
+  test('rescues split base roster rows even without No Duty text', () {
+    const text = '''
+Sunday Monday Tuesday Wednesday Thursday Friday Saturday
+1 15:11 00:56 09:45 211 15:15 00:00 08:45 Sp
+3535 Liverpool Lichfield Rugeley
+2 08:11 17:10 08:59 208 07:00 15:14 08:14 217
+3518 Shrewsbury Redditch
+''';
+    expect(SmartScanQuality.needsLocalRescue(text), isTrue);
+  });
+
+  test('does not mistake daily payroll rows for base roster grid', () {
+    const text = '''
+Tuesday 10 November 2026
+1 04:25 12:53 8.45
+3535 Liverpool Lichfield
+2 13:00 21:45 8.45
+3518 Shrewsbury Redditch
+''';
+    expect(SmartScanQuality.needsLocalRescue(text), isFalse);
+  });
+
 }
