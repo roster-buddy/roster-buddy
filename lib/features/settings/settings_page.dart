@@ -3919,9 +3919,7 @@ class DriverProfilePage extends StatefulWidget {
 }
 
 class _DriverProfilePageState extends State<DriverProfilePage> {
-  static const Color navy = Color(0xFF102A43);
   static const Color railwayBlue = Color(0xFF1769AA);
-  static const Color background = Color(0xFFF4F7FA);
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _nameController = TextEditingController();
@@ -4392,9 +4390,7 @@ class BaseRosterSetupPage extends StatefulWidget {
 }
 
 class _BaseRosterSetupPageState extends State<BaseRosterSetupPage> {
-  static const Color navy = Color(0xFF102A43);
   static const Color railwayBlue = Color(0xFF1769AA);
-  static const Color background = Color(0xFFF4F7FA);
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _swapPartnerController = TextEditingController();
