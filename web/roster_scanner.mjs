@@ -37,12 +37,13 @@ if (typeof window !== 'undefined') window.rosterRenderJobCardPage = renderJobCar
 
 // Use searchable PDF headers when all required labelled fields are present.
 export function readJobCardHeader(text) {
+  const headerText = text.replace(/[ \t]+/g, ' ').trim();
   const heading = /^(?:LTP|STP|VSTP)\s+WO\d{2,4}\s+\w+\s*$/im;
   const validity = /^(?:VALID FROM|FROM)\s+\d{2}\/\d{2}\/\d{2,4}\s+TO\s+\d{2}\/\d{2}\/\d{2,4}\s*$/im;
   const bookOn = /^(?:BOOK )?ON\s+\d{2}:\d{2}\s*$/im;
   const bookOff = /^(?:BOOK )?OFF\s+\d{2}:\d{2}\s*$/im;
-  if (![heading, validity, bookOn, bookOff].every(pattern => pattern.test(text))) return null;
-  return text;
+  if (![heading, validity, bookOn, bookOff].every(pattern => pattern.test(headerText))) return null;
+  return headerText;
 }
 
 export function canvasSize(width, height) {
