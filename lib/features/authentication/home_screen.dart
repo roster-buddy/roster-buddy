@@ -6903,7 +6903,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                 const Spacer(),
                 if (duty != null || isGrantedAnnualLeave) ...[
                   if (!isGrantedAnnualLeave && RosterJobSummary.appliesTo(duty))
-                    RosterJobSummary(duty: duty!, foreground: foreground, fontSize: 10, showTurn: false)
+                    RosterJobSummary(duty: duty!, foreground: foreground, fontSize: 10)
                   else ...[
                   Text(
                     isGrantedAnnualLeave ? 'Leave' : duty?.remarks?.contains('awaiting allocation') == true ? 'Allocate duty' : _shortDutyLabel(duty!),
@@ -10621,8 +10621,8 @@ class _CalendarLegendItem extends StatelessWidget {
         const SizedBox(width: 6),
         Text(
           label,
-          style: const TextStyle(
-            color: Color(0xFF102A43),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
             fontWeight: FontWeight.w700,
           ),
         ),
