@@ -17,7 +17,7 @@ class JobCardParser implements BaseParser {
   );
 
   static final RegExp _dayCodeLabelPattern = RegExp(
-    r'\b(?:DAY(?:\s+CODE)?|DAYS?|APPLIES)\s*[:\-]?\s*'
+    r'\b(?:DAY(?:\s+CODE)?|DAYS|APPLIES)\b\s*[:\-]?\s*'
     r'(SUN|SU|SO|SAO|SX|(?:M|T|W|TH|F|S)+(?:O|X)?)\b',
     caseSensitive: false,
   );
