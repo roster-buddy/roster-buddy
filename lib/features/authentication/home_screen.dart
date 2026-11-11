@@ -3283,14 +3283,9 @@ class _DashboardPageState extends State<_DashboardPage> {
                       child: FilledButton.icon(
                         onPressed: () {
                           Navigator.of(sheetContext).pop();
-                          _showManualChangeDialog(
-                            date: date,
-                            originalDuty: Duty(
-                              date: date,
-                              source: RosterSource.manual,
-                              dutyType: DutyType.unknown,
-                              remarks: 'No roster information',
-                            ),
+                          widget.onCalendarAction(
+                            date,
+                            _CalendarDayAction.manualChange,
                           );
                         },
                         icon: const Icon(Icons.edit_calendar_outlined),
@@ -3963,9 +3958,14 @@ class _DashboardPageState extends State<_DashboardPage> {
           actions.add(
             CupertinoActionSheetAction(
               onPressed: () {
-                Navigator.of(popupContext).pop();
+                closeAndRun(() {
+                  widget.onCalendarAction(
+                    date,
+                    _CalendarDayAction.manualChange,
+                  );
+                });
               },
-              child: Text('No roster information'),
+              child: Text('Add roster information'),
             ),
           );
         } else if (duty.dutyType == DutyType.restDay) {
@@ -7611,6 +7611,27 @@ class _CalendarPageState extends State<_CalendarPage> {
             onChanged: () { widget.onRosterChanged(); _loadMonth(); }),
           children: [
                 DayDocumentLinks(date: date, compact: true),
+                if (duty == null && !isGrantedAnnualLeave) ...[
+                  const SizedBox(height: 12),
+                  _PinnedDayAction(
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          Navigator.of(sheetContext).pop();
+                          _handleDayAction(
+                            date: date,
+                            duty: null,
+                            action: _CalendarDayAction.manualChange,
+                            resolveFresh: false,
+                          );
+                        },
+                        icon: const Icon(Icons.edit_calendar_outlined),
+                        label: const Text('Add roster information'),
+                      ),
+                    ),
+                  ),
+                ],
                 if (duty != null || isGrantedAnnualLeave) ...[
                   _DutyHistorySection(
                     future: DutyHistoryService().load(date, _dutyResolver.getDutiesForDate(date)),
@@ -8090,14 +8111,16 @@ class _CalendarPageState extends State<_CalendarPage> {
         return;
 
       case _CalendarDayAction.manualChange:
-        if (effectiveDuty == null) {
-          _showCalendarMessage(
-            'No roster duty is available for this manual change.',
-          );
-          return;
-        }
-
-        _showManualChangeDialog(date: date, originalDuty: effectiveDuty);
+        _showManualChangeDialog(
+          date: date,
+          originalDuty: effectiveDuty ??
+              Duty(
+                date: date,
+                source: RosterSource.manual,
+                dutyType: DutyType.unknown,
+                remarks: 'No roster information',
+              ),
+        );
         return;
 
       case _CalendarDayAction.shiftSwap:
