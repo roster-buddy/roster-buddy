@@ -3275,6 +3275,30 @@ class _DashboardPageState extends State<_DashboardPage> {
             onChanged: () { widget.onRosterChanged(); _loadDashboardDuties(); }),
           children: [
                 DayDocumentLinks(date: date, compact: true),
+                if (duty == null && !isGrantedAnnualLeave) ...[
+                  const SizedBox(height: 12),
+                  _PinnedDayAction(
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          Navigator.of(sheetContext).pop();
+                          _showManualChangeDialog(
+                            date: date,
+                            originalDuty: Duty(
+                              date: date,
+                              source: RosterSource.manual,
+                              dutyType: DutyType.unknown,
+                              remarks: 'No roster information',
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.edit_calendar_outlined),
+                        label: const Text('Add roster information'),
+                      ),
+                    ),
+                  ),
+                ],
                 if (duty != null || isGrantedAnnualLeave) ...[
                   _DutyHistorySection(
                     future: DutyHistoryService().load(date, _dutyResolver.getDutiesForDate(date)),
@@ -8204,7 +8228,7 @@ class _CalendarPageState extends State<_CalendarPage> {
 
     final List<DutyType> selectableTypes = <DutyType>[
       if (originalDuty.dutyType == DutyType.unknown) DutyType.unknown,
-      if (originalDuty.dutyType == DutyType.annualLeave) DutyType.annualLeave,
+      DutyType.annualLeave,
       DutyType.working,
       DutyType.training,
       DutyType.medical,
