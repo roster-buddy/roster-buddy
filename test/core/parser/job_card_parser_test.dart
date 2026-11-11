@@ -88,6 +88,37 @@ BOOK OFF 16:00
       expect(result.jobCards[1].planType, JobCardPlanType.stp);
     });
 
+    test('reads the printed STP header and ignores creation dates', () async {
+      const parser = JobCardParser();
+
+      final result = await parser.parse(pageText: [
+        '''
+Created 04/11/26 1527
+STP WO211 TWThO
+STP WO211
+DVR
+On 15:11
+Off 00:57
+Hrs 09:46
+Days TWThO
+From 10/11/26
+To 12/11/26
+Work WO212 relief
+VSTP train movement
+''',
+      ]);
+
+      final card = result.jobCards.single;
+      expect(card.planType, JobCardPlanType.stp);
+      expect(card.bookOn, '15:11');
+      expect(card.bookOff, '00:57');
+      expect(card.rosteredMinutes, 586);
+      expect(card.validFrom, DateTime(2026, 11, 10));
+      expect(card.validTo, DateTime(2026, 11, 12));
+      expect(card.isValidOn(DateTime(2026, 11, 11)), isTrue);
+      expect(card.isValidOn(DateTime(2026, 11, 13)), isFalse);
+    });
+
     test('blocks import when required fields are missing', () async {
       const JobCardParser parser = JobCardParser();
 

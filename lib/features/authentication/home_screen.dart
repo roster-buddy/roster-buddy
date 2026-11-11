@@ -98,6 +98,13 @@ Future<bool> _openAnnualLeaveRequestCancellationEmail({
   );
 }
 
+String _openJobCardLabel(JobCardMatch match) {
+  final plan = match.jobCard.planType.name;
+  return plan == 'unknown'
+      ? 'Open Job Card'
+      : 'Open ${plan.toUpperCase()} Job Card';
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -3236,6 +3243,9 @@ class _DashboardPageState extends State<_DashboardPage> {
       return await _jobCardService.findMatchingJobCard(
         turnNumber: turnNumber,
         dutyDate: duty.date,
+        bookOn: duty.bookOn,
+        bookOff: duty.bookOff,
+        amendedTurn: duty.isAmendedTurn,
       );
     } catch (_) {
       return null;
@@ -3358,7 +3368,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                                 );
                               },
                               icon: const Icon(Icons.description_outlined),
-                              label: Text('Open Job Card'),
+                              label: Text(_openJobCardLabel(match)),
                             ),
                           );
                         },
@@ -7310,6 +7320,9 @@ class _CalendarPageState extends State<_CalendarPage> {
       return await _jobCardService.findMatchingJobCard(
         turnNumber: turnNumber,
         dutyDate: duty.date,
+        bookOn: duty.bookOn,
+        bookOff: duty.bookOff,
+        amendedTurn: duty.isAmendedTurn,
       );
     } catch (_) {
       return null;
@@ -7751,7 +7764,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                                   );
                                 },
                                 icon: const Icon(Icons.description_outlined),
-                                label: const Text('Open Job Card'),
+                                label: Text(_openJobCardLabel(match)),
                               ),
                             );
                           },
@@ -11182,7 +11195,7 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
           (_clock(on) == null || _clock(off) == null)));
     final overnight = timed && off.compareTo(on) < 0;
     final type = onLeave ? 'Annual leave' : duty == null ? 'No roster information' :
-      duty!.dutyType.countsAsWorking ? (duty!.dutyType == DutyType.training ? 'Training' : duty!.dutyType == DutyType.medical ? 'Medical' : 'Working') : switch (duty!.dutyType) {
+      duty!.dutyType.countsAsWorking ? (duty!.dutyType == DutyType.training ? 'Training' : duty!.dutyType == DutyType.medical ? 'Medical' : duty!.isAmendedTurn ? 'Amended turn' : 'Working') : switch (duty!.dutyType) {
         DutyType.restDay => 'Rest day', DutyType.sick => 'Sick',
         DutyType.publicHoliday => 'Bank holiday', DutyType.unavailable => 'Unavailable',
         DutyType.annualLeave => 'Annual leave', _ => 'Review duty',

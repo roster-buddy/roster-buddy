@@ -61,6 +61,15 @@ class Duty {
   /// Original OCR row or cell text retained for review and troubleshooting.
   final String? rawText;
 
+  static final RegExp _amendedTurn = RegExp(
+    r'\bAmended\s+Turn\b',
+    caseSensitive: false,
+  );
+
+  bool get isAmendedTurn =>
+      _amendedTurn.hasMatch(rawText ?? '') ||
+      _amendedTurn.hasMatch(remarks ?? '');
+
   bool get hasTimes => bookOn != null && bookOff != null;
 
   bool get hasDriverIdentity =>

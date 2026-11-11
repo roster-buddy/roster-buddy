@@ -28,7 +28,7 @@ class JobCardParser implements BaseParser {
   );
 
   static final RegExp _validityRangePattern = RegExp(
-    r'(?:VALID(?:ITY)?|FROM)\s*[:\-]?\s*'
+    r'(?:VALID(?:ITY)?(?:\s+FROM)?|FROM)\s*[:\-]?\s*'
     r'(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})'
     r'\s*(?:TO|UNTIL|\-|–)\s*'
     r'(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})',
@@ -207,12 +207,12 @@ class JobCardParser implements BaseParser {
 
   List<String> _extractBookOnAndOff(String text) {
     final RegExp bookOnPattern = RegExp(
-      r'BOOK\s*ON\s*[:\-]?\s*([0-2]?\d[:.]?[0-5]\d)',
+      r'\b(?:BOOK[ \t]+)?ON[ \t]*[:\-]?\s*([0-2]?\d[:.]?[0-5]\d)',
       caseSensitive: false,
     );
 
     final RegExp bookOffPattern = RegExp(
-      r'BOOK\s*OFF\s*[:\-]?\s*([0-2]?\d[:.]?[0-5]\d)',
+      r'\b(?:BOOK[ \t]+)?OFF[ \t]*[:\-]?\s*([0-2]?\d[:.]?[0-5]\d)',
       caseSensitive: false,
     );
 
@@ -239,7 +239,7 @@ class JobCardParser implements BaseParser {
 
   int? _extractRosteredMinutes(String text) {
     final RegExp pattern = RegExp(
-      r'(?:ROSTERED\s*(?:HOURS?|TIME)|DUTY\s*LENGTH)'
+      r'\b(?:ROSTERED\s*(?:HOURS?|TIME)|DUTY\s*LENGTH|HRS)'
       r'\s*[:\-]?\s*(\d{1,2}[:.]\d{2})',
       caseSensitive: false,
     );
@@ -249,16 +249,22 @@ class JobCardParser implements BaseParser {
 
   JobCardPlanType _extractPlanType(String text) {
     final String upper = text.toUpperCase();
+    final String? headingPlan = RegExp(
+      r'\b(VSTP|STP|LTP)[ \t]+W[O0Q][ \t]*[-:]?[ \t]*\d{2,4}\b',
+    ).firstMatch(upper)?.group(1);
 
-    if (upper.contains('VSTP')) {
+    if (headingPlan == 'VSTP' ||
+        (headingPlan == null && upper.contains('VSTP'))) {
       return JobCardPlanType.vstp;
     }
 
-    if (upper.contains('STP')) {
+    if (headingPlan == 'STP' ||
+        (headingPlan == null && upper.contains('STP'))) {
       return JobCardPlanType.stp;
     }
 
-    if (upper.contains('LTP')) {
+    if (headingPlan == 'LTP' ||
+        (headingPlan == null && upper.contains('LTP'))) {
       return JobCardPlanType.ltp;
     }
 

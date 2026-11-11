@@ -1,13 +1,8 @@
 class JobCardPageSplitter {
   const JobCardPageSplitter();
 
-  static final RegExp _turnStartPattern = RegExp(
-    r'(?=\bW[O0Q]\s*[-:]?\s*\d{2,4}\b)',
-    caseSensitive: false,
-  );
-
   static final RegExp _turnCodePattern = RegExp(
-    r'\bW[O0Q]\s*[-:]?\s*\d{2,4}\b',
+    r'\b(?:(?:VSTP|STP|LTP)[ \t]+)?W[O0Q]\s*[-:]?\s*(\d{2,4})\b',
     caseSensitive: false,
   );
 
@@ -27,35 +22,28 @@ class JobCardPageSplitter {
         .allMatches(page)
         .toList(growable: false);
 
-    if (turnMatches.isEmpty || turnMatches.length == 1) {
+    if (turnMatches.length < 2) {
       return <String>[page];
     }
 
-    final String heading = page.substring(0, turnMatches.first.start).trim();
-
-    final List<String> rawSections = page
-        .substring(turnMatches.first.start)
-        .split(_turnStartPattern)
-        .map((String section) => section.trim())
-        .where((String section) => section.isNotEmpty)
-        .toList(growable: false);
-
-    if (rawSections.isEmpty) {
-      return <String>[page];
-    }
-
-    final List<String> sections = <String>[];
-
-    for (int index = 0; index < rawSections.length; index++) {
-      final String section = index == 0 && heading.isNotEmpty
-          ? '$heading\n${rawSections[index]}'
-          : rawSections[index];
-
-      if (_turnCodePattern.hasMatch(section)) {
-        sections.add(section);
+    final sections = <String>[];
+    var sectionStart = 0;
+    var previousTurn = turnMatches.first.group(1);
+    for (final match in turnMatches.skip(1)) {
+      final turn = match.group(1);
+      final lineStart = page.lastIndexOf('\n', match.start - 1) + 1;
+      final startsLine = page.substring(lineStart, match.start).trim().isEmpty;
+      if (turn == previousTurn || !startsLine) {
+        continue;
       }
+
+      final precedingText = page.substring(sectionStart, match.start).trim();
+      sections.add(precedingText);
+      sectionStart = match.start;
+      previousTurn = turn;
     }
 
-    return sections.isEmpty ? <String>[page] : sections;
+    sections.add(page.substring(sectionStart).trim());
+    return sections;
   }
 }

@@ -35,6 +35,9 @@ class JobCardService {
   Future<JobCardMatch?> findMatchingJobCard({
     required String turnNumber,
     required DateTime dutyDate,
+    String? bookOn,
+    String? bookOff,
+    bool amendedTurn = false,
   }) async {
     final String normalisedTurn = _normaliseTurnNumber(turnNumber);
 
@@ -62,7 +65,15 @@ class JobCardService {
     final List<_JobCardCandidate> candidates = rows
         .whereType<Map<String, dynamic>>()
         .map(_candidateFromRow)
-        .where((candidate) => candidate.card.isValidOn(dutyDate))
+        .where((candidate) {
+          final card = candidate.card;
+          return card.isValidOn(dutyDate) &&
+              (!amendedTurn ||
+                  card.planType == JobCardPlanType.stp ||
+                  card.planType == JobCardPlanType.vstp) &&
+              (bookOn == null || card.bookOn == _timeValue(bookOn)) &&
+              (bookOff == null || card.bookOff == _timeValue(bookOff));
+        })
         .toList(growable: false);
 
     if (candidates.isEmpty) {
