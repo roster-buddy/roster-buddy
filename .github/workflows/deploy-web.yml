@@ -38,6 +38,14 @@ jobs:
       - name: Run tests
         run: flutter test
 
+      - name: Use the Ubuntu HTTPS package mirror
+        run: |
+          sudo find /etc/apt/sources.list.d -type f \( -name '*.sources' -o -name '*.list' \) \
+            -exec sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' {} +
+          if [ -f /etc/apt/sources.list ]; then
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
+          fi
+
       - name: Prepare browser scanner
         # Playwright's Ubuntu browser dependencies can take longer than ten
         # minutes on a fresh runner. Keep real browser checks enabled.
