@@ -33,7 +33,9 @@ jobs:
         run: flutter pub get
 
       - name: Analyze Dart code
-        run: flutter analyze
+        # Flutter's latest stable SDK reports framework import migrations as
+        # informational deprecations. Keep real warnings and errors fatal.
+        run: flutter analyze --no-fatal-infos
 
       - name: Run tests
         run: flutter test
