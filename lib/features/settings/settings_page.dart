@@ -4178,11 +4178,12 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final bool dark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: background,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: navy,
         elevation: 0,
         title: const Text(
           'My Profile',
@@ -4332,9 +4333,11 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        const Card(
-                          color: Color(0xFFE8F1F8),
-                          child: Padding(
+                        Card(
+                          color: dark
+                              ? const Color(0xFF182637)
+                              : const Color(0xFFE8F1F8),
+                          child: const Padding(
                             padding: EdgeInsets.all(14),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -4641,11 +4644,11 @@ class _BaseRosterSetupPageState extends State<BaseRosterSetupPage> {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+
     return Scaffold(
-      backgroundColor: background,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: navy,
         elevation: 0,
         title: const Text(
           'Base Roster Setup',
