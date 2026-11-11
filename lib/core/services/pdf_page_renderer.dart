@@ -12,6 +12,26 @@ class PdfRenderedPage {
 class PdfPageRenderer {
   const PdfPageRenderer();
 
+  Future<Uint8List> renderPage(Uint8List pdfBytes, int pageNumber) async {
+    final document = await PdfDocument.openData(pdfBytes);
+    try {
+      final page = await document.getPage(pageNumber);
+      try {
+        final image = await page.render(
+          width: page.width * 2.5,
+          height: page.height * 2.5,
+          format: PdfPageImageFormat.png,
+        );
+        if (image == null) throw StateError('The PDF page could not be rendered.');
+        return image.bytes;
+      } finally {
+        await page.close();
+      }
+    } finally {
+      await document.close();
+    }
+  }
+
   Future<List<PdfRenderedPage>> render(Uint8List pdfBytes) async {
     final document = await PdfDocument.openData(pdfBytes);
 

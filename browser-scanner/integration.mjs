@@ -48,6 +48,16 @@ try {
         if (request.url().startsWith('http') && !request.url().startsWith(origin+'/')) external.push(request.url());
       });
       await page.goto(origin+'/scanner-test');
+      const renderedPages = await page.evaluate(async bytes => {
+        await import('/roster_scanner.mjs');
+        const render = number => window.rosterRenderJobCardPage(new Uint8Array(bytes), number);
+        return [[...await render(1)], [...await render(2)]];
+      }, pdfBytes);
+      for (const image of renderedPages) {
+        assert.deepEqual(image.slice(0, 8), [137, 80, 78, 71, 13, 10, 26, 10]);
+      }
+      assert.notDeepEqual(renderedPages[0], renderedPages[1]);
+      console.log('PASS '+engine.name()+': job card viewer renders the requested PDF page');
       const pngBytes = await page.evaluate(async () => {
         const canvas = document.createElement('canvas');
         canvas.width=1800; canvas.height=700;

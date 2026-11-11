@@ -7,6 +7,7 @@ import '../smart_scan/scan_duty_editor.dart';
 import '../upload/roster_update_card.dart';
 import '../upload/day_document_links.dart';
 import '../upload/document_opener.dart';
+import '../upload/job_card_viewer.dart';
 import '../../core/services/roster_update_service.dart';
 import '../roster/roster_job_summary.dart';
 import 'sign_out.dart';
@@ -3252,35 +3253,6 @@ class _DashboardPageState extends State<_DashboardPage> {
     }
   }
 
-  Future<void> _openDashboardJobCard(JobCardMatch match) async {
-    try {
-      final String signedUrl = await _jobCardService.createSignedPdfUrl(match);
-      Uri pdfUri = Uri.parse(signedUrl);
-
-      final int? pageNumber = match.jobCard.pageNumber;
-
-      if (pageNumber != null && pageNumber > 0) {
-        pdfUri = pdfUri.replace(fragment: 'page=$pageNumber');
-      }
-
-      final bool opened = await launchUrl(
-        pdfUri,
-        mode: LaunchMode.platformDefault,
-        webOnlyWindowName: '_blank',
-      );
-
-      if (!opened && mounted) {
-        showMessage(context, 'Roster Buddy could not open this Job Card.');
-      }
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-
-      showMessage(context, 'Roster Buddy could not open this Job Card.');
-    }
-  }
-
   Future<void> _showDashboardDayDetails({
     required DateTime date,
     required Duty? duty,
@@ -3355,18 +3327,11 @@ class _DashboardPageState extends State<_DashboardPage> {
                           return SizedBox(
                             width: double.infinity,
                             child: FilledButton.icon(
-                              onPressed: () {
-                                Navigator.of(sheetContext).pop();
-
-                                Future<void>.delayed(
-                                  const Duration(milliseconds: 150),
-                                  () {
-                                    if (mounted) {
-                                      _openDashboardJobCard(match);
-                                    }
-                                  },
-                                );
-                              },
+                              onPressed: () => openJobCardViewer(
+                                sheetContext,
+                                _jobCardService,
+                                match,
+                              ),
                               icon: const Icon(Icons.description_outlined),
                               label: Text(_openJobCardLabel(match)),
                             ),
@@ -7329,35 +7294,6 @@ class _CalendarPageState extends State<_CalendarPage> {
     }
   }
 
-  Future<void> _openCalendarJobCard(JobCardMatch match) async {
-    try {
-      final String signedUrl = await _jobCardService.createSignedPdfUrl(match);
-      Uri pdfUri = Uri.parse(signedUrl);
-
-      final int? pageNumber = match.jobCard.pageNumber;
-
-      if (pageNumber != null && pageNumber > 0) {
-        pdfUri = pdfUri.replace(fragment: 'page=$pageNumber');
-      }
-
-      final bool opened = await launchUrl(
-        pdfUri,
-        mode: LaunchMode.platformDefault,
-        webOnlyWindowName: '_blank',
-      );
-
-      if (!opened && mounted) {
-        _showCalendarMessage('Roster Buddy could not open this Job Card.');
-      }
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-
-      _showCalendarMessage('Roster Buddy could not open this Job Card.');
-    }
-  }
-
   Future<void> _cancelQueuedAnnualLeaveRequest(DateTime date) async {
     final bool? confirmed = await showRosterDecisionSheet<bool>(
       context: context,
@@ -7751,18 +7687,11 @@ class _CalendarPageState extends State<_CalendarPage> {
                             return SizedBox(
                               width: double.infinity,
                               child: FilledButton.icon(
-                                onPressed: () {
-                                  Navigator.of(sheetContext).pop();
-
-                                  Future<void>.delayed(
-                                    const Duration(milliseconds: 150),
-                                    () {
-                                      if (mounted) {
-                                        _openCalendarJobCard(match);
-                                      }
-                                    },
-                                  );
-                                },
+                                onPressed: () => openJobCardViewer(
+                                sheetContext,
+                                _jobCardService,
+                                match,
+                              ),
                                 icon: const Icon(Icons.description_outlined),
                                 label: Text(_openJobCardLabel(match)),
                               ),

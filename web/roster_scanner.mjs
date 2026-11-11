@@ -4,6 +4,37 @@ const VENDOR = 'scan_vendor/t7-p6/';
 let active = null;
 let tesseractLoading;
 
+async function loadPdf(bytes, base) {
+  const pdfjs = await import(new URL('pdf.mjs', base).href);
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdf.worker.mjs', base).href;
+  return pdfjs.getDocument({data: new Uint8Array(bytes), isEvalSupported: false,
+    cMapUrl: new URL('cmaps/', base).href, cMapPacked: true,
+    standardFontDataUrl: new URL('standard_fonts/', base).href,
+    wasmUrl: new URL('wasm/', base).href});
+}
+
+// Render only the card's page so even a large pack opens inside Roster Buddy.
+export async function renderJobCardPage(bytes, pageNumber) {
+  const task = await loadPdf(bytes, new URL(VENDOR, document.baseURI));
+  const canvas = document.createElement('canvas');
+  try {
+    const pdf = await task.promise;
+    const page = await pdf.getPage(pageNumber);
+    const viewport = page.getViewport({scale: 2.5});
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    await page.render({canvasContext: canvas.getContext('2d'), viewport, background: 'white'}).promise;
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) throw new Error('The PDF page could not be rendered.');
+    return new Uint8Array(await blob.arrayBuffer());
+  } finally {
+    canvas.width = 1;
+    canvas.height = 1;
+    await task.destroy();
+  }
+}
+if (typeof window !== 'undefined') window.rosterRenderJobCardPage = renderJobCardPage;
+
 export function canvasSize(width, height) {
   if (!(width > 0 && height > 0)) throw new Error('The image has no readable dimensions.');
   const scale = Math.min(1, 3000 / Math.max(width, height), Math.sqrt(4800000 / (width * height)));
@@ -309,12 +340,7 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}) {
       return [await recognise(image, 1, 1)];
     }
 
-    const pdfjs = await import(new URL('pdf.mjs', base).href);
-    pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdf.worker.mjs', base).href;
-    loadingTask = pdfjs.getDocument({data: new Uint8Array(bytes), isEvalSupported: false,
-      cMapUrl: new URL('cmaps/', base).href, cMapPacked: true,
-      standardFontDataUrl: new URL('standard_fonts/', base).href,
-      wasmUrl: new URL('wasm/', base).href});
+    loadingTask = await loadPdf(bytes, base);
     pdf = await loadingTask.promise;
     check();
     if (pdf.numPages < 1 || pdf.numPages > 60) throw new Error('Choose a PDF with 1–60 pages.');

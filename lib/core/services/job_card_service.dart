@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/job_card.dart';
@@ -206,10 +208,8 @@ class JobCardService {
     return candidate.card.validFrom.isAfter(current.card.validFrom);
   }
 
-  Future<String> createSignedPdfUrl(JobCardMatch match) async {
-    return _supabase.storage
-        .from(_bucketName)
-        .createSignedUrl(match.storagePath, 60 * 30);
+  Future<Uint8List> downloadJobCard(JobCardMatch match) {
+    return _supabase.storage.from(_bucketName).download(match.storagePath);
   }
 
   static _JobCardCandidate _candidateFromRow(Map<String, dynamic> row) {
