@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'smart_scan_cloud_client.dart';
 import 'smart_scan_local_engine.dart' as local;
 import 'smart_scan_quality.dart';
