@@ -46,6 +46,158 @@ export function readJobCardHeader(text) {
   return headerText;
 }
 
+async function renderCardRegion(page, bounds, makeCanvas) {
+  const viewport = page.getViewport({scale: 5});
+  const [left, top, right, bottom] = bounds;
+  const canvas = makeCanvas(
+    Math.ceil((right - left) * viewport.width) + 40,
+    Math.ceil((bottom - top) * viewport.height) + 40,
+  );
+  const context = canvas.getContext('2d', {willReadFrequently: true});
+  await page.render({canvasContext: context, viewport,
+    transform: [1, 0, 0, 1, 20 - left * viewport.width, 20 - top * viewport.height],
+    background: 'white'}).promise;
+  return canvas;
+}
+
+function thresholdCardRegion(context, width, height, threshold) {
+  const image = context.getImageData(0, 0, width, height);
+  for (let i = 0; i < image.data.length; i += 4) {
+    const grey = (image.data[i] + image.data[i + 1] * 2 + image.data[i + 2]) / 4;
+    image.data[i] = image.data[i + 1] = image.data[i + 2] = grey < threshold ? 0 : 255;
+  }
+  context.putImageData(image, 0, 0);
+}
+
+function jobCardRowCentres(canvas) {
+  const {width, height} = canvas;
+  const {data} = canvas.getContext('2d').getImageData(0, 0, width, height);
+  const bands = [];
+  for (let y = 0; y < height; y++) {
+    let ink = 0;
+    for (let x = 20; x < Math.min(100, width); x++) {
+      if (data[(y * width + x) * 4] < 150) ink++;
+    }
+    if (ink <= 2) continue;
+    if (bands.length && y - bands.at(-1)[1] < 6) bands.at(-1)[1] = y;
+    else bands.push([y, y]);
+  }
+  const centres = bands.filter(([top, bottom]) => bottom - top >= 19)
+    .map(([top, bottom]) => (top + bottom) / 2);
+  // This format prints the turn, On, Off, Hrs, Days, From and To on a
+  // regular grid, with one empty line before On and another before Days.
+  const offsets = [0, 2, 3, 4, 6, 7, 8];
+  for (const [index, first] of centres.entries()) {
+    const group = centres.slice(index, index + offsets.length);
+    if (group.length !== offsets.length) break;
+    const pitch = (group.at(-1) - first) / offsets.at(-1);
+    if (pitch >= 50 && pitch <= 70 &&
+        group.every((centre, row) => Math.abs(centre - first - offsets[row] * pitch) < 12)) {
+      return [1, 2, 3, 5, 6].map(row => group[row]);
+    }
+  }
+  return [];
+}
+
+function cardClock(value) {
+  const match = /^(\d{1,2}):?(\d{2})$/.exec(value);
+  if (!match || (!value.includes(':') && value.length !== 4) || +match[1] > 23 || +match[2] > 59) return null;
+  return +match[1] * 60 + +match[2];
+}
+
+function cardDate(value) {
+  const match = /^(\d{1,2})\/?(\d{2})\/(\d{2}|\d{4})$/.exec(value) ??
+    /^(\d{2})\/(\d{2})(\d{2})$/.exec(value);
+  if (!match) return null;
+  const [, day, month, year] = match;
+  const fullYear = year.length === 2 ? (Number(year) >= 70 ? 1900 : 2000) + Number(year) : Number(year);
+  const date = new Date(Date.UTC(fullYear, +month - 1, +day));
+  if (date.getUTCMonth() !== +month - 1 || date.getUTCDate() !== +day) return null;
+  return `${day.padStart(2, '0')}/${month}/${fullYear}`;
+}
+
+function dateWithMostReads(values) {
+  const counts = new Map();
+  for (const raw of values) {
+    const value = cardDate(raw);
+    if (value) counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  const ranked = [...counts].sort((a, b) => b[1] - a[1]);
+  if (!ranked.length || (ranked[1] && ranked[0][1] <= ranked[1][1])) return null;
+  return ranked[0][0];
+}
+
+function verifiedCardTimes([starts, finishes, durations]) {
+  const valid = values => [...new Set(values.map(cardClock).filter(value => value !== null))];
+  const hours = new Set(valid(durations));
+  const matches = [];
+  for (const start of valid(starts)) {
+    for (const finish of valid(finishes)) {
+      const minutes = (finish - start + 1440) % 1440;
+      if (minutes && hours.has(minutes)) matches.push([start, finish, minutes]);
+    }
+  }
+  if (matches.length !== 1) return null;
+  return matches[0].map(minutes => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`);
+}
+
+export async function recogniseScannedJobCard(page, worker, check, makeCanvas = (width, height) =>
+  Object.assign(document.createElement('canvas'), {width, height})) {
+  const {width, height} = page.getViewport({scale: 1});
+  if (Math.abs(width - 595) > 5 || Math.abs(height - 842) > 5) return null;
+  const title = await renderCardRegion(page, [.47, .014, .94, .046], makeCanvas);
+  let summary;
+  try {
+    thresholdCardRegion(title.getContext('2d'), title.width, title.height, 165);
+    await worker.setParameters({tessedit_pageseg_mode: '7', tessedit_char_whitelist: ''});
+    const {data} = await worker.recognize(title, {}, {text: true});
+    check();
+    summary = /\b(VSTP|STP|LTP) +W[O0Q]+ *([1-9]\d{1,3}) +((?:SUN|SO|SX|(?:TH|[MTWFS])+(?:O|X)))\b/i.exec(data.text);
+  } finally { title.width = 1; title.height = 1; }
+  if (!summary) return null;
+  const source = await renderCardRegion(page, [.045, .055, .205, .192], makeCanvas);
+  try {
+    const rows = jobCardRowCentres(source);
+    if (!rows.length) return null;
+    const readings = rows.map(() => []);
+    await worker.setParameters({tessedit_pageseg_mode: '7', tessedit_char_whitelist: '0123456789:/'});
+    try {
+      for (const [left, right, halfHeight, threshold, retryDates] of [
+        [152, 411, 24, 0], [143, 405, 24, 165], [157, 412, 23, 190], [149, 418, 26, 135],
+        [155, 420, 25, 150], [158, 425, 26, 205], [150, 412, 24, 115], [160, 405, 25, 175],
+        [145, 425, 26, 0, true], [155, 423, 26, 0, true],
+      ]) {
+        const unresolved = retryDates ? readings.map(values => !dateWithMostReads(values)) : null;
+        for (const [index, centre] of rows.entries()) {
+          if (unresolved && (index < 3 || !unresolved[index])) continue;
+          check();
+          const width = (right - left) * 2;
+          const height = halfHeight * 4;
+          const field = makeCanvas(width + 40, height + 40);
+          const context = field.getContext('2d', {willReadFrequently: true});
+          try {
+            context.fillStyle = 'white';
+            context.fillRect(0, 0, field.width, field.height);
+            context.drawImage(source, left, centre - halfHeight, right - left, halfHeight * 2, 20, 20, width, height);
+            if (threshold) thresholdCardRegion(context, field.width, field.height, threshold);
+            const {data} = await worker.recognize(field, {}, {text: true});
+            readings[index].push(data.text.trim());
+          } finally { field.width = 1; field.height = 1; }
+        }
+      }
+    } finally { await worker.setParameters({tessedit_char_whitelist: ''}); }
+    const times = verifiedCardTimes(readings);
+    const from = dateWithMostReads(readings[3]);
+    const to = dateWithMostReads(readings[4]);
+    const [, plan, turn, dayCode] = summary;
+    const heading = `${plan} WO${turn} ${dayCode}`;
+    if (!times || !from || !to) return heading;
+    const [on, off, hours] = times;
+    return [heading, `Days ${dayCode}`, `From ${from} To ${to}`,
+      `On ${on}`, `Off ${off}`, `Hrs ${hours}`].join('\n');
+  } finally { source.width = 1; source.height = 1; }
+}
+
 export function canvasSize(width, height) {
   if (!(width > 0 && height > 0)) throw new Error('The image has no readable dimensions.');
   const scale = Math.min(1, 3000 / Math.max(width, height), Math.sqrt(4800000 / (width * height)));
@@ -356,6 +508,7 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}) {
     check();
     if (pdf.numPages < 1 || pdf.numPages > 60) throw new Error('Choose a PDF with 1–60 pages.');
     const pages = [];
+    let jobCardPack = false;
     for (let i = 1; i <= pdf.numPages; i++) {
       check();
       report('Preparing page ' + i + ' of ' + pdf.numPages, (i - 1) / pdf.numPages);
@@ -367,6 +520,18 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}) {
         pages.push({fullText: header, lines: [], confidence: null});
         page.cleanup();
         continue;
+      }
+      if (i === 1 || jobCardPack) {
+        session.page = i;
+        session.total = pdf.numPages;
+        const card = await recogniseScannedJobCard(page, worker, check);
+        if (card) {
+          jobCardPack = true;
+          pages.push({fullText: card, lines: [], confidence: null});
+          page.cleanup();
+          continue;
+        }
+        await worker.setParameters({tessedit_pageseg_mode: '3'});
       }
       const original = page.getViewport({scale: 2.5});
       const size = canvasSize(original.width, original.height);

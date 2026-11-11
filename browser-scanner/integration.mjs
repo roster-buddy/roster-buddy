@@ -43,6 +43,20 @@ card.drawText('STP WO208 SX\nDAY CODE SX\nVALID FROM 09/11/2026 TO 13/11/2026\nB
   x: 36, y: 760, font: cardFont, size: 11, lineHeight: 14, opacity: 0,
 });
 const jobCardBytes = [...await jobCardPdf.save()];
+const scannedCardPdf = await PDFDocument.create();
+const scanFont = await scannedCardPdf.embedFont(StandardFonts.Helvetica);
+const scannedCardPage = scannedCardPdf.addPage([595, 842]);
+scannedCardPage.drawText('STP WO208 SX', {x: 398, y: 811, font: scanFont, size: 15});
+// Separate printed fields exercise the image OCR path rather than the
+// searchable-header shortcut, which requires a single validity range.
+for (const [row, label, value] of [
+  [0, 'STP', 'WO208'], [2, 'On', '08:11'], [3, 'Off', '17:10'],
+  [4, 'Hrs', '08:59'], [6, 'Days', 'SX'], [7, 'From', '09/11/26'], [8, 'To', '13/11/26'],
+]) {
+  scannedCardPage.drawText(label, {x: 30, y: 782 - 12 * row, font: scanFont, size: 9});
+  scannedCardPage.drawText(value, {x: 58, y: 782 - 12 * row, font: scanFont, size: 9});
+}
+const scannedCardBytes = [...await scannedCardPdf.save()];
 const pdfBytes = [...await pdf.save()];
 try {
   for (const engine of [chromium, webkit]) {
@@ -62,6 +76,13 @@ try {
       assert.match(jobCard.fullText, /STP WO208 SX/);
       assert.match(jobCard.fullText, /BOOK OFF 17:10/);
       assert.deepEqual(jobCard.lines, []);
+      const [scannedCard] = await page.evaluate(async bytes => {
+        const scanner = await import('/roster_scanner.mjs');
+        return JSON.parse(await scanner.scanDocument(new Uint8Array(bytes), 'original-card.pdf', true));
+      }, scannedCardBytes);
+      assert.match(scannedCard.fullText, /STP WO208 SX/);
+      assert.match(scannedCard.fullText, /From 09\/11\/2026 To 13\/11\/2026/);
+      assert.match(scannedCard.fullText, /On 08:11\nOff 17:10\nHrs 08:59/);
       const renderedPages = await page.evaluate(async bytes => {
         await import('/roster_scanner.mjs');
         const render = number => window.rosterRenderJobCardPage(new Uint8Array(bytes), number);
