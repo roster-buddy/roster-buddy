@@ -36,6 +36,13 @@ for (let n=0; n<2; n++) {
   ['MOORE','21910','WVH',String(204+n),'04:25','12:58'].forEach((t,i) =>
     page.drawText(t, {x:columns[i],y:200,font,size:15}));
 }
+const jobCardPdf = await PDFDocument.create();
+const cardFont = await jobCardPdf.embedFont(StandardFonts.Courier);
+const card = jobCardPdf.addPage([595, 842]);
+card.drawText('STP WO208 SX\nDAY CODE SX\nVALID FROM 09/11/2026 TO 13/11/2026\nBOOK ON 08:11\nBOOK OFF 17:10', {
+  x: 36, y: 760, font: cardFont, size: 11, lineHeight: 14, opacity: 0,
+});
+const jobCardBytes = [...await jobCardPdf.save()];
 const pdfBytes = [...await pdf.save()];
 try {
   for (const engine of [chromium, webkit]) {
@@ -48,6 +55,13 @@ try {
         if (request.url().startsWith('http') && !request.url().startsWith(origin+'/')) external.push(request.url());
       });
       await page.goto(origin+'/scanner-test');
+      const [jobCard] = await page.evaluate(async bytes => {
+        const scanner = await import('/roster_scanner.mjs');
+        return JSON.parse(await scanner.scanDocument(new Uint8Array(bytes), 'job-card.pdf', true));
+      }, jobCardBytes);
+      assert.match(jobCard.fullText, /STP WO208 SX/);
+      assert.match(jobCard.fullText, /BOOK OFF 17:10/);
+      assert.deepEqual(jobCard.lines, []);
       const renderedPages = await page.evaluate(async bytes => {
         await import('/roster_scanner.mjs');
         const render = number => window.rosterRenderJobCardPage(new Uint8Array(bytes), number);

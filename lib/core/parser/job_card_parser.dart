@@ -63,12 +63,9 @@ class JobCardParser implements BaseParser {
       final int pageNumber = pageIndex + 1;
       final String page = pageText[pageIndex].trim();
 
-      if (page.isEmpty) {
-        continue;
-      }
-
       final List<String> sections = pageSplitter.split(page);
 
+      var complete = false;
       for (final String section in sections) {
         final JobCard? card = _parseCard(section, pageNumber: pageNumber);
 
@@ -76,19 +73,19 @@ class JobCardParser implements BaseParser {
           continue;
         }
 
+        complete = true;
         if (seenKeys.add(card.uniqueKey)) {
           cards.add(card);
         }
       }
 
-      if (sections.isNotEmpty &&
-          !cards.any((JobCard card) => card.pageNumber == pageNumber)) {
+      if (!complete) {
         warnings.add(
           ParseWarning(
             message:
                 'No complete Job Card could be extracted from page $pageNumber.',
             pageNumber: pageNumber,
-            severity: ParseWarningSeverity.information,
+            severity: ParseWarningSeverity.blocking,
           ),
         );
       }
@@ -196,11 +193,21 @@ class JobCardParser implements BaseParser {
       }
     }
 
-    final List<DateTime> dates = ParserUtils.extractDates(text);
-
-    if (dates.length >= 2) {
-      return dates.take(2).toList(growable: false);
-    }
+    // Column OCR can put unrelated timetable text after the From date.
+    const date = r'(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})\b';
+    final from = RegExp(
+      r'^\s*FROM[ \t]*[:\-]?[ \t]*' + date,
+      caseSensitive: false,
+      multiLine: true,
+    ).firstMatch(text);
+    final to = RegExp(
+      r'^\s*TO[ \t]*[:\-]?[ \t]*' + date,
+      caseSensitive: false,
+      multiLine: true,
+    ).firstMatch(text);
+    final first = ParserUtils.parseDate(from?.group(1));
+    final last = ParserUtils.parseDate(to?.group(1));
+    if (first != null && last != null) return [first, last];
 
     return const <DateTime>[];
   }
@@ -226,12 +233,6 @@ class JobCardParser implements BaseParser {
 
     if (labelledBookOn != null && labelledBookOff != null) {
       return <String>[labelledBookOn, labelledBookOff];
-    }
-
-    final List<String> extracted = ParserUtils.extractTimes(text);
-
-    if (extracted.length >= 2) {
-      return extracted.take(2).toList(growable: false);
     }
 
     return const <String>[];

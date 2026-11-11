@@ -35,6 +35,16 @@ export async function renderJobCardPage(bytes, pageNumber) {
 }
 if (typeof window !== 'undefined') window.rosterRenderJobCardPage = renderJobCardPage;
 
+// Use searchable PDF headers when all required labelled fields are present.
+export function readJobCardHeader(text) {
+  const heading = /^(?:LTP|STP|VSTP)\s+WO\d{2,4}\s+\w+\s*$/im;
+  const validity = /^(?:VALID FROM|FROM)\s+\d{2}\/\d{2}\/\d{2,4}\s+TO\s+\d{2}\/\d{2}\/\d{2,4}\s*$/im;
+  const bookOn = /^(?:BOOK )?ON\s+\d{2}:\d{2}\s*$/im;
+  const bookOff = /^(?:BOOK )?OFF\s+\d{2}:\d{2}\s*$/im;
+  if (![heading, validity, bookOn, bookOff].every(pattern => pattern.test(text))) return null;
+  return text;
+}
+
 export function canvasSize(width, height) {
   if (!(width > 0 && height > 0)) throw new Error('The image has no readable dimensions.');
   const scale = Math.min(1, 3000 / Math.max(width, height), Math.sqrt(4800000 / (width * height)));
@@ -349,6 +359,14 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}) {
       check();
       report('Preparing page ' + i + ' of ' + pdf.numPages, (i - 1) / pdf.numPages);
       const page = await pdf.getPage(i);
+      const {items} = await page.getTextContent();
+      const text = items.map(item => item.str ? item.str + (item.hasEOL ? '\n' : ' ') : '').join('');
+      const header = readJobCardHeader(text);
+      if (header) {
+        pages.push({fullText: header, lines: [], confidence: null});
+        page.cleanup();
+        continue;
+      }
       const original = page.getViewport({scale: 2.5});
       const size = canvasSize(original.width, original.height);
       const viewport = page.getViewport({scale: 2.5 * size.width / original.width});
