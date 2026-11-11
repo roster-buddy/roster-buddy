@@ -31,6 +31,8 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
       - name: Compile native scanner and plugins
-        # Compile validation only. This unsigned build cannot be installed
-        # on an iPhone; device testing still needs Apple code signing.
-        run: flutter build ios --simulator --debug --no-codesign
+        # Compile for a physical iPhone target because ML Kit's MLImage
+        # framework does not contain an iOS Simulator arm64 slice.
+        # This remains an unsigned validation build and cannot be installed;
+        # device testing still needs Apple code signing.
+        run: flutter build ios --release --no-codesign
