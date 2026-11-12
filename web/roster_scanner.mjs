@@ -330,6 +330,392 @@ export function repairBaseRosterLineNumbers(result) {
   return {...plainResult, lines: [...original, ...repaired]};
 }
 
+function baseRosterGrid(canvas, lines) {
+  const headings = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+  const anchors = headings.map((day, index) => {
+    const line = lines.find(({text}) => {
+      const word = text.toUpperCase().replace(/[^A-Z]/g, '');
+      return word === day || (index === 3 && word === 'WEDNSDAY');
+    });
+    return line && {index, x: line.left, y: (line.top + line.bottom) / 2};
+  }).filter(Boolean);
+  if (anchors.length < 5) return null;
+  const first = anchors[0];
+  const last = anchors.at(-1);
+  const dayWidth = (last.x - first.x) / (last.index - first.index);
+  if (dayWidth < canvas.width * .08 || dayWidth > canvas.width * .145) return null;
+  const left = first.x - first.index * dayWidth;
+  if (anchors.some(({index, x, y}) =>
+    Math.abs(x - left - index * dayWidth) > dayWidth * .08 ||
+    Math.abs(y - first.y) > dayWidth * .12)) return null;
+
+  const {data} = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+  const days = headings.map((_, index) => {
+    const x = Math.round(left + index * dayWidth);
+    const right = Math.min(canvas.width, Math.round(x + dayWidth));
+    const projection = new Float32Array(canvas.height);
+    for (let y = Math.floor(first.y); y < canvas.height; y++) {
+      let ink = 0;
+      for (let sample = Math.max(0, x + 6); sample < right - 6; sample++) {
+        const offset = (y * canvas.width + sample) * 4;
+        if (data[offset] < 224) ink++;
+      }
+      projection[y] = ink / (right - x - 12);
+    }
+    return {x, right, projection};
+  });
+  function peak(projection, estimate, radius) {
+    const center = Math.round(estimate);
+    let y = center;
+    let score = 0;
+    for (let row = Math.max(0, center - radius);
+      row <= Math.min(projection.length - 1, center + radius); row++) {
+      if (projection[row] > score) {
+        y = row;
+        score = projection[row];
+      }
+    }
+    return {y, score};
+  }
+  const mid = days[3].projection;
+  let fit;
+  const radius = Math.max(2, Math.round(dayWidth * .022));
+  for (let start = Math.round(first.y + dayWidth * .15);
+    start <= first.y + dayWidth * .39; start++) {
+    for (let pitch = dayWidth * .28; pitch <= dayWidth * .32; pitch += .25) {
+      let score = 0;
+      for (let row = 0; row < 8; row++) {
+        score += peak(mid, start + row * pitch, radius).score;
+        score += peak(mid, start + (row + .43) * pitch, radius).score;
+      }
+      if (!fit || score > fit.score) fit = {start, pitch, score};
+    }
+  }
+  if (!fit || fit.score < 10) return null;
+  const rows = [];
+  for (let row = 0; row < 54; row++) {
+    const estimate = row === 0 ? fit.start : rows.at(-1)[3].top + dayWidth * .30;
+    const cells = days.map(({x, right, projection}) => {
+      const top = peak(projection, estimate, radius * 2);
+      const bottom = peak(projection, top.y + fit.pitch * .43, radius);
+      return {x, right, top: top.y, bottom: bottom.y, score: Math.min(top.score, bottom.score)};
+    });
+    if (cells.filter(cell => cell.score > .54).length < 4) break;
+    rows.push(cells);
+  }
+  if (rows.length < 8) return null;
+  const pitch = dayWidth * .30;
+  const gray = (x, y) => data[(y * canvas.width + x) * 4];
+  rows.forEach((cells, row) => {
+    cells.forEach((cell, day) => {
+      const {x, right} = cell;
+      cell.fields = Array.from({length: 5}, (_, field) => {
+        const estimate = x + (right - x) * field / 4;
+        let boundary = Math.round(estimate);
+        let best = 0;
+        for (let column = boundary - 6, end = boundary + 9; column <= end; column++) {
+          if (column < 4 || column >= canvas.width - 4) continue;
+          let score = 0;
+          for (const nearby of rows.slice(Math.max(0, row - 4), row + 5)) {
+            const {top, bottom} = nearby[day];
+            const dayBoundary = field === 0 || field === 4;
+            for (let y = dayBoundary ? bottom + 3 : top + 2;
+              y < (dayBoundary ? top + pitch - 3 : bottom - 2); y++) {
+              score += (gray(column - 4, y) + gray(column + 4, y)) / 2 - gray(column, y);
+            }
+          }
+          if (score > best) {
+            best = score;
+            boundary = column;
+          }
+        }
+        return boundary;
+      });
+    });
+  });
+  return {rows, dayWidth, pitch};
+}
+
+async function readBaseRosterGrid(canvas, worker, check, grid, splitFields) {
+  const {rows, dayWidth, pitch} = grid;
+  const fieldWidth = Math.ceil(dayWidth * (splitFields ? .52 : 1.25));
+  const columnCount = splitFields ? 30 : 9;
+  const rowHeight = Math.round(pitch + 18);
+  const results = [];
+  await worker.setParameters({tessedit_pageseg_mode: splitFields ? '11' : '6',
+    tessedit_char_whitelist: splitFields ? '0123456789:.; SPspNnOoDdUuTtYy' : ''});
+  try {
+    for (let start = 0; start < rows.length; start += 8) {
+      check();
+      const section = rows.slice(start, start + 8);
+      const tile = document.createElement('canvas');
+      tile.width = columnCount * fieldWidth;
+      tile.height = section.length * rowHeight;
+      const ctx = tile.getContext('2d');
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, tile.width, tile.height);
+      const cells = section.map(() => Array.from({length: columnCount}, () => []));
+      try {
+        section.forEach((row, index) => {
+          const y = index * rowHeight + 7;
+          row.forEach(({fields, top, bottom}, day) => {
+            const height = bottom - top - 1;
+            const count = splitFields ? 4 : 1;
+            for (let field = 0; field < count; field++) {
+              const left = fields[field] - 1;
+              const part = fields[splitFields ? field + 1 : 4] - left + 2;
+              if (part > 0 && height > 0) {
+                const column = 2 + day * count + field;
+                ctx.drawImage(canvas, left, top + 1, part, height,
+                  column * fieldWidth + 4, y,
+                  Math.min(fieldWidth - 8, part * 1.25), height * 1.35);
+              }
+            }
+          });
+          const {x, top, bottom} = row[0];
+          const left = Math.max(0, Math.round(x - dayWidth * .48));
+          const identityWidth = Math.round(x - left - dayWidth * .065);
+          const dutyHeight = bottom - top - 1;
+          ctx.drawImage(canvas, left, top, identityWidth, dutyHeight,
+            3, y, Math.min(fieldWidth - 8, identityWidth * 1.15), dutyHeight * 1.35);
+          ctx.drawImage(canvas, left, bottom + 1, identityWidth, pitch * .57,
+            fieldWidth + 3, y, Math.min(fieldWidth - 8, identityWidth * 1.15), pitch * .72);
+        });
+        const image = ctx.getImageData(0, 0, tile.width, tile.height);
+        for (let i = 0; i < image.data.length; i += 4) {
+          const ink = Math.max(0, Math.min(255, (image.data[i] - 112) * 4.2));
+          image.data[i] = image.data[i + 1] = image.data[i + 2] = ink;
+        }
+        ctx.putImageData(image, 0, 0);
+        const {data} = await worker.recognize(tile, {}, {text: true, blocks: true});
+        check();
+        for (const block of data.blocks || []) {
+          for (const paragraph of block.paragraphs || []) {
+            for (const line of paragraph.lines || []) {
+              for (const word of line.words || []) {
+                for (const symbol of word.symbols || [word]) {
+                  const {x0, y0, x1, y1} = symbol.bbox;
+                  const x = (x0 + x1) / 2;
+                  const y = (y0 + y1) / 2;
+                  const index = Math.floor(y / rowHeight);
+                  cells[index]?.[Math.floor(x / fieldWidth)]?.push({x, text: symbol.text});
+                }
+              }
+            }
+          }
+        }
+        results.push(...cells.map(row => row.map(words => words.sort((a, b) => a.x - b.x)
+          .map(word => word.text).join(''))));
+      } finally {
+        tile.width = 1;
+        tile.height = 1;
+      }
+    }
+  } finally {
+    await worker.setParameters({tessedit_pageseg_mode: '3', preserve_interword_spaces: '1', tessedit_char_whitelist: ''});
+  }
+  return results;
+}
+
+function clockMinutes(value) {
+  return Number(value.slice(0, 2)) * 60 + Number(value.slice(2));
+}
+
+function clockCandidates(value) {
+  const text = value.toUpperCase().replace(/[DO]/g, '0').replace(/[^0-9]/g, '');
+  if (text.length < 3 || text.length > 6) return [];
+  const candidates = new Set();
+  if (text.length === 3) candidates.add('0' + text);
+  for (let index = 0; index + 4 <= text.length; index++) {
+    candidates.add(text.slice(index, index + 4));
+  }
+  return [...candidates].filter(clock => +clock.slice(0, 2) < 24 && +clock.slice(2) < 60);
+}
+
+// A misread digit can still produce a plausible time. Check book-on and
+// book-off against the printed duration and flag ambiguous readings.
+export function readBaseRosterDay(attempts, combined, {blank = false, sunday = false} = {}) {
+  if (blank) return '';
+  const noDuty = /(?:NO|N[CEAO]?)[A-Z1]{0,2}(?:D[UO]?[TL]Y|OUTY|DUT)[A-Z]?$/;
+  const letters = value => value.toUpperCase().replace(/[^A-Z1]/g, '');
+  const rest = [combined, ...attempts.map(fields => fields.join(''))]
+    .some(value => noDuty.test(letters(value)) && value.replace(/[^0-9]/g, '').length < 3);
+  if (rest) return 'No Duty';
+
+  const counts = Array.from({length: 4}, () => new Map());
+  const add = (index, value) => counts[index].set(value, (counts[index].get(value) || 0) + 1);
+  function addFields(fields) {
+    fields.slice(0, 3).forEach((value, index) => {
+      for (const clock of clockCandidates(value)) add(index, clock);
+    });
+    const turn = fields[3].toUpperCase().replace(/[^0-9A-Z]/g, '');
+    if (/^[S5]P$/.test(turn)) add(3, 'Sp');
+    else if ((sunday ? /^[1-9]\d{0,3}$/ : /^[1-9]\d{2,3}$/).test(turn)) add(3, turn);
+  }
+  attempts.forEach(addFields);
+  const compact = combined.toUpperCase().replace(/[^0-9A-Z]/g, '')
+    .match(/^(\d{4})(\d{4})(\d{4})([S5]P|\d{1,3})$/);
+  if (compact) addFields(compact.slice(1));
+
+  const choices = [];
+  for (const [on, onCount] of counts[0]) {
+    for (const [off, offCount] of counts[1]) {
+      for (const [hours, hoursCount] of counts[2]) {
+        if ((clockMinutes(off) - clockMinutes(on) + 1440) % 1440 === clockMinutes(hours)) {
+          choices.push({clocks: [on, off, hours], score: onCount + offCount + hoursCount});
+        }
+      }
+    }
+  }
+  choices.sort((a, b) => b.score - a.score);
+  const turns = [...counts[3]].sort((a, b) => b[1] - a[1]);
+  if (!choices.length || choices[0].score === choices[1]?.score ||
+      !turns.length || turns[0][1] === turns[1]?.[1] ||
+      (turns[0][0] !== 'Sp' && turns[0][1] < 2)) return '?';
+  return [...choices[0].clocks.map(clock => clock.slice(0, 2) + ':' + clock.slice(2)),
+    turns[0][0]].join(' ');
+}
+
+function baseRosterFirstLine(fields, compact) {
+  const counts = new Map();
+  fields.forEach((row, index) => {
+    for (const value of new Set([row[0], compact[index][0]])) {
+      if (!/^\d{1,2}$/.test(value.trim())) continue;
+      const start = Number(value) - index;
+      if (start < 1 || start + fields.length - 1 > 54) continue;
+      counts.set(start, (counts.get(start) || 0) + 1);
+    }
+  });
+  const ranked = [...counts].sort((a, b) => b[1] - a[1]);
+  if (!ranked.length || ranked[0][1] < 4 || ranked[0][1] < (ranked[1]?.[1] || 0) * 2) return null;
+  return ranked[0][0];
+}
+
+function isBlankBaseRosterCell(canvas, {fields, top, bottom}) {
+  const x = fields[0] + 5;
+  const width = fields[4] - x - 5;
+  const height = bottom - top - 6;
+  if (width <= 0 || height <= 0) return false;
+  const {data} = canvas.getContext('2d').getImageData(x, top + 3, width, height);
+  let dark = 0;
+  for (let index = 0; index < data.length; index += 4) {
+    if (data[index] < 140) dark++;
+  }
+  return dark < width * height * .008;
+}
+
+async function retryBaseRosterDay(canvas, worker, check, cell) {
+  const attempts = [];
+  const {fields, top, bottom} = cell;
+  const height = bottom - top - 3;
+  if (height <= 0) return attempts;
+  const crop = document.createElement('canvas');
+  try {
+    for (const [offset, threshold] of [[0, 175], [2, 160], [-2, 191]]) {
+      const result = [];
+      for (let field = 0; field < 4; field++) {
+        check();
+        const x = fields[field] + offset;
+        const width = fields[field + 1] - x - 1;
+        if (width <= 0) {
+          result.push('');
+          continue;
+        }
+        crop.width = width * 2 + 26;
+        crop.height = height * 2 + 26;
+        const ctx = crop.getContext('2d');
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, crop.width, crop.height);
+        ctx.drawImage(canvas, x, top + 2, width, height, 13, 13, width * 2, height * 2);
+        const image = ctx.getImageData(0, 0, crop.width, crop.height);
+        for (let i = 0; i < image.data.length; i += 4) {
+          const gray = Math.max(0, Math.min(255, (image.data[i] - threshold) * 4 + 127));
+          image.data[i] = image.data[i + 1] = image.data[i + 2] = gray;
+        }
+        ctx.putImageData(image, 0, 0);
+        const {data} = await worker.recognize(crop);
+        result.push(data.text.trim());
+      }
+      attempts.push(result);
+    }
+    return attempts;
+  } finally {
+    crop.width = 1;
+    crop.height = 1;
+  }
+}
+
+export async function recogniseBaseRosterGrid(canvas, worker, check, fullPage) {
+  const grid = baseRosterGrid(canvas, fullPage.lines);
+  if (!grid) return null;
+  const fields = await readBaseRosterGrid(canvas, worker, check, grid, true);
+  const compact = await readBaseRosterGrid(canvas, worker, check, grid, false);
+  const first = baseRosterFirstLine(fields, compact);
+  if (first === null) return null;
+  const table = ['WEEK | SUNDAY | MONDAY | TUESDAY | WEDNESDAY | THURSDAY | FRIDAY | SATURDAY'];
+  await worker.setParameters({tessedit_pageseg_mode: '7', tessedit_char_whitelist: '0123456789:.SPspNoDuty'});
+  try {
+    for (const [index, row] of fields.entries()) {
+      const alternate = compact[index];
+      const identities = new Set([row[1], alternate[1]].map(value => value.trim())
+        .filter(value => /^\d{4}$/.test(value)));
+      const cells = [];
+      for (const [day, cell] of grid.rows[index].entries()) {
+        const attempts = [row.slice(2 + day * 4, 6 + day * 4)];
+        const whole = alternate[day + 2];
+        const blank = isBlankBaseRosterCell(canvas, cell);
+        const options = {blank, sunday: day === 0};
+        let reading = readBaseRosterDay(attempts, whole, options);
+        if (reading === '?') {
+          attempts.push(...await retryBaseRosterDay(canvas, worker, check, cell));
+          reading = readBaseRosterDay(attempts, whole, options);
+        }
+        cells.push(reading);
+      }
+      table.push([first + index, ...cells].join(' | '));
+      table.push(identities.size === 1 ? [...identities][0] : '?');
+    }
+  } finally {
+    await worker.setParameters({tessedit_pageseg_mode: '3', tessedit_char_whitelist: ''});
+  }
+  return {fullText: table.join('\n'), lines: [], confidence: fullPage.confidence};
+}
+
+// If a repeated clock pair is read with different numeric turns, ask for
+// verification. The printed roster can legitimately assign different turns.
+export function flagConflictingBaseRosterTurns(pages) {
+  const grids = pages.map(page => page.lines.length === 0 &&
+    page.fullText.startsWith('WEEK | SUNDAY | MONDAY |') ? page.fullText.split('\n') : null);
+  const byClock = new Map();
+  grids.forEach(rows => {
+    if (!rows) return;
+    for (let index = 1; index < rows.length; index += 2) {
+      const cells = rows[index].split('|').map(cell => cell.trim());
+      rows[index] = cells;
+      cells.slice(1).forEach((cell, day) => {
+        const match = /^(\d\d:\d\d \d\d:\d\d \d\d:\d\d) (\d+)$/.exec(cell);
+        if (!match) return;
+        const key = (day === 0 ? 'Sunday ' : '') + match[1];
+        if (!byClock.has(key)) byClock.set(key, []);
+        byClock.get(key).push({cells, column: day + 1, turn: match[2]});
+      });
+    }
+  });
+  for (const readings of byClock.values()) {
+    const counts = new Map();
+    for (const {turn} of readings) counts.set(turn, (counts.get(turn) || 0) + 1);
+    if (counts.size < 2) continue;
+    const ranked = [...counts].sort((a, b) => b[1] - a[1]);
+    const agreed = ranked[0][1] > ranked[1][1] ? ranked[0][0] : null;
+    for (const {cells, column, turn} of readings) {
+      if (turn !== agreed) cells[column] = '?';
+    }
+  }
+  return pages.map((page, index) => grids[index]
+    ? {...page, fullText: grids[index].map(row => Array.isArray(row) ? row.join(' | ') : row).join('\n')}
+    : page);
+}
+
 async function recogniseBaseRosterBands(canvas, worker, check, session, fullPage) {
   // Three to five printed roster lines per tile keeps adjacent tiny rows from
   // being fused, while remaining much quicker than 54 individual OCR calls.
@@ -671,9 +1057,10 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}, retryU
         }
         await worker.setParameters({tessedit_pageseg_mode: '3'});
       }
-      const original = page.getViewport({scale: 2.5});
+      const renderScale = retryUpsideDown ? 3.3 : 2.5;
+      const original = page.getViewport({scale: renderScale});
       const size = canvasSize(original.width, original.height);
-      const viewport = page.getViewport({scale: 2.5 * size.width / original.width});
+      const viewport = page.getViewport({scale: renderScale * size.width / original.width});
       const canvas = document.createElement('canvas');
       canvas.width = Math.ceil(viewport.width);
       canvas.height = Math.ceil(viewport.height);
@@ -707,9 +1094,9 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}, retryU
               baseRosterOrientationScore(upright);
             const selected = useOpposite ? opposite : upright;
             const selectedCanvas = useOpposite ? rotated : canvas;
-            const detailed = await recogniseBaseRosterBands(
-              selectedCanvas, session.worker, check, session, selected);
-            const result = repairBaseRosterLineNumbers(detailed);
+            const grid = await recogniseBaseRosterGrid(selectedCanvas, session.worker, check, selected);
+            const result = grid ?? repairBaseRosterLineNumbers(await recogniseBaseRosterBands(
+              selectedCanvas, session.worker, check, session, selected));
             if (!result.fullText.trim()) {
               throw new Error('No readable text was found on page ' + i + '. Try a clearer photo.');
             }
@@ -721,7 +1108,7 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}, retryU
         }
       } finally { page.cleanup(); canvas.width = 1; canvas.height = 1; }
     }
-    return pages;
+    return retryUpsideDown ? flagConflictingBaseRosterTurns(pages) : pages;
   };
   try {
     return JSON.stringify(await Promise.race([work(), stopped]));

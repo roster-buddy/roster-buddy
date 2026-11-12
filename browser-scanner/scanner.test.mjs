@@ -146,3 +146,26 @@ test('36-row 48-hour report rereads one damaged D3 clock', () => {
     'D3= 2041904 “13:22', 'D3 04:54 13:22'
   )), false);
 });
+
+test('checks isolated Base Roster fields before accepting the shift', async () => {
+  const {readBaseRosterDay} = await import('../web/roster_scanner.mjs');
+  assert.equal(readBaseRosterDay([['17:11', '01:31', '08:20', '215']], '171101310820215'),
+    '17:11 01:31 08:20 215');
+  assert.equal(readBaseRosterDay([['17:11', '01:31', '08:20', '15']], ''), '?');
+  assert.equal(readBaseRosterDay([['17:14', '01:31', '08:20', '215']], ''), '?');
+  assert.equal(readBaseRosterDay([['', '', 'No', 'Duty']], ''), 'No Duty');
+  assert.equal(readBaseRosterDay([['', '', '', '']], ''), '?');
+  assert.equal(readBaseRosterDay([['', '', '', '']], '', {blank: true}), '');
+});
+
+test('flags conflicting turn readings across Base Roster pages', async () => {
+  const {flagConflictingBaseRosterTurns} = await import('../web/roster_scanner.mjs');
+  const heading = 'WEEK | SUNDAY | MONDAY | TUESDAY | WEDNESDAY | THURSDAY | FRIDAY | SATURDAY';
+  const pages = [
+    {lines: [], fullText: heading + '\n1 | | 17:11 01:31 08:20 245 | No Duty\n1234'},
+    {lines: [], fullText: heading + '\n2 | | 17:11 01:31 08:20 215 | No Duty\n5678'},
+  ];
+  for (const page of flagConflictingBaseRosterTurns(pages)) {
+    assert.match(page.fullText, /\| \? \| No Duty/);
+  }
+});

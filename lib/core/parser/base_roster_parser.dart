@@ -115,6 +115,16 @@ class BaseRosterParser implements BaseParser {
 
     final ExtractedTable table = tableExtractor.extract(pageText);
     final List<_BaseRosterWeek> weeks = _extractWeeks(table, warnings);
+    final structuredGrid = pageText.any(
+      (page) => page.startsWith('WEEK | SUNDAY | MONDAY |'),
+    );
+    if (structuredGrid &&
+        weeks.asMap().entries.any((entry) => entry.value.printedWeekNumber != entry.key + 1)) {
+      warnings.add(const ParseWarning(
+        message: 'One or more Base Roster lines are missing. Scan the complete roster to preserve the weekly rotation.',
+        severity: ParseWarningSeverity.blocking,
+      ));
+    }
 
     if (weeks.isEmpty) {
       warnings.add(
@@ -133,7 +143,8 @@ class BaseRosterParser implements BaseParser {
     }
 
     final int rosterStartIndex = weeks.indexWhere(
-      (_BaseRosterWeek week) => week.driverNumber == requestedRosterNumber,
+      (_BaseRosterWeek week) =>
+          requestedRosterNumber.isNotEmpty && week.driverNumber == requestedRosterNumber,
     );
 
     if (requestedRosterNumber.isNotEmpty && rosterStartIndex < 0) {
@@ -165,7 +176,18 @@ class BaseRosterParser implements BaseParser {
       );
     }
 
-    if (warnings.any((ParseWarning warning) => warning.preventsImport)) {
+    if (rosterStartIndex >= 0 &&
+        (swapRosterNumber.isEmpty || swapStartIndex >= 0)) {
+      // Only the starting lines need an identity. The printed line numbers
+      // establish the rest of the rotation even if another ID is unreadable.
+      warnings.removeWhere((warning) =>
+          warning.weekNumber != null &&
+          warning.message.startsWith('Check the roster number on line '));
+    }
+
+    if (warnings.any(
+      (warning) => warning.preventsImport && warning.weekNumber == null,
+    )) {
       return ParseResult(
         documentType: DocumentType.baseRoster,
         driverFound: rosterStartIndex >= 0,
@@ -200,6 +222,7 @@ class BaseRosterParser implements BaseParser {
         dayIndex++
       ) {
         final _BaseRosterDayCell cell = selectedWeek.dayCells[dayIndex];
+        if (!cell.isComplete) continue;
         final Duty? duty = _buildDuty(
           date: weekSunday.add(Duration(days: dayIndex)),
           driverNumber: requestedRosterNumber,
@@ -292,7 +315,8 @@ class BaseRosterParser implements BaseParser {
           break;
         }
 
-        if (_driverNumberFromIdentityRow(candidate) != null) {
+        if (_driverNumberFromIdentityRow(candidate) != null ||
+            (dutyRow.rawText.contains('|') && candidate.rawText == '?')) {
           identityRow = candidate;
           break;
         }
@@ -309,30 +333,31 @@ class BaseRosterParser implements BaseParser {
         continue;
       }
 
-      final String? detectedDriver = _driverNumberFromIdentityRow(identityRow);
+      final String detectedDriver =
+          _driverNumberFromIdentityRow(identityRow) ?? '';
 
-      if (detectedDriver == null) {
-        continue;
+      if (detectedDriver.isEmpty) {
+        warnings.add(
+          ParseWarning(
+            message: 'Check the roster number on line $weekNumber, page ${dutyRow.pageNumber}.',
+            severity: ParseWarningSeverity.blocking,
+            pageNumber: dutyRow.pageNumber,
+            weekNumber: weekNumber,
+          ),
+        );
       }
 
       final List<_BaseRosterDayCell> cells = _extractDayCells(dutyRow);
-      if (cells.any(
-        (cell) =>
-            cell.rawText.isNotEmpty &&
-            !RegExp(
-              r'^(?:NO\s*DUTY|RD|REST(?: DAY)?|OFF)$',
-              caseSensitive: false,
-            ).hasMatch(cell.rawText.trim()) &&
-            (cell.bookOn == null || cell.bookOff == null),
-      )) {
+      if (cells.any((cell) => !cell.isComplete)) {
         warnings.add(
           ParseWarning(
             message:
-                'Check the times on Base Roster line $weekNumber, page ${dutyRow.pageNumber}.',
+                'Check the shifts on Base Roster line $weekNumber, page ${dutyRow.pageNumber}.',
             severity: ParseWarningSeverity.blocking,
+            pageNumber: dutyRow.pageNumber,
+            weekNumber: weekNumber,
           ),
         );
-        continue;
       }
 
       if (cells.length != 6 && cells.length != 7) {
@@ -587,7 +612,7 @@ class _BaseRosterDayCell {
   factory _BaseRosterDayCell.fromCombinedText(String value) {
     // Printed cells often have no spaces: 15:1100:5609:45211.
     final compact = RegExp(
-      r'^\s*([0-2]\d[:.]?[0-5]\d)\s*([0-2]\d[:.]?[0-5]\d)\s*(\d{1,2}[:.][0-5]\d)\s*(Sp|\d{2,4})\s*$',
+      r'^\s*([0-2]\d[:.]?[0-5]\d)\s*([0-2]\d[:.]?[0-5]\d)\s*(\d{1,2}[:.][0-5]\d)\s*(Sp|\d{1,4})\s*$',
       caseSensitive: false,
     ).firstMatch(value);
     if (compact != null) {
@@ -632,6 +657,14 @@ class _BaseRosterDayCell {
       turnNumber: turnNumber,
     );
   }
+
+  bool get isComplete =>
+      rawText.isEmpty ||
+      RegExp(
+        r'^(?:NO\s*DUTY|RD|REST(?: DAY)?|OFF)$',
+        caseSensitive: false,
+      ).hasMatch(rawText) ||
+      (bookOn != null && bookOff != null);
 
   final String rawText;
   final String? bookOn;

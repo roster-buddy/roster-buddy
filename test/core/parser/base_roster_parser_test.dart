@@ -154,6 +154,25 @@ void main() {
       expect(result.duties.first.driverNumber, '3535');
     });
 
+    test('keeps readable Base Roster shifts while a grid cell needs review', () async {
+      final parser = BaseRosterParser(
+        commencementDate: DateTime(2026, 5, 3),
+        rosterNumber: '1234',
+      );
+      final result = await parser.parse(pageText: [
+        'WEEK | SUNDAY | MONDAY | TUESDAY | WEDNESDAY | THURSDAY | FRIDAY | SATURDAY\n'
+        '1 | 06:00 14:00 08:00 4 | ? | No Duty | No Duty | No Duty | No Duty | No Duty\n'
+        '1234',
+      ]);
+
+      expect(result.driverFound, isTrue);
+      expect(result.duties.first.turnNumber, '4');
+      expect(result.duties, hasLength(6));
+      expect(result.canImport, isFalse);
+      expect(result.warnings.single.weekNumber, 1);
+      expect(result.warnings.single.pageNumber, 1);
+    });
+
     test('blocks import when the roster number is not found', () async {
       final BaseRosterParser parser = BaseRosterParser(
         commencementDate: DateTime(2026, 5, 3),

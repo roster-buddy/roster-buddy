@@ -308,6 +308,89 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
     }
   }
 
+  bool _canEditBaseRosterRow(ParseWarning warning) {
+    final page = warning.pageNumber;
+    return _type == DocumentType.baseRoster &&
+        warning.weekNumber != null &&
+        page != null &&
+        page > 0 &&
+        page <= _pages!.length &&
+        _pages![page - 1].lines.isEmpty &&
+        _pages![page - 1].fullText.startsWith('WEEK | SUNDAY | MONDAY |');
+  }
+
+  Future<void> _editBaseRosterRow(ParseWarning warning, {bool showAll = false}) async {
+    if (warning.weekNumber == null) return;
+    final pageIndex = warning.pageNumber! - 1;
+    final page = _pages![pageIndex];
+    final lines = page.fullText.split('\n');
+    final index = lines.indexWhere(
+      (line) => line.startsWith('${warning.weekNumber} |'),
+    );
+    if (index < 0 || index + 1 >= lines.length) return;
+
+    final cells = lines[index].split('|').map((cell) => cell.trim()).toList();
+    if (cells.length != 8) return;
+    final identity = lines[index + 1];
+    final corrections = await showDialog<List<String>>(
+      context: context,
+      builder: (_) => _BaseRosterRowCorrection(
+        lineNumber: warning.weekNumber!,
+        pageNumber: warning.pageNumber!,
+        cells: cells,
+        identity: identity,
+        showAll: showAll,
+      ),
+    );
+    if (!mounted || corrections == null) return;
+
+    lines[index] = corrections.take(8).join(' | ');
+    lines[index + 1] = corrections.last;
+    setState(() {
+      _pages = List<SmartScanResult>.of(_pages!)
+        ..[pageIndex] = SmartScanResult(
+          fullText: lines.join('\n'),
+          lines: const [],
+          confidence: page.confidence,
+        );
+    });
+    await _prepare();
+  }
+
+  Widget _recognisedPage(int pageIndex, SmartScanResult page) {
+    if (_type != DocumentType.baseRoster ||
+        page.lines.isNotEmpty ||
+        !page.fullText.startsWith('WEEK | SUNDAY | MONDAY |')) {
+      return Padding(
+        padding: const EdgeInsets.all(12),
+        child: SelectableText('Page ${pageIndex + 1}\n${page.fullText}'),
+      );
+    }
+
+    final rows = page.fullText.split('\n');
+    return ExpansionTile(
+      title: Text('Page ${pageIndex + 1}'),
+      children: [
+        for (var index = 1; index + 1 < rows.length; index += 2)
+          ListTile(
+            title: Text('Roster line ${rows[index].split('|').first.trim()}'),
+            subtitle: Text(rows[index + 1] == '?'
+                ? 'Check roster number'
+                : 'Roster number ${rows[index + 1]}'),
+            trailing: const Icon(Icons.edit_outlined),
+            onTap: () => _editBaseRosterRow(
+              ParseWarning(
+                message: '',
+                pageNumber: pageIndex + 1,
+                weekNumber: int.tryParse(rows[index].split('|').first.trim()),
+              ),
+              showAll: true,
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _header() {
     final parsed = _effective;
     final reviewReasons = parsed == null || !_daily
@@ -370,19 +453,8 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
         ExpansionTile(
           title: Text('Recognised text · ${_pages!.length} page(s)'),
           children: [
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: SelectableText(
-                _pages!
-                    .asMap()
-                    .entries
-                    .map(
-                      (entry) =>
-                          'Page ${entry.key + 1}\n${entry.value.fullText}',
-                    )
-                    .join('\n\n'),
-              ),
-            ),
+            for (final entry in _pages!.asMap().entries)
+              _recognisedPage(entry.key, entry.value),
           ],
         ),
         if (parsed != null) ...[
@@ -420,6 +492,8 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
               ),
           ] else if (reviewReasons.isEmpty && parsed.duties.isNotEmpty)
             const Text('All recognised records passed the automatic checks.')
+          else if (_type == DocumentType.baseRoster)
+            const Text('Check the flagged lines below. The readable shifts are shown in the preview.')
           else
             const Text(
               'Only the unresolved items shown above need checking. '
@@ -436,6 +510,14 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
                       trailing: const Icon(Icons.edit_outlined),
                       onTap: () => _editRecord(null, warning),
                     )
+                  : _canEditBaseRosterRow(warning)
+                  ? ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(warning.message),
+                      subtitle: const Text('Tap to correct this row'),
+                      trailing: const Icon(Icons.edit_outlined),
+                      onTap: () => _editBaseRosterRow(warning),
+                    )
                   : Text(warning.message),
             ),
           if (_daily) ...[
@@ -446,7 +528,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
               label: const Text('Add missing shift'),
             ),
           ],
-          if (!parsed.canImport)
+          if (!parsed.canImport && !parsed.warnings.any(_canEditBaseRosterRow))
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
               child: Text(
@@ -479,11 +561,13 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
           '${d.bookOn ?? "—"}–${d.bookOff ?? "—"}${d.remarks == null ? "" : "\n${d.remarks}"}',
         ),
         isThreeLine: true,
-        trailing: IconButton(
-          tooltip: 'Correct record',
-          icon: const Icon(Icons.edit_outlined),
-          onPressed: () => _editRecord(index),
-        ),
+        trailing: _daily
+            ? IconButton(
+                tooltip: 'Correct record',
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: () => _editRecord(index),
+              )
+            : null,
       );
     }
     index -= result.duties.length;
@@ -631,6 +715,100 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _BaseRosterRowCorrection extends StatefulWidget {
+  const _BaseRosterRowCorrection({
+    required this.lineNumber,
+    required this.pageNumber,
+    required this.cells,
+    required this.identity,
+    required this.showAll,
+  });
+
+  final int lineNumber;
+  final int pageNumber;
+  final List<String> cells;
+  final String identity;
+  final bool showAll;
+
+  @override
+  State<_BaseRosterRowCorrection> createState() => _BaseRosterRowCorrectionState();
+}
+
+class _BaseRosterRowCorrectionState extends State<_BaseRosterRowCorrection> {
+  static const _dayLabels = [
+    'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+  ];
+  static final _duty = RegExp(
+    r'^((?:[01]\d|2[0-3]):[0-5]\d) +((?:[01]\d|2[0-3]):[0-5]\d) +(?:\d{1,2}:[0-5]\d) +(?:\d{1,4}|Sp)$',
+    caseSensitive: false,
+  );
+
+  final _form = GlobalKey<FormState>();
+  late final List<String> _values = [...widget.cells, widget.identity];
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Base Roster line ${widget.lineNumber}, page ${widget.pageNumber}'),
+      scrollable: true,
+      content: Form(
+        key: _form,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.showAll || widget.identity == '?')
+              TextFormField(
+                initialValue: widget.identity == '?' ? '' : widget.identity,
+                decoration: const InputDecoration(labelText: 'Roster number'),
+                keyboardType: TextInputType.number,
+                onChanged: (value) => _values[8] = value.trim(),
+                validator: (_) => RegExp(r'^\d{4}$').hasMatch(_values[8])
+                    ? null
+                    : 'Enter the four-digit roster number.',
+              ),
+            for (var day = 0; day < _dayLabels.length; day++)
+              if (widget.showAll || widget.cells[day + 1] == '?')
+                TextFormField(
+                  initialValue: widget.cells[day + 1] == '?' ? '' : widget.cells[day + 1],
+                  decoration: InputDecoration(
+                    labelText: _dayLabels[day],
+                    hintText: '06:00 14:45 08:45 201',
+                    helperText: day == 0
+                        ? 'Start, finish, hours, turn. Enter No Duty or leave blank for an empty cell.'
+                        : 'Start, finish, hours, turn, or No Duty.',
+                    helperMaxLines: 2,
+                  ),
+                  onChanged: (value) => _values[day + 1] = value.trim(),
+                  validator: (value) {
+                    final text = value?.trim() ?? '';
+                    if (((day == 0 || widget.cells[day + 1].isEmpty) && text.isEmpty) ||
+                        text.toLowerCase() == 'no duty' ||
+                        _duty.hasMatch(text)) {
+                      _values[day + 1] = text;
+                      return null;
+                    }
+                    return 'Enter four values, or No Duty.';
+                  },
+                ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (_form.currentState!.validate()) Navigator.pop(context, _values);
+          },
+          child: const Text('Save correction'),
+        ),
+      ],
     );
   }
 }
