@@ -10,6 +10,7 @@ external JSPromise<JSString> _scanDocument(
   JSString name,
   JSBoolean pdf,
   JSFunction progress,
+  JSBoolean retryUpsideDown,
 );
 
 @JS('rosterCancelScan')
@@ -37,13 +38,21 @@ class SmartScanEngine {
     required Uint8List bytes,
     required String fileName,
     void Function(String, double?)? onProgress,
-  }) => _recognise(bytes, fileName, true, onProgress);
+    bool retryUpsideDown = false,
+  }) => _recognise(
+    bytes,
+    fileName,
+    true,
+    onProgress,
+    retryUpsideDown: retryUpsideDown,
+  );
 
   static Future<List<SmartScanResult>> _recognise(
     Uint8List bytes,
     String name,
     bool pdf,
     void Function(String, double?)? onProgress,
+    {bool retryUpsideDown = false}
   ) async {
     try {
       final encoded = await _scanDocument(
@@ -54,6 +63,7 @@ class SmartScanEngine {
           final value = fraction.toDartDouble;
           onProgress?.call(message.toDart, value < 0 ? null : value);
         }).toJS,
+        retryUpsideDown.toJS,
       ).toDart;
       final decoded = jsonDecode(encoded.toDart);
       if (decoded is Map<String, dynamic>) {

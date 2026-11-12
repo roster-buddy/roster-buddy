@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart';
 
@@ -70,6 +71,7 @@ class SmartScanEngine {
     required Uint8List bytes,
     required String fileName,
     void Function(String, double?)? onProgress,
+    bool retryUpsideDown = false,
   }) async {
     _ensureSupported();
 
@@ -155,9 +157,45 @@ class SmartScanEngine {
 
           await renderedFile.writeAsBytes(renderedImage.bytes, flush: true);
 
-          results.add(
-            await _recogniseFile(file: renderedFile, recognizer: recognizer),
+          final SmartScanResult upright = await _recogniseFile(
+            file: renderedFile,
+            recognizer: recognizer,
           );
+
+          if (!retryUpsideDown) {
+            results.add(upright);
+          } else {
+            onProgress?.call(
+              'Checking Base Roster page $pageNumber orientation…',
+              (pageNumber - 0.5) / document.pagesCount,
+            );
+            final File rotatedFile = File(
+              '${temporaryDirectory.path}/'
+              'roster_buddy_pdf_rotated_'
+              '${DateTime.now().microsecondsSinceEpoch}_'
+              '$pageNumber.png',
+            );
+            renderedFiles.add(rotatedFile);
+            final img.Image? decoded = img.decodeImage(renderedImage.bytes);
+            if (decoded == null) {
+              results.add(upright);
+            } else {
+              await rotatedFile.writeAsBytes(
+                img.encodePng(img.copyRotate(decoded, angle: 180)),
+                flush: true,
+              );
+              final SmartScanResult rotated = await _recogniseFile(
+                file: rotatedFile,
+                recognizer: recognizer,
+              );
+              results.add(
+                _baseRosterOrientationScore(rotated) >
+                        _baseRosterOrientationScore(upright)
+                    ? rotated
+                    : upright,
+              );
+            }
+          }
         } on SmartScanException {
           rethrow;
         } catch (_) {
@@ -226,6 +264,31 @@ class SmartScanEngine {
     }
 
     return SmartScanResult(fullText: recognisedText.text, lines: lines);
+  }
+
+  static int _baseRosterOrientationScore(SmartScanResult result) {
+    final String text = result.fullText.toUpperCase();
+    final int weekdays = <String>[
+      'SUNDAY',
+      'MONDAY',
+      'TUESDAY',
+      'WEDNESDAY',
+      'THURSDAY',
+      'FRIDAY',
+      'SATURDAY',
+    ].where(text.contains).length;
+    final int clocks = RegExp(
+      r'\b(?:[01]?\d|2[0-3])[:.]?[0-5]\d\b',
+    ).allMatches(text).length;
+    final int noDuty = RegExp(
+      r'\bNO\s*DUTY\b',
+    ).allMatches(text).length;
+    final int identities = RegExp(
+      r'^\s*\d{4}\b',
+      multiLine: true,
+    ).allMatches(text).length;
+    return weekdays * 10000 + clocks * 30 + noDuty * 100 +
+        identities * 80 + result.lines.length;
   }
 
   static void _ensureSupported() {

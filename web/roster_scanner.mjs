@@ -244,6 +244,144 @@ export function needsDetailedRosterPass(text) {
   });
 }
 
+// Prefer the reading that resembles a Base Roster table, not simply the one
+// containing the most OCR characters. Upside-down tables can produce plenty
+// of convincing-looking gibberish while losing weekday headings and clocks.
+export function baseRosterOrientationScore(result) {
+  const text = (result?.fullText || '').toUpperCase();
+  const weekdays = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY',
+    'THURSDAY', 'FRIDAY', 'SATURDAY'].filter(day => text.includes(day)).length;
+  const clocks = (text.match(/\b(?:[01]?\d|2[0-3])[:.]?[0-5]\d\b/g) || []).length;
+  const noDuty = (text.match(/\bNO\s*DUTY\b/g) || []).length;
+  const identities = (text.match(/^\s*\d{4}\b/gm) || []).length;
+  return weekdays * 10000 + clocks * 30 + noDuty * 100 +
+    identities * 80 + (result?.lines?.length || 0);
+}
+
+// The Base Roster's first column is a fixed, sequential line number. Tiny
+// print can turn 11 into "[1" or 29 into "20" even when all duty cells are
+// clear. Recover only that printed sequence from its regular grid positions;
+// duty text and roster identities are never inferred or altered.
+export function repairBaseRosterLineNumbers(result) {
+  const lines = result?.lines || [];
+  const positioningLines = [...lines, ...(result?.orientationLines || [])];
+  if (lines.length < 10) return result;
+  const sundayHeading = positioningLines.find(line =>
+    line.text.toUpperCase().replace(/[^A-Z]/g, '').includes('SUNDAY'));
+  if (!sundayHeading) return result;
+  const candidates = positioningLines.map(line => {
+    const compact = line.text.trim();
+    const digits = compact.replace(/[^0-9]/g, '');
+    const value = digits.length >= 1 && digits.length <= 2 ? Number(digits) : 0;
+    return {line, compact, value, exact: /^\d{1,2}$/.test(compact)};
+  }).filter(candidate => candidate.value >= 1 && candidate.value <= 54 &&
+    candidate.line.left < sundayHeading.left * 0.85 &&
+    candidate.line.top > sundayHeading.bottom + 10);
+  if (candidates.length < 4) return result;
+
+  let best = null;
+  for (let first = 0; first < candidates.length; first++) {
+    for (let second = first + 1; second < candidates.length; second++) {
+      const a = candidates[first];
+      const b = candidates[second];
+      if (a.value === b.value) continue;
+      const pitch = (b.line.top - a.line.top) / (b.value - a.value);
+      if (pitch < 42 || pitch > 72) continue;
+      const intercept = a.line.top - pitch * a.value;
+      const inliers = candidates.filter(candidate =>
+        Math.abs(candidate.line.top - (intercept + pitch * candidate.value)) <= 7);
+      const score = inliers.reduce((total, candidate) =>
+        total + (candidate.exact ? 2 : 1), 0);
+      if (!best || score > best.score) best = {score, inliers};
+    }
+  }
+  if (!best || best.inliers.length < 4) return result;
+
+  const meanValue = best.inliers.reduce((sum, item) => sum + item.value, 0) /
+    best.inliers.length;
+  const meanTop = best.inliers.reduce((sum, item) => sum + item.line.top, 0) /
+    best.inliers.length;
+  const denominator = best.inliers.reduce((sum, item) =>
+    sum + (item.value - meanValue) ** 2, 0);
+  if (!denominator) return result;
+  const pitch = best.inliers.reduce((sum, item) =>
+    sum + (item.value - meanValue) * (item.line.top - meanTop), 0) / denominator;
+  if (pitch < 42 || pitch > 72) return result;
+  const intercept = meanTop - pitch * meanValue;
+  const firstTop = Math.min(...best.inliers.map(item => item.line.top)) - pitch * .35;
+  const lastTop = Math.max(...positioningLines.map(line => line.top)) - pitch * .18;
+  const repaired = [];
+  for (let lineNumber = 1; lineNumber <= 54; lineNumber++) {
+    const top = intercept + pitch * lineNumber;
+    if (top < firstTop || top > lastTop) continue;
+    repaired.push({
+      text: String(lineNumber),
+      left: Math.max(0, sundayHeading.left * .38),
+      top,
+      right: sundayHeading.left * .72,
+      bottom: top + Math.max(10, pitch * .28),
+    });
+  }
+  if (repaired.length < 5) return result;
+  const original = lines.filter(line => !repaired.some(number =>
+    line.left < sundayHeading.left * .85 &&
+    Math.abs(line.top - number.top) <= 8));
+  const {orientationLines, ...plainResult} = result;
+  return {...plainResult, lines: [...original, ...repaired]};
+}
+
+async function recogniseBaseRosterBands(canvas, worker, check, session, fullPage) {
+  // Three to five printed roster lines per tile keeps adjacent tiny rows from
+  // being fused, while remaining much quicker than 54 individual OCR calls.
+  const step = Math.round(canvas.width * 0.14);
+  const pad = Math.round(canvas.width * 0.025);
+  const bounds = [0];
+  while (bounds.at(-1) < canvas.height) {
+    bounds.push(Math.min(canvas.height, bounds.at(-1) + step));
+  }
+  const results = [];
+  session.sections = true;
+  await worker.setParameters({tessedit_pageseg_mode: '6', preserve_interword_spaces: '1'});
+  try {
+    for (let index = 0; index < bounds.length - 1; index++) {
+      check();
+      session.page = index + 1;
+      session.total = bounds.length - 1;
+      const start = bounds[index];
+      const end = bounds[index + 1];
+      const top = Math.max(0, start - pad);
+      const bottom = Math.min(canvas.height, end + pad);
+      const scale = Math.min(2, 3000 / canvas.width,
+        Math.sqrt(4800000 / (canvas.width * (bottom - top))));
+      const tile = document.createElement('canvas');
+      tile.width = Math.round(canvas.width * scale);
+      tile.height = Math.round((bottom - top) * scale);
+      tile.getContext('2d').drawImage(canvas, 0, top, canvas.width, bottom - top,
+        0, 0, tile.width, tile.height);
+      try {
+        const {data} = await worker.recognize(tile, {}, {text: true, blocks: true});
+        check();
+        results.push(normaliseRecognition(data, {scale, offset: top, start, end}));
+      } finally {
+        tile.width = 1;
+        tile.height = 1;
+      }
+    }
+  } finally {
+    session.sections = false;
+    await worker.setParameters({tessedit_pageseg_mode: '3', preserve_interword_spaces: '1'});
+  }
+  const detailedLines = results.flatMap(result => result.lines);
+  return {
+    fullText: fullPage.fullText,
+    lines: detailedLines.length ? detailedLines : fullPage.lines,
+    orientationLines: fullPage.lines,
+    confidence: results.length
+      ? results.reduce((total, result) => total + result.confidence, 0) / results.length
+      : fullPage.confidence,
+  };
+}
+
 export function normaliseRecognition(data, region) {
   const lines = [];
   const rowTexts = [];
@@ -397,7 +535,7 @@ export function cancelScan() {
   active?.cancel();
 }
 
-export async function scanDocument(bytes, name, isPdf, report = () => {}) {
+export async function scanDocument(bytes, name, isPdf, report = () => {}, retryUpsideDown = false) {
   if (active) throw new Error('A document is already being scanned.');
   if (!bytes.length) throw new Error('The selected document is empty.');
   if (bytes.length > 40 * 1024 * 1024) throw new Error('Choose a document smaller than 40 MB.');
@@ -542,7 +680,45 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}) {
       try {
         await page.render({canvasContext: canvas.getContext('2d'), viewport, background: 'white'}).promise;
         check();
-        pages.push(await recognise(canvas, i, pdf.numPages));
+        if (!retryUpsideDown) {
+          pages.push(await recognise(canvas, i, pdf.numPages));
+        } else {
+          const {data: uprightData} = await session.worker.recognize(
+            canvas, {}, {text: true, blocks: true});
+          check();
+          const upright = normaliseRecognition(uprightData);
+          report('Checking Base Roster page ' + i + ' orientation',
+            (i - 0.5) / pdf.numPages);
+          const rotated = document.createElement('canvas');
+          rotated.width = canvas.width;
+          rotated.height = canvas.height;
+          const rotatedContext = rotated.getContext('2d');
+          rotatedContext.fillStyle = 'white';
+          rotatedContext.fillRect(0, 0, rotated.width, rotated.height);
+          rotatedContext.translate(rotated.width, rotated.height);
+          rotatedContext.rotate(Math.PI);
+          rotatedContext.drawImage(canvas, 0, 0);
+          try {
+            const {data: rotatedData} = await session.worker.recognize(
+              rotated, {}, {text: true, blocks: true});
+            check();
+            const opposite = normaliseRecognition(rotatedData);
+            const useOpposite = baseRosterOrientationScore(opposite) >
+              baseRosterOrientationScore(upright);
+            const selected = useOpposite ? opposite : upright;
+            const selectedCanvas = useOpposite ? rotated : canvas;
+            const detailed = await recogniseBaseRosterBands(
+              selectedCanvas, session.worker, check, session, selected);
+            const result = repairBaseRosterLineNumbers(detailed);
+            if (!result.fullText.trim()) {
+              throw new Error('No readable text was found on page ' + i + '. Try a clearer photo.');
+            }
+            pages.push(result);
+          } finally {
+            rotated.width = 1;
+            rotated.height = 1;
+          }
+        }
       } finally { page.cleanup(); canvas.width = 1; canvas.height = 1; }
     }
     return pages;

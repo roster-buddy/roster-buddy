@@ -103,4 +103,33 @@ class SmartScanEngine {
       throw SmartScanException(error.message);
     }
   }
+
+  /// Re-reads a Base Roster locally in both page orientations.
+  ///
+  /// Office copiers commonly save otherwise clear roster sheets upside down.
+  /// The quick secure OCR can still return a few isolated numbers from those
+  /// pages, which previously looked like a successful scan and prevented the
+  /// local reader from correcting the orientation.
+  static Future<List<SmartScanResult>> recogniseBaseRosterPdf({
+    required Uint8List bytes,
+    required String fileName,
+    void Function(String, double?)? onProgress,
+  }) async {
+    if (!local.SmartScanEngine.isSupported) {
+      throw const SmartScanException(
+        'Base Roster orientation correction is unavailable on this device.',
+      );
+    }
+
+    try {
+      return await local.SmartScanEngine.recognisePdf(
+        bytes: bytes,
+        fileName: fileName,
+        onProgress: onProgress,
+        retryUpsideDown: true,
+      );
+    } on local.SmartScanException catch (error) {
+      throw SmartScanException(error.message);
+    }
+  }
 }

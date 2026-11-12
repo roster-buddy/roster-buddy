@@ -73,6 +73,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
   bool _busy = true;
   bool _excludeUnreadable = false;
   bool _completed = false;
+  bool _baseRosterOrientationChecked = false;
   bool get _daily => [
     DocumentType.tenDayAmendment,
     DocumentType.sevenDayAmendment,
@@ -177,6 +178,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
       _type = DocumentType.unknown;
       _excludeUnreadable = false;
       _progress = null;
+      _baseRosterOrientationChecked = false;
     });
     try {
       final List<SmartScanResult> pages;
@@ -260,6 +262,18 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
       _progressMessage = 'Checking dates and shifts…';
     });
     try {
+      if (_type == DocumentType.baseRoster &&
+          !_baseRosterOrientationChecked &&
+          widget.readDocument == null &&
+          widget.upload.photoPages.isEmpty &&
+          widget.upload.fileName.toLowerCase().endsWith('.pdf')) {
+        _pages = await SmartScanEngine.recogniseBaseRosterPdf(
+          bytes: widget.upload.bytes,
+          fileName: widget.upload.fileName,
+          onProgress: _report,
+        );
+        _baseRosterOrientationChecked = true;
+      }
       final result = widget.parseDocument != null
           ? await widget.parseDocument!(_pages!, _type, _activation)
           : await DocumentProcessingService.parseScanResults(

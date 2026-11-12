@@ -32,6 +32,7 @@ class SmartScanEngine {
     required Uint8List bytes,
     required String fileName,
     void Function(String, double?)? onProgress,
+    bool retryUpsideDown = false,
   }) {
     throw const SmartScanException(
       'PDF OCR is currently supported only on iPhone and Android.',

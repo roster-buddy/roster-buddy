@@ -1,5 +1,5 @@
 import {chromium, webkit} from 'playwright';
-import {PDFDocument, StandardFonts} from 'pdf-lib';
+import {degrees, PDFDocument, StandardFonts} from 'pdf-lib';
 import {createServer} from 'node:http';
 import {readFile, mkdir, writeFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
@@ -57,6 +57,25 @@ for (const [row, label, value] of [
   scannedCardPage.drawText(value, {x: 58, y: 782 - 12 * row, font: scanFont, size: 9});
 }
 const scannedCardBytes = [...await scannedCardPdf.save()];
+const upsideDownRosterPdf = await PDFDocument.create();
+const upsideDownFont = await upsideDownRosterPdf.embedFont(StandardFonts.Courier);
+const upsideDownPage = upsideDownRosterPdf.addPage([900, 350]);
+for (const [text, y] of [
+  ['Sunday Monday Tuesday Wednesday Thursday Friday Saturday', 45],
+  ['1 No Duty No Duty 15:11 00:56 9:45 211 15:15 00:00 8:45 Sp', 90],
+  ['3535 Walsall Ruge Redditch', 125],
+  ['2 08:11 17:10 8:59 208 07:00 15:14 8:14 217 No Duty', 170],
+  ['3518 Shrewsbury Walsall', 205],
+]) {
+  upsideDownPage.drawText(text, {
+    x: 860,
+    y: 350 - y,
+    font: upsideDownFont,
+    size: 14,
+    rotate: degrees(180),
+  });
+}
+const upsideDownRosterBytes = [...await upsideDownRosterPdf.save()];
 const pdfBytes = [...await pdf.save()];
 try {
   for (const engine of [chromium, webkit]) {
@@ -83,6 +102,15 @@ try {
       assert.match(scannedCard.fullText, /STP WO208 SX/);
       assert.match(scannedCard.fullText, /From 09\/11\/2026 To 13\/11\/2026/);
       assert.match(scannedCard.fullText, /On 08:11\nOff 17:10\nHrs 08:59/);
+      const [correctedRoster] = await page.evaluate(async bytes => {
+        const scanner = await import('/roster_scanner.mjs');
+        return JSON.parse(await scanner.scanDocument(
+          new Uint8Array(bytes), 'upside-down-base-roster.pdf', true,
+          () => {}, true));
+      }, upsideDownRosterBytes);
+      assert.match(correctedRoster.fullText, /Sunday/i);
+      assert.match(correctedRoster.fullText, /3535/);
+      console.log('PASS '+engine.name()+': upside-down Base Roster is corrected automatically');
       const renderedPages = await page.evaluate(async bytes => {
         await import('/roster_scanner.mjs');
         const render = number => window.rosterRenderJobCardPage(new Uint8Array(bytes), number);

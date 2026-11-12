@@ -1,8 +1,49 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {canvasSize, countPayrollRosterRows, countStructuredRosterRows,
+import {baseRosterOrientationScore, canvasSize, countPayrollRosterRows, countStructuredRosterRows,
   documentVerticalBounds, needsDetailedRosterPass,
-  normaliseRecognition} from '../web/roster_scanner.mjs';
+  normaliseRecognition, repairBaseRosterLineNumbers} from '../web/roster_scanner.mjs';
+
+test('Base Roster orientation favours weekday columns over upside-down noise', () => {
+  const upsideDown = {
+    fullText: 'fais oBny rT osSswoig 0061 hox ppny 8051',
+    lines: Array.from({length: 40}, () => ({})),
+  };
+  const upright = {
+    fullText: 'Sunday Monday Tuesday Wednesday Thursday Friday Saturday\n' +
+      '35 07:45 16:30 8.45 205 No Duty No Duty 16:53 00:06 8.45 Sp\n' +
+      '3535 Walsall Ruge Redditch',
+    lines: Array.from({length: 10}, () => ({})),
+  };
+  assert.ok(baseRosterOrientationScore(upright) >
+    baseRosterOrientationScore(upsideDown));
+});
+
+test('Base Roster line numbers are recovered from the fixed printed grid', () => {
+  const lines = [
+    {text: 'Sunday', left: 100, top: 20, right: 160, bottom: 35},
+    {text: 'Saturday', left: 700, top: 20, right: 770, bottom: 35},
+    ...['1', '2', '3', 'a4', '5', '6', '7', '8'].map((text, index) => ({
+      text,
+      left: 40,
+      top: 70 + index * 54,
+      right: 55,
+      bottom: 84 + index * 54,
+    })),
+    ...Array.from({length: 8}, (_, index) => ({
+      text: String(3500 + index),
+      left: 40,
+      top: 96 + index * 54,
+      right: 80,
+      bottom: 110 + index * 54,
+    })),
+    {text: 'No Duty', left: 110, top: 70, right: 170, bottom: 84},
+  ];
+  const repaired = repairBaseRosterLineNumbers({fullText: '', lines});
+  const numbers = repaired.lines.filter(line => /^\d{1,2}$/.test(line.text))
+    .map(line => Number(line.text));
+  assert.deepEqual(numbers, [1, 2, 3, 4, 5, 6, 7, 8]);
+});
 
 test('large photos keep table aspect ratio within iPad memory limits', () => {
   const size = canvasSize(12000, 8000);
