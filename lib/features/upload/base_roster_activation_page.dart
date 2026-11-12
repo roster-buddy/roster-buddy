@@ -204,11 +204,18 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color headingColor = isDark ? colors.onSurface : navy;
+    final Color descriptionColor = isDark ? colors.onSurfaceVariant : textGrey;
+    final Color iconColor = isDark ? colors.primary : railwayBlue;
+
     return Scaffold(
-      backgroundColor: background,
+      backgroundColor: isDark ? theme.scaffoldBackgroundColor : background,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: navy,
+        backgroundColor: isDark ? null : Colors.white,
+        foregroundColor: isDark ? null : navy,
         elevation: 0,
         title: const Text(
           'Activate Base Roster',
@@ -227,15 +234,17 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                   Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
-                      color: railwayBlue.withValues(alpha: 0.08),
+                      color: isDark
+                          ? colors.surfaceContainerHigh
+                          : railwayBlue.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(18),
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.description_outlined,
-                          color: railwayBlue,
+                          color: iconColor,
                           size: 30,
                         ),
                         const SizedBox(width: 14),
@@ -243,10 +252,10 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 'Base Roster detected',
                                 style: TextStyle(
-                                  color: navy,
+                                  color: headingColor,
                                   fontSize: 18,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -255,7 +264,7 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                               Text(
                                 widget.fileName,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: textGrey),
+                                style: TextStyle(color: descriptionColor),
                               ),
                             ],
                           ),
@@ -264,18 +273,18 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  const Text(
+                  Text(
                     'Commencement date',
                     style: TextStyle(
-                      color: navy,
+                      color: headingColor,
                       fontSize: 19,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     'Choose the Sunday from which this roster becomes effective. Previous roster history will remain unchanged.',
-                    style: TextStyle(color: textGrey, height: 1.4),
+                    style: TextStyle(color: descriptionColor, height: 1.4),
                   ),
                   const SizedBox(height: 12),
                   Card(
@@ -284,16 +293,16 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                         horizontal: 18,
                         vertical: 10,
                       ),
-                      leading: const Icon(
+                      leading: Icon(
                         Icons.calendar_month_outlined,
-                        color: railwayBlue,
+                        color: iconColor,
                       ),
                       title: Text(
                         _commencementDate == null
                             ? 'Select commencement Sunday'
                             : _formatDate(_commencementDate!),
-                        style: const TextStyle(
-                          color: navy,
+                        style: TextStyle(
+                          color: headingColor,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
@@ -312,10 +321,10 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                         horizontal: 18,
                         vertical: 8,
                       ),
-                      title: const Text(
+                      title: Text(
                         'Mutual permanent swap',
                         style: TextStyle(
-                          color: navy,
+                          color: headingColor,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
@@ -363,10 +372,10 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                       },
                     ),
                     const SizedBox(height: 20),
-                    const Text(
+                    Text(
                       'Which line applies on the commencement Sunday?',
                       style: TextStyle(
-                        color: navy,
+                        color: headingColor,
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
                       ),
