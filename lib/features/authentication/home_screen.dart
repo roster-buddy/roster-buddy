@@ -11320,7 +11320,8 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
                   setState(() { _editing = false; _error = null; _start.text = _savedStart; _finish.text = _savedFinish; });
                 }, icon: const Icon(Icons.close, size: 18)),
                 Flexible(child: TextButton(onPressed: _saving ? null : _editing ? _save : _beginEdit,
-                  child: Text(_saving ? 'Saving…' : _editing ? 'Save' : 'Edit times'))),
+                  child: Text(_saving ? 'Saving…' : _editing ? 'Save' : 'Edit times',
+                    style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Colors.black : null)))),
               ])
               : const SizedBox.shrink()),
           ]),
