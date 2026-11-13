@@ -2886,6 +2886,9 @@ class _DashboardPageState extends State<_DashboardPage> {
     final bool isToday = _sameDashboardDate(date, DateTime.now());
     final bool isGrantedAnnualLeave =
         leaveRequest?.status == AnnualLeaveRequestStatus.granted;
+    final bool hasPersonalNote = _dashboardPersonalNoteDateKeys.contains(
+      _dashboardDateKey(date),
+    );
 
     final Color colour = isGrantedAnnualLeave
         ? leaveRed
@@ -2937,32 +2940,13 @@ class _DashboardPageState extends State<_DashboardPage> {
                 ),
               ),
               const SizedBox(height: 3),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    date.day.toString(),
-                    style: TextStyle(
-                      color: foreground,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  if (_dashboardPersonalNoteDateKeys.contains(
-                    _dashboardDateKey(date),
-                  )) ...[
-                    const SizedBox(width: 3),
-                    Container(
-                      width: 9,
-                      height: 9,
-                      decoration: BoxDecoration(
-                        color: leaveRed,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 1.2),
-                      ),
-                    ),
-                  ],
-                ],
+              Text(
+                date.day.toString(),
+                style: TextStyle(
+                  color: foreground,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
               const SizedBox(height: 5),
               if (!isGrantedAnnualLeave && RosterJobSummary.appliesTo(duty))
@@ -2998,7 +2982,7 @@ class _DashboardPageState extends State<_DashboardPage> {
               ],
 
               ],
-              if (duty != null || isGrantedAnnualLeave) ...[
+              if (duty != null || isGrantedAnnualLeave || hasPersonalNote) ...[
                 const SizedBox(height: 4),
                 Wrap(
                   alignment: WrapAlignment.center,
@@ -3011,20 +2995,24 @@ class _DashboardPageState extends State<_DashboardPage> {
                         vertical: 1,
                       ),
                       decoration: BoxDecoration(
-                        color: darkText
+                        color: hasPersonalNote
+                            ? leaveRed
+                            : darkText
                             ? railwayBlue.withValues(alpha: 0.12)
                             : Colors.white.withValues(alpha: 0.22),
                         borderRadius: BorderRadius.circular(5),
                       ),
                       child: Text(
-                        isGrantedAnnualLeave
+                        hasPersonalNote && duty == null && !isGrantedAnnualLeave
+                            ? 'NOTE'
+                            : isGrantedAnnualLeave
                             ? (leaveRequest?.requestType ==
                                       AnnualLeaveRequestType.floating
                                   ? 'ALD'
                                   : 'AW')
                             : _dashboardSourceLabel(duty!.source),
                         style: TextStyle(
-                          color: foreground,
+                          color: hasPersonalNote ? Colors.white : foreground,
                           fontSize: 7,
                           fontWeight: FontWeight.w900,
                         ),
@@ -6856,62 +6844,41 @@ class _CalendarPageState extends State<_CalendarPage> {
                 Row(
                   children: [
                     Expanded(
-                      child: Row(
-                        children: [
-                          Text(
-                            date.day.toString(),
-                            maxLines: 1,
-                            style: TextStyle(
-                              color: foreground,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          if (hasPersonalNote) ...[
-                            const SizedBox(width: 3),
-                            Semantics(
-                              label: 'Personal note saved',
-                              child: Container(
-                                key: const ValueKey<String>(
-                                  'personal-note-marker',
-                                ),
-                                width: 11,
-                                height: 11,
-                                decoration: BoxDecoration(
-                                  color: leaveRed,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 1.5,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
+                      child: Text(
+                        date.day.toString(),
+                        maxLines: 1,
+                        style: TextStyle(
+                          color: foreground,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     ),
-                    if (duty != null || isGrantedAnnualLeave)
+                    if (duty != null || isGrantedAnnualLeave || hasPersonalNote)
                       Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 4,
                         vertical: 1,
                       ),
                       decoration: BoxDecoration(
-                        color: useDarkText
+                        color: hasPersonalNote
+                            ? leaveRed
+                            : useDarkText
                             ? railwayBlue.withValues(alpha: 0.12)
                             : Colors.white.withValues(alpha: 0.22),
                         borderRadius: BorderRadius.circular(5),
                       ),
                       child: Text(
-                        isGrantedAnnualLeave
+                        hasPersonalNote && duty == null && !isGrantedAnnualLeave
+                            ? 'NOTE'
+                            : isGrantedAnnualLeave
                             ? (leaveRequest?.requestType ==
                                       AnnualLeaveRequestType.floating
                                   ? 'ALD'
                                   : 'AW')
                             : isUnavailable ? 'U' : _sourceLabel(duty!.source),
                         style: TextStyle(
-                          color: foreground,
+                          color: hasPersonalNote ? Colors.white : foreground,
                           fontSize: 7,
                           fontWeight: FontWeight.w900,
                         ),
