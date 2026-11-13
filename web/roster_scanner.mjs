@@ -673,7 +673,38 @@ async function retryBaseRosterDay(canvas, worker, check, cell) {
   }
 }
 
-export async function recogniseBaseRosterGrid(canvas, worker, check, fullPage) {
+// Render the uncertain cell from the PDF at higher resolution so the retry
+// can recover source detail lost in the page-sized canvas.
+async function readBaseRosterPdfCell(page, viewport, cell, worker, check) {
+  const scale = 2.4;
+  const highResolution = viewport.clone({scale: viewport.scale * scale});
+  const crop = document.createElement('canvas');
+  const left = cell.x - 5;
+  const top = cell.top + 2;
+  crop.width = Math.ceil((cell.right - left - 7) * scale) + 28;
+  crop.height = Math.ceil((cell.bottom - top - 1) * scale) + 28;
+  try {
+    await page.render({canvasContext: crop.getContext('2d'), viewport: highResolution,
+      transform: [1, 0, 0, 1, 14 - left * scale, 14 - top * scale],
+      background: 'white'}).promise;
+    check();
+    const context = crop.getContext('2d');
+    // Keep the white border outside the source cell rather than rendering
+    // adjoining rows and columns into the OCR area.
+    context.fillStyle = 'white';
+    context.fillRect(0, 0, crop.width, 14);
+    context.fillRect(0, crop.height - 14, crop.width, 14);
+    context.fillRect(0, 0, 14, crop.height);
+    context.fillRect(crop.width - 14, 0, 14, crop.height);
+    const {data} = await worker.recognize(crop);
+    return data.text.trim();
+  } finally {
+    crop.width = 1;
+    crop.height = 1;
+  }
+}
+
+export async function recogniseBaseRosterGrid(canvas, worker, check, fullPage, retrySource) {
   const grid = baseRosterGrid(canvas, fullPage.lines);
   if (!grid) return null;
   const fields = await readBaseRosterGrid(canvas, worker, check, grid, true);
@@ -697,7 +728,12 @@ export async function recogniseBaseRosterGrid(canvas, worker, check, fullPage) {
         if (reading === '?') {
           const retry = await retryBaseRosterDay(canvas, worker, check, cell);
           attempts.push(...retry.attempts);
-          reading = readBaseRosterDay(attempts, [whole, ...retry.whole], options);
+          const readings = [whole, ...retry.whole];
+          reading = readBaseRosterDay(attempts, readings, options);
+          if (reading === '?' && retrySource) {
+            readings.push(await retrySource(cell));
+            reading = readBaseRosterDay(attempts, readings, options);
+          }
         }
         cells.push(reading);
       }
@@ -1088,7 +1124,10 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}, retryU
               baseRosterOrientationScore(upright);
             const selected = useOpposite ? opposite : upright;
             const selectedCanvas = useOpposite ? rotated : canvas;
-            const grid = await recogniseBaseRosterGrid(selectedCanvas, session.worker, check, selected);
+            const sourceViewport = useOpposite
+              ? viewport.clone({rotation: (viewport.rotation + 180) % 360}) : viewport;
+            const grid = await recogniseBaseRosterGrid(selectedCanvas, session.worker, check, selected,
+              cell => readBaseRosterPdfCell(page, sourceViewport, cell, session.worker, check));
             const result = grid ?? repairBaseRosterLineNumbers(await recogniseBaseRosterBands(
               selectedCanvas, session.worker, check, session, selected));
             if (!result.fullText.trim()) {
