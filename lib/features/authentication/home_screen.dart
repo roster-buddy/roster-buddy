@@ -2395,12 +2395,15 @@ class _DashboardPageState extends State<_DashboardPage> {
   final ManualDutyService _manualDutyService = ManualDutyService();
   final JobCardService _jobCardService = JobCardService();
   final AnnualLeaveService _annualLeaveService = AnnualLeaveService();
+  final PersonalDayNoteService _personalDayNoteService =
+      PersonalDayNoteService();
 
   Hidden18Result? _hidden18Result;
   Duty? _todayDuty;
   Map<String, Duty> _thisWeekDuties = <String, Duty>{};
   Map<String, AnnualLeaveRequest> _thisWeekLeaveRequests =
       <String, AnnualLeaveRequest>{};
+  Set<String> _dashboardPersonalNoteDateKeys = <String>{};
 
   bool _isLoading = true;
   String? _loadError;
@@ -2447,10 +2450,16 @@ class _DashboardPageState extends State<_DashboardPage> {
 
       final Future<Map<String, AnnualLeaveRequest>> leaveRequestsFuture =
           _annualLeaveService.getRequestsForRange(today, fatigueRangeEnd);
+      final Future<Set<String>> personalNoteDatesFuture =
+          _personalDayNoteService
+              .getNoteDates(today, fatigueRangeEnd)
+              .catchError((_) => <String>{});
 
       final Map<String, Duty> fatigueRangeDuties = await dutiesFuture;
       final Map<String, AnnualLeaveRequest> thisWeekLeaveRequests =
           await leaveRequestsFuture;
+      final Set<String> dashboardPersonalNoteDateKeys =
+          await personalNoteDatesFuture;
 
       final Map<String, Duty> thisWeekDuties = <String, Duty>{
         for (final DateTime date in nextSevenDates)
@@ -2510,6 +2519,7 @@ class _DashboardPageState extends State<_DashboardPage> {
         _todayDuty = todayDuty;
         _thisWeekDuties = thisWeekDuties;
         _thisWeekLeaveRequests = thisWeekLeaveRequests;
+        _dashboardPersonalNoteDateKeys = dashboardPersonalNoteDateKeys;
         _hidden18Result = hidden18Result;
         _isLoading = false;
       });
@@ -2523,6 +2533,7 @@ class _DashboardPageState extends State<_DashboardPage> {
         _hidden18Result = null;
         _thisWeekDuties = <String, Duty>{};
         _thisWeekLeaveRequests = <String, AnnualLeaveRequest>{};
+        _dashboardPersonalNoteDateKeys = <String>{};
         _isLoading = false;
         _loadError = error is DutyResolverException
             ? error.message
@@ -2926,13 +2937,32 @@ class _DashboardPageState extends State<_DashboardPage> {
                 ),
               ),
               const SizedBox(height: 3),
-              Text(
-                date.day.toString(),
-                style: TextStyle(
-                  color: foreground,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    date.day.toString(),
+                    style: TextStyle(
+                      color: foreground,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  if (_dashboardPersonalNoteDateKeys.contains(
+                    _dashboardDateKey(date),
+                  )) ...[
+                    const SizedBox(width: 3),
+                    Container(
+                      width: 9,
+                      height: 9,
+                      decoration: BoxDecoration(
+                        color: leaveRed,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.2),
+                      ),
+                    ),
+                  ],
+                ],
               ),
               const SizedBox(height: 5),
               if (!isGrantedAnnualLeave && RosterJobSummary.appliesTo(duty))
@@ -6826,30 +6856,41 @@ class _CalendarPageState extends State<_CalendarPage> {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        date.day.toString(),
-                        style: TextStyle(
-                          color: foreground,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
-                        ),
+                      child: Row(
+                        children: [
+                          Text(
+                            date.day.toString(),
+                            maxLines: 1,
+                            style: TextStyle(
+                              color: foreground,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          if (hasPersonalNote) ...[
+                            const SizedBox(width: 3),
+                            Semantics(
+                              label: 'Personal note saved',
+                              child: Container(
+                                key: const ValueKey<String>(
+                                  'personal-note-marker',
+                                ),
+                                width: 11,
+                                height: 11,
+                                decoration: BoxDecoration(
+                                  color: leaveRed,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 1.5,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                    if (hasPersonalNote)
-                      Semantics(
-                        label: 'Personal note saved',
-                        child: Container(
-                          key: const ValueKey<String>('personal-note-marker'),
-                          width: 11,
-                          height: 11,
-                          margin: const EdgeInsets.only(right: 4),
-                          decoration: BoxDecoration(
-                            color: leaveRed,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 1.5),
-                          ),
-                        ),
-                      ),
                     if (duty != null || isGrantedAnnualLeave)
                       Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: Container(
                       padding: const EdgeInsets.symmetric(
