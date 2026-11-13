@@ -285,9 +285,10 @@ class StorageService {
     required DocumentType documentType,
     required BaseRosterActivation? activation,
   }) {
-    if (documentType == DocumentType.baseRoster && activation == null) {
+    if (documentType == DocumentType.baseRoster &&
+        (activation?.startWeekNumber == null)) {
       throw const StorageServiceException(
-        'The Base Roster commencement details are missing.',
+        'Select the commencement Sunday and printed starting week.',
       );
     }
 
@@ -307,11 +308,10 @@ class StorageService {
 
     if (activation != null &&
         activation.hasMutualSwap &&
-        activation.swapPartnerWeekNumber == null &&
-        (activation.swapPartnerRosterNumber == null ||
-            activation.swapPartnerRosterNumber!.trim().isEmpty)) {
+        (activation.swapPartnerWeekNumber == null ||
+            activation.swapPartnerWeekNumber == activation.startWeekNumber)) {
       throw const StorageServiceException(
-        'Enter the mutual swap partner roster code.',
+        'Choose a different printed week for the swap partner.',
       );
     }
   }

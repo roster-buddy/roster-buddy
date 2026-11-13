@@ -45,18 +45,14 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
   }
 
   Future<void> _loadSavedBaseRosterSetup() async {
-    final SupabaseClient supabase = Supabase.instance.client;
-    final User? user = supabase.auth.currentUser;
-
-    if (user == null) {
-      return;
-    }
-
-    final Map<String, dynamic> metadata = user.userMetadata ?? {};
-
+    Map<String, dynamic> metadata = {};
     Map<String, dynamic>? profile;
 
     try {
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+      if (user == null) return;
+      metadata = user.userMetadata ?? {};
       profile = await supabase
           .from('driver_profiles')
           .select(

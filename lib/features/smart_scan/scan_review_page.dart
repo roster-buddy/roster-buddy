@@ -436,6 +436,9 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
                 _activation = null;
                 _error = null;
               });
+              if (type == DocumentType.baseRoster) {
+                _prepare();
+              }
             }
           },
         ),
@@ -719,7 +722,9 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
                                 _activation),
                             ),
                       child: Text(
-                        parsed == null ? 'Check and apply' : 'Import records',
+                        parsed != null ? 'Import records'
+                            : _type == DocumentType.baseRoster ? 'Set starting week'
+                            : 'Check and apply',
                       ),
                     ),
                   ),
