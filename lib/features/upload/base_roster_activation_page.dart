@@ -5,9 +5,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'storage_service.dart';
 
 class BaseRosterActivationPage extends StatefulWidget {
-  const BaseRosterActivationPage({required this.fileName, super.key});
+  const BaseRosterActivationPage({required this.fileName, this.initial, super.key});
 
   final String fileName;
+  final BaseRosterActivation? initial;
 
   @override
   State<BaseRosterActivationPage> createState() =>
@@ -21,7 +22,8 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
   static const Color textGrey = Color(0xFF52667A);
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  final TextEditingController _swapPartnerController = TextEditingController();
+  int? _weekNumber;
+  int? _swapWeekNumber;
 
   DateTime? _commencementDate;
   bool _hasMutualSwap = false;
@@ -30,7 +32,16 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
   @override
   void initState() {
     super.initState();
-    _loadSavedBaseRosterSetup();
+    final initial = widget.initial;
+    if (initial == null) {
+      _loadSavedBaseRosterSetup();
+    } else {
+      _commencementDate = initial.commencementDate;
+      _weekNumber = initial.startWeekNumber;
+      _swapWeekNumber = initial.swapPartnerWeekNumber;
+      _hasMutualSwap = initial.hasMutualSwap;
+      _startingLine = initial.startingLine;
+    }
   }
 
   Future<void> _loadSavedBaseRosterSetup() async {
@@ -49,9 +60,7 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
       profile = await supabase
           .from('driver_profiles')
           .select(
-            'base_roster_commencement_date, '
             'has_mutual_roster_swap, '
-            'swap_partner_roster_number, swap_partner_driver_number, '
             'base_roster_starts_with_line',
           )
           .eq('user_id', user.id)
@@ -60,29 +69,9 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
       profile = null;
     }
 
-    final String commencementValue =
-        (profile?['base_roster_commencement_date'] ??
-                metadata['base_roster_commencement_date'] ??
-                '')
-            .toString()
-            .trim();
-
-    final DateTime? commencementDate = commencementValue.isEmpty
-        ? null
-        : DateTime.tryParse(commencementValue);
-
     final bool hasMutualSwap =
         profile?['has_mutual_roster_swap'] == true ||
         metadata['has_mutual_swap'] == true;
-
-    final String swapPartner =
-        (profile?['swap_partner_roster_number'] ??
-                profile?['swap_partner_driver_number'] ??
-                metadata['swap_partner_roster_number'] ??
-                metadata['swap_partner_driver_number'] ??
-                '')
-            .toString()
-            .trim();
 
     final String startingLine =
         (profile?['base_roster_starts_with_line'] ??
@@ -101,22 +90,12 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
     }
 
     setState(() {
-      if (commencementDate != null) {
-        _commencementDate = DateUtils.dateOnly(commencementDate);
-      }
-
+      if (_weekNumber != null || _swapWeekNumber != null) return;
       _hasMutualSwap = hasMutualSwap;
-      _swapPartnerController.text = hasMutualSwap ? swapPartner : '';
       _startingLine = hasMutualSwap && startsWithPartner
           ? BaseRosterStartingLine.partner
           : BaseRosterStartingLine.mine;
     });
-  }
-
-  @override
-  void dispose() {
-    _swapPartnerController.dispose();
-    super.dispose();
   }
 
   DateTime _nextSunday() {
@@ -192,15 +171,35 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
       BaseRosterActivation(
         commencementDate: _commencementDate!,
         hasMutualSwap: _hasMutualSwap,
-        swapPartnerRosterNumber: _hasMutualSwap
-            ? _swapPartnerController.text.trim()
-            : null,
+        startWeekNumber: _weekNumber,
+        swapPartnerWeekNumber: _hasMutualSwap ? _swapWeekNumber : null,
         startingLine: _hasMutualSwap
             ? _startingLine
             : BaseRosterStartingLine.mine,
       ),
     );
   }
+
+  Widget _weekField({
+    required String label,
+    required int? selected,
+    required ValueChanged<int?> onChanged,
+    bool partner = false,
+  }) => DropdownButtonFormField<int>(
+    initialValue: selected,
+    isExpanded: true,
+    decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+    items: [
+      for (var week = 1; week <= 54; week++)
+        DropdownMenuItem(value: week, child: Text('Week $week')),
+    ],
+    onChanged: onChanged,
+    validator: (value) {
+      if (value == null) return 'Select a printed week number.';
+      if (partner && value == _weekNumber) return 'Choose a different week.';
+      return null;
+    },
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -283,7 +282,7 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Choose the Sunday from which this roster becomes effective. Previous roster history will remain unchanged.',
+                    'Choose the first Sunday and the week numbers printed in the first column.',
                     style: TextStyle(color: descriptionColor, height: 1.4),
                   ),
                   const SizedBox(height: 12),
@@ -315,6 +314,12 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                     ),
                   ),
                   const SizedBox(height: 24),
+                  _weekField(
+                    label: 'Your printed week number',
+                    selected: _weekNumber,
+                    onChanged: (value) => setState(() => _weekNumber = value),
+                  ),
+                  const SizedBox(height: 16),
                   Card(
                     child: SwitchListTile(
                       contentPadding: const EdgeInsets.symmetric(
@@ -340,7 +345,7 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                           _hasMutualSwap = value;
 
                           if (!value) {
-                            _swapPartnerController.clear();
+                            _swapWeekNumber = null;
                             _startingLine = BaseRosterStartingLine.mine;
                           }
                         });
@@ -349,27 +354,11 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                   ),
                   if (_hasMutualSwap) ...[
                     const SizedBox(height: 14),
-                    TextFormField(
-                      controller: _swapPartnerController,
-                      keyboardType: TextInputType.number,
-                      textInputAction: TextInputAction.done,
-                      decoration: const InputDecoration(
-                        labelText: 'Swap partner Roster Code',
-                        hintText: 'Enter their roster code',
-                        prefixIcon: Icon(Icons.badge_outlined),
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (value) {
-                        if (!_hasMutualSwap) {
-                          return null;
-                        }
-
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Enter the swap partner roster code.';
-                        }
-
-                        return null;
-                      },
+                    _weekField(
+                      label: 'Swap partner’s printed week number',
+                      selected: _swapWeekNumber,
+                      onChanged: (value) => setState(() => _swapWeekNumber = value),
+                      partner: true,
                     ),
                     const SizedBox(height: 20),
                     Text(
@@ -393,25 +382,25 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                             _startingLine = value;
                           });
                         },
-                        child: const Column(
+                        child: Column(
                           children: [
                             RadioListTile<BaseRosterStartingLine>(
                               title: Text(
-                                'My roster line',
-                                style: TextStyle(fontWeight: FontWeight.w700),
+                                _weekNumber == null ? 'My week' : 'My week $_weekNumber',
+                                style: const TextStyle(fontWeight: FontWeight.w700),
                               ),
-                              subtitle: Text(
+                              subtitle: const Text(
                                 'The first week uses my normal roster line.',
                               ),
                               value: BaseRosterStartingLine.mine,
                             ),
-                            Divider(height: 1),
+                            const Divider(height: 1),
                             RadioListTile<BaseRosterStartingLine>(
                               title: Text(
-                                "Swap partner's roster line",
-                                style: TextStyle(fontWeight: FontWeight.w700),
+                                _swapWeekNumber == null ? 'Partner’s week' : 'Partner’s week $_swapWeekNumber',
+                                style: const TextStyle(fontWeight: FontWeight.w700),
                               ),
-                              subtitle: Text(
+                              subtitle: const Text(
                                 "The first week uses the swap partner's line.",
                               ),
                               value: BaseRosterStartingLine.partner,

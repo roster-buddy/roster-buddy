@@ -174,6 +174,32 @@ void main() {
       expect(result.warnings.single.pageNumber, 1);
     });
 
+    test('allocates by printed weeks and alternates from the selected side', () async {
+      final result = await BaseRosterParser(
+        commencementDate: DateTime(2026, 5, 3),
+        rosterNumber: '9999',
+        startWeekNumber: 2,
+        swapPartnerWeekNumber: 1,
+        initialLine: BaseRosterInitialLine.swapPartner,
+      ).parse(pageText: [
+        'WEEK | SUNDAY | MONDAY | TUESDAY | WEDNESDAY | THURSDAY | FRIDAY | SATURDAY\n'
+        '1 | 06:00 14:00 08:00 201 | No Duty | No Duty | No Duty | No Duty | No Duty | No Duty\n'
+        '?\n'
+        '2 | 07:00 15:00 08:00 202 | No Duty | No Duty | No Duty | No Duty | No Duty | No Duty\n'
+        '1234\n'
+        '3 | 08:00 16:00 08:00 203 | No Duty | No Duty | No Duty | No Duty | No Duty | No Duty\n'
+        '1234',
+      ]);
+
+      expect(result.canImport, isTrue);
+      final sundayDuties = result.duties.where(
+        (duty) => duty.date.weekday == DateTime.sunday,
+      );
+      expect(sundayDuties.map((duty) => duty.turnNumber),
+          ['201', '203', '203', '202', '202', '201']);
+      expect(sundayDuties.every((duty) => duty.driverNumber == '9999'), isTrue);
+    });
+
     test('blocks import when the roster number is not found', () async {
       final BaseRosterParser parser = BaseRosterParser(
         commencementDate: DateTime(2026, 5, 3),

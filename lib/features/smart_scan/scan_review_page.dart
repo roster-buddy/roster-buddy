@@ -244,12 +244,12 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
     }
   }
 
-  Future<void> _prepare({bool automatic = false}) async {
-    if (_type == DocumentType.baseRoster && _activation == null) {
+  Future<void> _prepare({bool automatic = false, bool editActivation = false}) async {
+    if (_type == DocumentType.baseRoster && (_activation == null || editActivation)) {
       final activation = await Navigator.of(context).push<BaseRosterActivation>(
         MaterialPageRoute(
           builder: (_) =>
-              BaseRosterActivationPage(fileName: widget.upload.fileName),
+              BaseRosterActivationPage(fileName: widget.upload.fileName, initial: _activation),
         ),
       );
       if (!mounted || activation == null) return;
@@ -280,6 +280,8 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
               scanResults: _pages!,
               documentType: _type,
               baseRosterCommencementDate: _activation?.commencementDate,
+              baseRosterStartWeekNumber: _activation?.startWeekNumber,
+              baseRosterSwapPartnerWeekNumber: _activation?.swapPartnerWeekNumber,
               baseRosterSwapPartnerRosterNumber:
                   _activation?.hasMutualSwap == true
                   ? _activation?.swapPartnerRosterNumber
@@ -449,6 +451,16 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
             child: Text(
               'Some text may be unclear. Check the dates, times and driver numbers carefully.',
             ),
+          ),
+        if (_type == DocumentType.baseRoster && _activation != null)
+          ListTile(
+            title: Text('Starting week ${_activation!.startWeekNumber}'),
+            subtitle: _activation!.hasMutualSwap
+                ? Text('Swap week ${_activation!.swapPartnerWeekNumber} · '
+                    '${_activation!.startingLine == BaseRosterStartingLine.partner ? 'Partner starts' : 'You start'}')
+                : null,
+            trailing: const Icon(Icons.edit_outlined),
+            onTap: () => _prepare(editActivation: true),
           ),
         ExpansionTile(
           title: Text('Recognised text · ${_pages!.length} page(s)'),

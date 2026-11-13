@@ -15,11 +15,15 @@ class BaseRosterActivation {
     required this.hasMutualSwap,
     required this.startingLine,
     this.swapPartnerRosterNumber,
+    this.startWeekNumber,
+    this.swapPartnerWeekNumber,
   });
 
   final DateTime commencementDate;
   final bool hasMutualSwap;
   final String? swapPartnerRosterNumber;
+  final int? startWeekNumber;
+  final int? swapPartnerWeekNumber;
   final BaseRosterStartingLine startingLine;
 }
 
@@ -70,13 +74,13 @@ class StorageService {
 
     final Map<String, dynamic>? baseRoster = await _supabase
         .from(_baseRosterTableName)
-        .select('id, document_id, commencement_date, created_at')
+        .select('id, document_id, commencement_date, created_at, start_week_number')
         .eq('user_id', user.id)
         .order('created_at', ascending: false)
         .limit(1)
         .maybeSingle();
 
-    if (baseRoster == null) {
+    if (baseRoster == null || baseRoster['start_week_number'] != null) {
       return null;
     }
 
@@ -232,6 +236,8 @@ class StorageService {
             documentType: documentType,
             reviewedResult: reviewedResult,
             baseRosterCommencementDate: baseRosterActivation?.commencementDate,
+            baseRosterStartWeekNumber: baseRosterActivation?.startWeekNumber,
+            baseRosterSwapPartnerWeekNumber: baseRosterActivation?.swapPartnerWeekNumber,
             baseRosterSwapPartnerRosterNumber:
                 baseRosterActivation?.hasMutualSwap == true
                 ? baseRosterActivation?.swapPartnerRosterNumber
@@ -301,6 +307,7 @@ class StorageService {
 
     if (activation != null &&
         activation.hasMutualSwap &&
+        activation.swapPartnerWeekNumber == null &&
         (activation.swapPartnerRosterNumber == null ||
             activation.swapPartnerRosterNumber!.trim().isEmpty)) {
       throw const StorageServiceException(
@@ -319,6 +326,8 @@ class StorageService {
       'document_id': documentId,
       'commencement_date': _databaseDate(activation.commencementDate),
       'has_mutual_swap': activation.hasMutualSwap,
+      if (activation.startWeekNumber != null) 'start_week_number': activation.startWeekNumber,
+      if (activation.swapPartnerWeekNumber != null) 'swap_partner_week_number': activation.swapPartnerWeekNumber,
       'swap_partner_roster_number': activation.hasMutualSwap
           ? activation.swapPartnerRosterNumber?.trim()
           : null,

@@ -34,6 +34,8 @@ class DocumentProcessingService {
     required DocumentType documentType,
     DateTime? baseRosterCommencementDate,
     String? baseRosterSwapPartnerRosterNumber,
+    int? baseRosterStartWeekNumber,
+    int? baseRosterSwapPartnerWeekNumber,
     bool baseRosterStartsWithPartner = false,
     ParseResult? reviewedResult,
   }) async {
@@ -103,6 +105,8 @@ class DocumentProcessingService {
           documentType: documentType,
           baseRosterCommencementDate: baseRosterCommencementDate,
           baseRosterSwapPartnerRosterNumber: baseRosterSwapPartnerRosterNumber,
+          baseRosterStartWeekNumber: baseRosterStartWeekNumber,
+          baseRosterSwapPartnerWeekNumber: baseRosterSwapPartnerWeekNumber,
           baseRosterStartsWithPartner: baseRosterStartsWithPartner,
         );
       }
@@ -216,6 +220,8 @@ class DocumentProcessingService {
     required DocumentType documentType,
     DateTime? baseRosterCommencementDate,
     String? baseRosterSwapPartnerRosterNumber,
+    int? baseRosterStartWeekNumber,
+    int? baseRosterSwapPartnerWeekNumber,
     bool baseRosterStartsWithPartner = false,
   }) async {
     final isBaseRoster = documentType == DocumentType.baseRoster;
@@ -255,6 +261,8 @@ class DocumentProcessingService {
         commencementDate: baseRosterCommencementDate,
         rosterNumber: rosterNumber,
         swapPartnerRosterNumber: baseRosterSwapPartnerRosterNumber,
+        startWeekNumber: baseRosterStartWeekNumber,
+        swapPartnerWeekNumber: baseRosterSwapPartnerWeekNumber,
         initialLine: baseRosterStartsWithPartner
             ? BaseRosterInitialLine.swapPartner
             : BaseRosterInitialLine.driver,

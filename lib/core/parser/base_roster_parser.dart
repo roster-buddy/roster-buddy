@@ -14,6 +14,8 @@ class BaseRosterParser implements BaseParser {
   const BaseRosterParser({
     this.commencementDate,
     this.rosterNumber,
+    this.startWeekNumber,
+    this.swapPartnerWeekNumber,
     this.swapPartnerRosterNumber,
     this.initialLine = BaseRosterInitialLine.driver,
     this.tableExtractor = const TableExtractor(),
@@ -24,6 +26,8 @@ class BaseRosterParser implements BaseParser {
 
   /// The signed-in user's Base Roster number.
   final String? rosterNumber;
+  final int? startWeekNumber;
+  final int? swapPartnerWeekNumber;
 
   /// Optional permanent mutual-swap partner roster number.
   final String? swapPartnerRosterNumber;
@@ -142,7 +146,9 @@ class BaseRosterParser implements BaseParser {
       );
     }
 
-    final int rosterStartIndex = weeks.indexWhere(
+    final int rosterStartIndex = startWeekNumber != null
+        ? weeks.indexWhere((week) => week.printedWeekNumber == startWeekNumber)
+        : weeks.indexWhere(
       (_BaseRosterWeek week) =>
           requestedRosterNumber.isNotEmpty && week.driverNumber == requestedRosterNumber,
     );
@@ -151,7 +157,9 @@ class BaseRosterParser implements BaseParser {
       warnings.add(
         ParseWarning(
           message:
-              'Roster number $requestedRosterNumber was not found on the Base Roster.',
+              startWeekNumber == null
+                  ? 'Roster number $requestedRosterNumber was not found on the Base Roster.'
+                  : 'Week $startWeekNumber was not found on the Base Roster.',
           severity: ParseWarningSeverity.blocking,
         ),
       );
@@ -160,24 +168,38 @@ class BaseRosterParser implements BaseParser {
     final String swapRosterNumber =
         ParserUtils.normaliseDriverNumber(swapPartnerRosterNumber) ?? '';
 
-    final int swapStartIndex = swapRosterNumber.isEmpty
+    final int swapStartIndex = swapPartnerWeekNumber != null
+        ? weeks.indexWhere((week) => week.printedWeekNumber == swapPartnerWeekNumber)
+        : swapRosterNumber.isEmpty
         ? -1
         : weeks.indexWhere(
             (_BaseRosterWeek week) => week.driverNumber == swapRosterNumber,
           );
 
-    if (swapRosterNumber.isNotEmpty && swapStartIndex < 0) {
+    if ((swapRosterNumber.isNotEmpty || swapPartnerWeekNumber != null) &&
+        swapStartIndex < 0) {
       warnings.add(
         ParseWarning(
           message:
-              'Mutual-swap partner roster number $swapRosterNumber was not found on the Base Roster.',
+              swapPartnerWeekNumber == null
+                  ? 'Mutual-swap partner roster number $swapRosterNumber was not found on the Base Roster.'
+                  : 'Swap partner week $swapPartnerWeekNumber was not found on the Base Roster.',
           severity: ParseWarningSeverity.blocking,
         ),
       );
     }
 
+    if (startWeekNumber != null && swapStartIndex >= 0 &&
+        rosterStartIndex == swapStartIndex) {
+      warnings.add(const ParseWarning(
+        message: 'Select a different week for the mutual swap.',
+        severity: ParseWarningSeverity.blocking,
+      ));
+    }
+
     if (rosterStartIndex >= 0 &&
-        (swapRosterNumber.isEmpty || swapStartIndex >= 0)) {
+        ((swapRosterNumber.isEmpty && swapPartnerWeekNumber == null) ||
+            swapStartIndex >= 0)) {
       // Only the starting lines need an identity. The printed line numbers
       // establish the rest of the rotation even if another ID is unreadable.
       warnings.removeWhere((warning) =>
@@ -201,9 +223,12 @@ class BaseRosterParser implements BaseParser {
     }
 
     final List<Duty> duties = <Duty>[];
+    // An odd-length roster with a swap needs two rotations to restore parity.
+    final int cycleWeeks = startWeekNumber != null && swapStartIndex >= 0 && weeks.length.isOdd
+        ? weeks.length * 2 : weeks.length;
     final Set<String> seenKeys = <String>{};
 
-    for (int calendarWeek = 0; calendarWeek < weeks.length; calendarWeek++) {
+    for (int calendarWeek = 0; calendarWeek < cycleWeeks; calendarWeek++) {
       final int selectedIndex = _selectedRosterIndex(
         calendarWeek: calendarWeek,
         rosterLength: weeks.length,
@@ -325,7 +350,7 @@ class BaseRosterParser implements BaseParser {
         }
       }
 
-      if (identityRow == null) {
+      if (identityRow == null && startWeekNumber == null) {
         warnings.add(
           ParseWarning(
             message:
@@ -337,7 +362,7 @@ class BaseRosterParser implements BaseParser {
       }
 
       final String detectedDriver =
-          _driverNumberFromIdentityRow(identityRow) ?? '';
+          identityRow == null ? '' : _driverNumberFromIdentityRow(identityRow) ?? '';
 
       if (detectedDriver.isEmpty) {
         warnings.add(
