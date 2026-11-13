@@ -1,3 +1,4 @@
+import '../parser/base_roster_parser.dart';
 import 'printed_roster_identity.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -502,7 +503,7 @@ class DutyResolver {
   ) async {
     if (rosterNumber == null) return [];
     final activations = await _supabase.from('base_rosters')
-        .select('document_id, commencement_date')
+        .select('document_id, commencement_date, start_week_number, swap_partner_week_number, starts_with_line')
         .eq('user_id', userId)
         .lte('commencement_date', _databaseDate(end))
         .order('commencement_date', ascending: false)
@@ -511,16 +512,34 @@ class DutyResolver {
     final ids = activations.map((row) => row['document_id'] as String).toSet();
     if (ids.isEmpty) return [];
     final documents = await _supabase.from('roster_documents')
-        .select('id')
+        .select('id, base_roster_pages')
         .eq('processing_status', 'processed')
         .inFilter('id', ids.toList());
-    final processed = documents.map((row) => row['id']).toSet();
+    final processed = {for (final row in documents) row['id']: row};
     final cycles = <_BaseRosterCycle>[];
     final starts = <String>{};
     for (final activation in activations) {
       final id = activation['document_id'];
       final start = activation['commencement_date'] as String;
-      if (!processed.contains(id) || starts.contains(start)) continue;
+      final document = processed[id];
+      if (document == null || starts.contains(start)) continue;
+      final pages = document['base_roster_pages'] as List?;
+      final week = activation['start_week_number'] as int?;
+      if (pages != null && pages.isNotEmpty && week != null) {
+        final result = await BaseRosterParser(
+          commencementDate: DateTime.parse(start),
+          rosterNumber: rosterNumber,
+          startWeekNumber: week,
+          swapPartnerWeekNumber: activation['swap_partner_week_number'] as int?,
+          initialLine: activation['starts_with_line'] == 'partner'
+              ? BaseRosterInitialLine.swapPartner : BaseRosterInitialLine.driver,
+        ).parse(pageText: pages.cast<String>());
+        if (result.canImport) {
+          starts.add(start);
+          cycles.add(_BaseRosterCycle(DateTime.parse(start), result.duties));
+        }
+        continue;
+      }
       final rows = await _supabase.from(_dutyTableName)
           .select(_dutyColumns)
           .eq('document_id', id as String)

@@ -113,6 +113,7 @@ class UploadService {
     required String detectedType,
     required bool manuallyLabelled,
     BaseRosterActivation? baseRosterActivation,
+    List<String>? baseRosterPages,
     ParseResult? reviewedResult,
   }) async {
     if (_uploadInProgress) {
@@ -139,6 +140,7 @@ class UploadService {
             detectedType: detectedType,
             manuallyLabelled: manuallyLabelled,
             baseRosterActivation: baseRosterActivation,
+            baseRosterPages: baseRosterPages,
             reviewedResult: reviewedResult,
           );
 

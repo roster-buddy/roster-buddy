@@ -474,7 +474,7 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
       }
 
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute<void>(builder: (_) => const HomeScreen()),
+        MaterialPageRoute<void>(builder: (_) => const HomeScreen(showDepotDocuments: true)),
         (Route<dynamic> route) => false,
       );
     } on AnnualLeaveException catch (error) {
@@ -649,6 +649,13 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
               border: OutlineInputBorder(),
             ),
             validator: (String? value) => _requiredText(value, 'depot'),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: _saving ? null : () => setState(() => _depotController.text = 'Wolverhampton'),
+              child: const Text('Select Wolverhampton'),
+            ),
           ),
           const SizedBox(height: 16),
           TextFormField(

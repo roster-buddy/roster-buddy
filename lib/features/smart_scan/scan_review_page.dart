@@ -16,6 +16,7 @@ import '../upload/upload_service.dart';
 import 'smart_scan_engine.dart';
 import 'scan_import_policy.dart';
 import 'smart_scan_result.dart';
+import 'smart_scan_page_text_reconstructor.dart';
 
 extension ScanDocumentLabel on DocumentType {
   String get scanLabel => switch (this) {
@@ -30,10 +31,11 @@ extension ScanDocumentLabel on DocumentType {
 }
 
 class ReviewedDocument {
-  const ReviewedDocument(this.type, this.result, this.activation);
+  const ReviewedDocument(this.type, this.result, this.activation, {this.baseRosterPages});
   final DocumentType type;
   final ParseResult result;
   final BaseRosterActivation? activation;
+  final List<String>? baseRosterPages;
 }
 
 typedef ScanReader =
@@ -74,6 +76,10 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
   bool _excludeUnreadable = false;
   bool _completed = false;
   bool _baseRosterOrientationChecked = false;
+  List<String>? get _baseRosterPages => _type == DocumentType.baseRoster
+      ? _pages!.map(SmartScanPageTextReconstructor.reconstructBaseRoster).toList()
+      : null;
+
   bool get _daily => [
     DocumentType.tenDayAmendment,
     DocumentType.sevenDayAmendment,
@@ -297,7 +303,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
         if (automatic && !_completed &&
             ScanImportPolicy.allRowsRead(result, _pages!)) {
           _completed = true;
-          Navigator.pop(context, ReviewedDocument(_type, result.copyWith(allRowsRead: true), _activation));
+          Navigator.pop(context, ReviewedDocument(_type, result.copyWith(allRowsRead: true), _activation, baseRosterPages: _baseRosterPages));
         }
       }
     } catch (error) {
@@ -719,7 +725,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
                               ReviewedDocument(_type,
                                 ScanImportPolicy.allRowsRead(parsed, _pages!)
                                     ? parsed.copyWith(allRowsRead: true) : parsed,
-                                _activation),
+                                _activation, baseRosterPages: _baseRosterPages),
                             ),
                       child: Text(
                         parsed != null ? 'Import records'

@@ -150,6 +150,7 @@ class StorageService {
     required String detectedType,
     required bool manuallyLabelled,
     BaseRosterActivation? baseRosterActivation,
+    List<String>? baseRosterPages,
     ParseResult? reviewedResult,
   }) async {
     final User? user = _supabase.auth.currentUser;
@@ -171,6 +172,11 @@ class StorageService {
       documentType: documentType,
       activation: baseRosterActivation,
     );
+
+    if (documentType == DocumentType.baseRoster &&
+        (baseRosterPages == null || baseRosterPages.isEmpty)) {
+      throw const StorageServiceException('Scan the full Base Roster before uploading.');
+    }
 
     final String safeFilename = _sanitiseFilename(originalFilename);
     final int timestamp = DateTime.now().toUtc().microsecondsSinceEpoch;
@@ -201,6 +207,10 @@ class StorageService {
             'detection_confidence': manuallyLabelled ? null : 1.0,
             'manually_labelled': manuallyLabelled,
             'processing_status': 'uploaded',
+            if (baseRosterActivation != null) ...{
+              'base_roster_commencement': _databaseDate(baseRosterActivation.commencementDate),
+              'base_roster_pages': baseRosterPages,
+            },
             'identified_dates': DocumentDateIndex.forResult(reviewedResult),
           })
           .select('id')

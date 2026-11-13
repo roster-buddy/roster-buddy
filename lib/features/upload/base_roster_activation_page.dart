@@ -5,10 +5,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'storage_service.dart';
 
 class BaseRosterActivationPage extends StatefulWidget {
-  const BaseRosterActivationPage({required this.fileName, this.initial, super.key});
+  const BaseRosterActivationPage({required this.fileName, this.initial, this.earliestCommencement, super.key});
 
   final String fileName;
   final BaseRosterActivation? initial;
+  final DateTime? earliestCommencement;
 
   @override
   State<BaseRosterActivationPage> createState() =>
@@ -107,12 +108,14 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
   }
 
   Future<void> _selectCommencementDate() async {
-    final DateTime initialDate = _commencementDate ?? _nextSunday();
+    final firstDate = widget.earliestCommencement ?? DateTime(2020);
+    final proposed = _commencementDate ?? _nextSunday();
+    final initialDate = proposed.isBefore(firstDate) ? firstDate : proposed;
 
     final DateTime? selectedDate = await showDatePicker(
       context: context,
       initialDate: initialDate,
-      firstDate: DateTime(2020),
+      firstDate: firstDate,
       lastDate: DateTime(2100),
       selectableDayPredicate: (date) => date.weekday == DateTime.sunday,
       helpText: 'Select commencement Sunday',

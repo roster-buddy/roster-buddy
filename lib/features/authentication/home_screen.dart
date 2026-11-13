@@ -1,3 +1,4 @@
+import '../upload/depot_documents_page.dart';
 import '../notifications/shift_reminder_link.dart';
 import '../../core/widgets/top_notice_banner.dart';
 import '../../core/widgets/day_details_panel.dart';
@@ -107,7 +108,9 @@ String _openJobCardLabel(JobCardMatch match) {
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({this.showDepotDocuments = false, super.key});
+
+  final bool showDepotDocuments;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -148,6 +151,11 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     } else if (Uri.base.queryParameters['notifications'] == '1') {
       WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _openPendingActions(); });
+    }
+    if (widget.showDepotDocuments) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openDepotDocuments();
+      });
     }
     _rosterNoticeTimer = Timer.periodic(const Duration(seconds: 30), (_) => _refreshPendingActionCount());
   }
@@ -388,11 +396,19 @@ class _HomeScreenState extends State<HomeScreen> {
       detectedType: reviewed.type.scanLabel,
       manuallyLabelled: true,
       baseRosterActivation: reviewed.activation,
+      baseRosterPages: reviewed.baseRosterPages,
       reviewedResult: reviewed.result,
     );
     if (!uploaded || !mounted) return;
     setState(() { _dashboardRefreshVersion++; _selectedIndex = 0; });
   }
+
+  Future<void> _openDepotDocuments() => Navigator.of(context).push<void>(
+    MaterialPageRoute(builder: (_) => DepotDocumentsPage(
+      onUpload: () => _pickDocument(UploadSource.file),
+      onRosterChanged: _notifyRosterChanged,
+    )),
+  );
 
   void _openUploadPage() {
     _pickDocument(UploadSource.file);
@@ -584,7 +600,7 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) async {
           if (index == 2) {
-            await _pickDocument(UploadSource.file);
+            await _openDepotDocuments();
             return;
           }
 
