@@ -158,14 +158,12 @@ test('checks isolated Base Roster fields before accepting the shift', async () =
   assert.equal(readBaseRosterDay([['', '', '', '']], '', {blank: true}), '');
 });
 
-test('flags conflicting turn readings across Base Roster pages', async () => {
-  const {flagConflictingBaseRosterTurns} = await import('../web/roster_scanner.mjs');
-  const heading = 'WEEK | SUNDAY | MONDAY | TUESDAY | WEDNESDAY | THURSDAY | FRIDAY | SATURDAY';
-  const pages = [
-    {lines: [], fullText: heading + '\n1 | | 17:11 01:31 08:20 245 | No Duty\n1234'},
-    {lines: [], fullText: heading + '\n2 | | 17:11 01:31 08:20 215 | No Duty\n5678'},
-  ];
-  for (const page of flagConflictingBaseRosterTurns(pages)) {
-    assert.match(page.fullText, /\| \? \| No Duty/);
+test('accepts distinct Base Roster turns with the same hours', async () => {
+  const {readBaseRosterDay} = await import('../web/roster_scanner.mjs');
+  for (const turn of ['221', '222', '225']) {
+    assert.equal(
+      readBaseRosterDay([['07:00', '15:45', '08:45', turn]], '070015450845' + turn),
+      '07:00 15:45 08:45 ' + turn,
+    );
   }
 });

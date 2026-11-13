@@ -681,41 +681,6 @@ export async function recogniseBaseRosterGrid(canvas, worker, check, fullPage) {
   return {fullText: table.join('\n'), lines: [], confidence: fullPage.confidence};
 }
 
-// If a repeated clock pair is read with different numeric turns, ask for
-// verification. The printed roster can legitimately assign different turns.
-export function flagConflictingBaseRosterTurns(pages) {
-  const grids = pages.map(page => page.lines.length === 0 &&
-    page.fullText.startsWith('WEEK | SUNDAY | MONDAY |') ? page.fullText.split('\n') : null);
-  const byClock = new Map();
-  grids.forEach(rows => {
-    if (!rows) return;
-    for (let index = 1; index < rows.length; index += 2) {
-      const cells = rows[index].split('|').map(cell => cell.trim());
-      rows[index] = cells;
-      cells.slice(1).forEach((cell, day) => {
-        const match = /^(\d\d:\d\d \d\d:\d\d \d\d:\d\d) (\d+)$/.exec(cell);
-        if (!match) return;
-        const key = (day === 0 ? 'Sunday ' : '') + match[1];
-        if (!byClock.has(key)) byClock.set(key, []);
-        byClock.get(key).push({cells, column: day + 1, turn: match[2]});
-      });
-    }
-  });
-  for (const readings of byClock.values()) {
-    const counts = new Map();
-    for (const {turn} of readings) counts.set(turn, (counts.get(turn) || 0) + 1);
-    if (counts.size < 2) continue;
-    const ranked = [...counts].sort((a, b) => b[1] - a[1]);
-    const agreed = ranked[0][1] > ranked[1][1] ? ranked[0][0] : null;
-    for (const {cells, column, turn} of readings) {
-      if (turn !== agreed) cells[column] = '?';
-    }
-  }
-  return pages.map((page, index) => grids[index]
-    ? {...page, fullText: grids[index].map(row => Array.isArray(row) ? row.join(' | ') : row).join('\n')}
-    : page);
-}
-
 async function recogniseBaseRosterBands(canvas, worker, check, session, fullPage) {
   // Three to five printed roster lines per tile keeps adjacent tiny rows from
   // being fused, while remaining much quicker than 54 individual OCR calls.
@@ -1108,7 +1073,7 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}, retryU
         }
       } finally { page.cleanup(); canvas.width = 1; canvas.height = 1; }
     }
-    return retryUpsideDown ? flagConflictingBaseRosterTurns(pages) : pages;
+    return pages;
   };
   try {
     return JSON.stringify(await Promise.race([work(), stopped]));

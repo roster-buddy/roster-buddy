@@ -490,7 +490,9 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
                 trailing: const Icon(Icons.edit_outlined),
                 onTap: () => _editRecord(null, warning),
               ),
-          ] else if (reviewReasons.isEmpty && parsed.duties.isNotEmpty)
+          ] else if (reviewReasons.isEmpty &&
+              !parsed.hasBlockingWarnings &&
+              parsed.duties.isNotEmpty)
             const Text('All recognised records passed the automatic checks.')
           else if (_type == DocumentType.baseRoster)
             const Text('Check the flagged lines below. The readable shifts are shown in the preview.')
