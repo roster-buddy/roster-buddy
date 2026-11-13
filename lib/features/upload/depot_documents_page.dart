@@ -37,7 +37,7 @@ class _DepotDocumentsPageState extends State<DepotDocumentsPage> {
     final profile = await _client.from('driver_profiles')
         .select('depot').eq('user_id', _client.auth.currentUser!.id).single();
     final depot = (profile['depot'] as String? ?? '').trim();
-    if (depot.isEmpty) return (depot: depot, documents: []);
+    if (depot.isEmpty) return (depot: depot, documents: <Map<String, dynamic>>[]);
     final documents = await _client.from('roster_documents')
         .select('id, original_filename, detected_type, storage_path, base_roster_commencement')
         .eq('depot', depot.toLowerCase())
