@@ -156,6 +156,12 @@ test('checks isolated Base Roster fields before accepting the shift', async () =
   assert.equal(readBaseRosterDay([['', '', 'No', 'Duty']], ''), 'No Duty');
   assert.equal(readBaseRosterDay([['', '', '', '']], ''), '?');
   assert.equal(readBaseRosterDay([['', '', '', '']], '', {blank: true}), '');
+  assert.equal(readBaseRosterDay([], '', {blank: true, sunday: true}), 'No Duty');
+  assert.equal(readBaseRosterDay([['17:59', '00:12', '06:13', '9']],
+    '17:5900:1206:139', {sunday: true}), '17:59 00:12 06:13 9');
+  assert.equal(readBaseRosterDay([['04:45', '23:30', '18:45', 'Sp']], ''), '?');
+  assert.equal(readBaseRosterDay([['15:25', '00:06', '08:41', '2121']],
+    '15:2500:0608:412121'), '?');
 });
 
 test('accepts distinct Base Roster turns with the same hours', async () => {

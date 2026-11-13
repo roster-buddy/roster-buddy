@@ -535,10 +535,11 @@ function clockCandidates(value) {
 // A misread digit can still produce a plausible time. Check book-on and
 // book-off against the printed duration and flag ambiguous readings.
 export function readBaseRosterDay(attempts, combined, {blank = false, sunday = false} = {}) {
-  if (blank) return '';
+  combined = Array.isArray(combined) ? combined : [combined];
+  if (blank) return sunday ? 'No Duty' : '';
   const noDuty = /(?:NO|N[CEAO]?)[A-Z1]{0,2}(?:D[UO]?[TL]Y|OUTY|DUT)[A-Z]?$/;
   const letters = value => value.toUpperCase().replace(/[^A-Z1]/g, '');
-  const rest = [combined, ...attempts.map(fields => fields.join(''))]
+  const rest = [...combined, ...attempts.map(fields => fields.join(''))]
     .some(value => noDuty.test(letters(value)) && value.replace(/[^0-9]/g, '').length < 3);
   if (rest) return 'No Duty';
 
@@ -550,18 +551,22 @@ export function readBaseRosterDay(attempts, combined, {blank = false, sunday = f
     });
     const turn = fields[3].toUpperCase().replace(/[^0-9A-Z]/g, '');
     if (/^[S5]P$/.test(turn)) add(3, 'Sp');
-    else if ((sunday ? /^[1-9]\d{0,3}$/ : /^[1-9]\d{2,3}$/).test(turn)) add(3, turn);
+    else if ((sunday ? /^[1-9]\d{0,3}$/ : /^[1-9]\d{2}$/).test(turn)) add(3, turn);
   }
   attempts.forEach(addFields);
-  const compact = combined.toUpperCase().replace(/[^0-9A-Z]/g, '')
-    .match(/^(\d{4})(\d{4})(\d{4})([S5]P|\d{1,3})$/);
-  if (compact) addFields(compact.slice(1));
+  for (const value of combined) {
+    const compact = value.toUpperCase().replace(/[^0-9A-Z:.]/g, '')
+      .match(/^[A-Z]?(\d{1,2}[:.]?\d{2})(\d{1,2}[:.]?\d{2})(\d{1,2}[:.]?\d{2})([S5]P|\d{1,4})$/);
+    if (compact) addFields(compact.slice(1));
+  }
 
   const choices = [];
   for (const [on, onCount] of counts[0]) {
     for (const [off, offCount] of counts[1]) {
       for (const [hours, hoursCount] of counts[2]) {
-        if ((clockMinutes(off) - clockMinutes(on) + 1440) % 1440 === clockMinutes(hours)) {
+        const duration = clockMinutes(hours);
+        if (duration > 0 && duration <= 720 &&
+            (clockMinutes(off) - clockMinutes(on) + 1440) % 1440 === duration) {
           choices.push({clocks: [on, off, hours], score: onCount + offCount + hoursCount});
         }
       }
@@ -592,23 +597,32 @@ function baseRosterFirstLine(fields, compact) {
 }
 
 function isBlankBaseRosterCell(canvas, {fields, top, bottom}) {
-  const x = fields[0] + 5;
-  const width = fields[4] - x - 5;
   const height = bottom - top - 6;
-  if (width <= 0 || height <= 0) return false;
-  const {data} = canvas.getContext('2d').getImageData(x, top + 3, width, height);
-  let dark = 0;
-  for (let index = 0; index < data.length; index += 4) {
-    if (data[index] < 140) dark++;
-  }
-  return dark < width * height * .008;
+  if (height <= 0) return false;
+  const context = canvas.getContext('2d');
+  return fields.slice(0, 4).every((left, field) => {
+    const x = left + 4;
+    const width = fields[field + 1] - x - 4;
+    if (width <= 0) return false;
+    const {data} = context.getImageData(x, top + 3, width, height);
+    let dark = 0;
+    for (let column = 0; column < width; column++) {
+      let ink = 0;
+      for (let row = 0; row < height; row++) {
+        if (data[(row * width + column) * 4] < 140) ink++;
+      }
+      // A vertical rule can cross the cell interior on a skewed scan.
+      if (ink < height * .65) dark += ink;
+    }
+    return dark < width * height * .012;
+  });
 }
 
 async function retryBaseRosterDay(canvas, worker, check, cell) {
   const attempts = [];
   const {fields, top, bottom} = cell;
   const height = bottom - top - 3;
-  if (height <= 0) return attempts;
+  if (height <= 0) return {attempts, whole: []};
   const crop = document.createElement('canvas');
   try {
     for (const [offset, threshold] of [[0, 175], [2, 160], [-2, 191]]) {
@@ -638,7 +652,21 @@ async function retryBaseRosterDay(canvas, worker, check, cell) {
       }
       attempts.push(result);
     }
-    return attempts;
+    const whole = [];
+    for (const [insetLeft, insetRight] of [[0, 0], [2, 0], [0, 8], [0, 14], [-5, 8], [-9, 14]]) {
+      check();
+      const left = cell.x + insetLeft;
+      const width = cell.right - left - insetRight;
+      crop.width = width * 3 + 30;
+      crop.height = height * 3 + 30;
+      const context = crop.getContext('2d');
+      context.fillStyle = 'white';
+      context.fillRect(0, 0, crop.width, crop.height);
+      context.drawImage(canvas, left, top + 2, width, height, 15, 15, width * 3, height * 3);
+      const {data} = await worker.recognize(crop);
+      whole.push(data.text.trim());
+    }
+    return {attempts, whole};
   } finally {
     crop.width = 1;
     crop.height = 1;
@@ -667,8 +695,9 @@ export async function recogniseBaseRosterGrid(canvas, worker, check, fullPage) {
         const options = {blank, sunday: day === 0};
         let reading = readBaseRosterDay(attempts, whole, options);
         if (reading === '?') {
-          attempts.push(...await retryBaseRosterDay(canvas, worker, check, cell));
-          reading = readBaseRosterDay(attempts, whole, options);
+          const retry = await retryBaseRosterDay(canvas, worker, check, cell);
+          attempts.push(...retry.attempts);
+          reading = readBaseRosterDay(attempts, [whole, ...retry.whole], options);
         }
         cells.push(reading);
       }

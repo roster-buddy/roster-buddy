@@ -221,7 +221,10 @@ class BaseRosterParser implements BaseParser {
         dayIndex < selectedWeek.dayCells.length;
         dayIndex++
       ) {
-        final _BaseRosterDayCell cell = selectedWeek.dayCells[dayIndex];
+        final _BaseRosterDayCell scannedCell = selectedWeek.dayCells[dayIndex];
+        final _BaseRosterDayCell cell = dayIndex == 0 && scannedCell.rawText.isEmpty
+            ? const _BaseRosterDayCell(rawText: 'No Duty')
+            : scannedCell;
         if (!cell.isComplete) continue;
         final Duty? duty = _buildDuty(
           date: weekSunday.add(Duration(days: dayIndex)),
