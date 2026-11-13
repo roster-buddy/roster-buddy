@@ -16,6 +16,10 @@ class DutyResolver {
 
   static const String _profileTableName = 'driver_profiles';
   static const String _dutyTableName = 'document_duties';
+  static const String _dutyColumns =
+      'duty_date, source, duty_type, turn_number, book_on, book_off, '
+      'rostered_minutes, remarks, driver_number, payroll_number, '
+      'driver_name, depot, amendment_code, mileage, page_number, raw_text';
   static const String _annualLeavePeriodTableName = 'annual_leave_periods';
   static const String _annualLeaveRequestTableName = 'annual_leave_requests';
   static const String _annualLeaveBlockOverrideTableName =
@@ -86,11 +90,7 @@ class DutyResolver {
     );
     final dutyQuery = _supabase
         .from(_dutyTableName)
-        .select(
-          'duty_date, source, duty_type, turn_number, book_on, book_off, '
-          'rostered_minutes, remarks, driver_number, payroll_number, '
-          'driver_name, depot, amendment_code, mileage, page_number, raw_text',
-        )
+        .select(_dutyColumns)
         .eq('duty_date', _databaseDate(date));
     final List<dynamic> response = await (dutyFilter == null
         ? dutyQuery
@@ -107,6 +107,8 @@ class DutyResolver {
         )
         .map(_dutyFromRow)
         .toList();
+
+    await _applyBaseRoster(duties, user.id, rosterNumber, date, date);
 
     if (driverNumber != null) {
       final String databaseDate = _databaseDate(date);
@@ -310,11 +312,7 @@ class DutyResolver {
     );
     final dutyQuery = _supabase
         .from(_dutyTableName)
-        .select(
-          'duty_date, source, duty_type, turn_number, book_on, book_off, '
-          'rostered_minutes, remarks, driver_number, payroll_number, '
-          'driver_name, depot, amendment_code, mileage, page_number, raw_text',
-        )
+        .select(_dutyColumns)
         .gte('duty_date', databaseStart)
         .lte('duty_date', databaseEnd);
 
@@ -371,6 +369,7 @@ class DutyResolver {
         ),
       SundayAvailabilityService(supabase: _supabase)
           .getAvailableSundayDatesForRange(start, end),
+      _loadBaseRosters(user.id, rosterNumber, end),
     ]);
 
     final List<Duty> duties = <Duty>[];
@@ -389,6 +388,8 @@ class DutyResolver {
           )
           .map(_dutyFromRow),
     );
+
+    _projectBaseRosters(duties, responses[7] as List<_BaseRosterCycle>, start, end);
 
     if (driverNumber != null) {
       final List<dynamic> annualLeaveResponse = responses[1] as List<dynamic>;
@@ -486,6 +487,68 @@ class DutyResolver {
     );
 
     return resolveByDate(duties);
+  }
+
+  Future<void> _applyBaseRoster(
+    List<Duty> duties, String userId, String? rosterNumber,
+    DateTime start, DateTime end,
+  ) async {
+    final cycles = await _loadBaseRosters(userId, rosterNumber, end);
+    _projectBaseRosters(duties, cycles, start, end);
+  }
+
+  Future<List<_BaseRosterCycle>> _loadBaseRosters(
+    String userId, String? rosterNumber, DateTime end,
+  ) async {
+    if (rosterNumber == null) return [];
+    final activations = await _supabase.from('base_rosters')
+        .select('document_id, commencement_date')
+        .eq('user_id', userId)
+        .lte('commencement_date', _databaseDate(end))
+        .order('commencement_date', ascending: false)
+        .order('created_at', ascending: false)
+        .order('id', ascending: false);
+    final ids = activations.map((row) => row['document_id'] as String).toSet();
+    if (ids.isEmpty) return [];
+    final documents = await _supabase.from('roster_documents')
+        .select('id')
+        .eq('processing_status', 'processed')
+        .inFilter('id', ids.toList());
+    final processed = documents.map((row) => row['id']).toSet();
+    final cycles = <_BaseRosterCycle>[];
+    final starts = <String>{};
+    for (final activation in activations) {
+      final id = activation['document_id'];
+      final start = activation['commencement_date'] as String;
+      if (!processed.contains(id) || starts.contains(start)) continue;
+      final rows = await _supabase.from(_dutyTableName)
+          .select(_dutyColumns)
+          .eq('document_id', id as String)
+          .eq('source', 'base_roster')
+          .eq('driver_number', rosterNumber);
+      if (rows.isEmpty) continue;
+      starts.add(start);
+      cycles.add(_BaseRosterCycle(DateTime.parse(start), rows.map(_dutyFromRow)));
+    }
+    return cycles;
+  }
+
+  static void _projectBaseRosters(
+    List<Duty> duties, List<_BaseRosterCycle> cycles, DateTime start, DateTime end,
+  ) {
+    if (cycles.isEmpty) return;
+    for (var date = _dateOnly(start); !date.isAfter(end);
+        date = DateTime(date.year, date.month, date.day + 1)) {
+      for (final cycle in cycles) {
+        if (date.isBefore(cycle.start)) continue;
+        final key = _databaseDate(date);
+        duties.removeWhere((duty) => duty.source == RosterSource.baseRoster &&
+            _databaseDate(duty.date) == key);
+        final duty = cycle.dutyOn(date);
+        if (duty != null) duties.add(duty);
+        break;
+      }
+    }
   }
 
   /// Returns Sundays that immediately follow an effective block-leave week
@@ -1414,4 +1477,28 @@ class DutyResolverException implements Exception {
 
   @override
   String toString() => message;
+}
+
+class _BaseRosterCycle {
+  _BaseRosterCycle(this.start, Iterable<Duty> duties) {
+    var lastDay = 0;
+    for (final duty in duties) {
+      final offset = _dayOffset(duty.date);
+      if (offset < 0) continue;
+      days[offset] = duty;
+      if (offset > lastDay) lastDay = offset;
+    }
+    length = (lastDay ~/ 7 + 1) * 7;
+  }
+
+  final DateTime start;
+  final days = <int, Duty>{};
+  late final int length;
+
+  int _dayOffset(DateTime date) =>
+      DateTime.utc(date.year, date.month, date.day)
+          .difference(DateTime.utc(start.year, start.month, start.day)).inDays;
+
+  Duty? dutyOn(DateTime date) =>
+      days[_dayOffset(date) % length]?.copyWith(date: date);
 }

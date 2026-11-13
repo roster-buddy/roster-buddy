@@ -11171,7 +11171,7 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
           (_clock(on) == null || _clock(off) == null)));
     final overnight = timed && off.compareTo(on) < 0;
     final type = onLeave ? 'Annual leave' : duty == null ? 'No roster information' :
-      duty!.dutyType.countsAsWorking ? (duty!.dutyType == DutyType.training ? 'Training' : duty!.dutyType == DutyType.medical ? 'Medical' : duty!.isAmendedTurn ? 'Amended turn' : 'Working') : switch (duty!.dutyType) {
+      duty!.dutyType.countsAsWorking ? (duty!.dutyType == DutyType.training ? 'Training' : duty!.dutyType == DutyType.medical ? 'Medical' : duty!.isRouteRefresh ? 'Route refresh' : duty!.isAmendedTurn ? 'Amended turn' : 'Working') : switch (duty!.dutyType) {
         DutyType.restDay => 'Rest day', DutyType.sick => 'Sick',
         DutyType.publicHoliday => 'Bank holiday', DutyType.unavailable => 'Unavailable',
         DutyType.annualLeave => 'Annual leave', _ => 'Review duty',

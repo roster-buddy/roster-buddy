@@ -70,6 +70,10 @@ class Duty {
       _amendedTurn.hasMatch(rawText ?? '') ||
       _amendedTurn.hasMatch(remarks ?? '');
 
+  bool get isRouteRefresh =>
+      dutyType.countsAsWorking &&
+      const {'221', '222', '225'}.contains(turnNumber?.trim());
+
   bool get hasTimes => bookOn != null && bookOff != null;
 
   bool get hasDriverIdentity =>

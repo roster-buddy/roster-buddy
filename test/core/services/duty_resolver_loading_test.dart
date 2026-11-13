@@ -33,7 +33,22 @@ void main() {
           // A serial loader cannot reach this barrier; parallel reads can.
           if (reads >= 6 && !release.isCompleted) release.complete();
           await release.future;
-          result = request.uri.path.endsWith('document_duties') ? [
+          final path = request.uri.path;
+          final document = request.uri.queryParameters['document_id'];
+          result = path.endsWith('base_rosters') ? [
+            {'document_id': 'next', 'commencement_date': '2026-11-29'},
+            {'document_id': 'current', 'commencement_date': '2026-11-15'},
+          ] : path.endsWith('roster_documents') ? [
+            {'id': 'current'}, {'id': 'next'},
+          ] : document == 'eq.current' ? [
+            {'duty_date': '2026-11-18', 'source': 'base_roster', 'duty_type': 'working',
+              'turn_number': '221', 'driver_number': '3524'},
+          ] : document == 'eq.next' ? [
+            {'duty_date': '2026-12-02', 'source': 'base_roster', 'duty_type': 'working',
+              'turn_number': '225', 'driver_number': '3524'},
+          ] : path.endsWith('manual_duties') ? [
+            {'duty_date': '2026-12-02', 'duty_type': 'rest_day'},
+          ] : path.endsWith('document_duties') ? [
             {'duty_date': '2026-11-25', 'source': '48_hour', 'duty_type': 'working',
               'turn_number': '204', 'payroll_number': '21910', 'book_on': '04:25', 'book_off': '12:58'},
             {'duty_date': '2026-11-25', 'source': '48_hour', 'duty_type': 'working',
@@ -49,9 +64,12 @@ void main() {
     try {
       await client.auth.signInWithPassword(email: 'fixture@example.test', password: 'fixture');
       final result = await DutyResolver(supabase: client)
-          .getResolvedDutiesForRange(DateTime(2026, 11, 23), DateTime(2026, 11, 28))
+          .getResolvedDutiesForRange(DateTime(2026, 11, 23), DateTime(2026, 12, 9))
           .timeout(const Duration(seconds: 8));
-      expect(reads, 7);
+      expect(reads, 11);
+      expect(result['2026-12-02']?.dutyType.name, 'restDay');
+      expect(result['2026-12-09']?.turnNumber, '225');
+      expect(result['2026-12-09']?.isRouteRefresh, isTrue);
       expect(result['2026-11-25']?.turnNumber, '204');
       expect(result['2026-11-25']?.bookOn, '04:25');
     } finally {

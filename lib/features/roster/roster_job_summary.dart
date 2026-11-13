@@ -33,6 +33,8 @@ class RosterJobSummary extends StatelessWidget {
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.center,
     children: [
+      if (duty.isRouteRefresh)
+        Tooltip(message: 'Route refresh', child: Icon(Icons.route, size: fontSize + 1, color: foreground)),
       for (final value in [
         _time(duty.bookOn),
         _time(duty.bookOff),
