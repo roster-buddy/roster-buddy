@@ -22,6 +22,8 @@ class RosterDecisionSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
     final titleText = title is Text ? (title as Text).data?.toLowerCase() ?? '' : '';
     final approval = titleText.contains('confirmed') ||
         titleText.contains('authorised') ||
@@ -74,11 +76,11 @@ class RosterDecisionSheet extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(20, 4, 20, 24 + MediaQuery.viewInsetsOf(context).bottom),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (title != null) DefaultTextStyle(
-          style: const TextStyle(color: Color(0xFF102A43), fontSize: 22, fontWeight: FontWeight.w900),
+          style: TextStyle(color: dark ? theme.colorScheme.onSurface : const Color(0xFF102A43), fontSize: 22, fontWeight: FontWeight.w900),
           child: approval ? Text(shortTitle) : title!),
         if (content != null && !approval) ...[
           const SizedBox(height: 18),
-          DefaultTextStyle(style: const TextStyle(color: Color(0xFF52667A), fontSize: 16, height: 1.4),
+          DefaultTextStyle(style: TextStyle(color: dark ? theme.colorScheme.onSurfaceVariant : const Color(0xFF52667A), fontSize: 16, height: 1.4),
             child: content!),
         ],
         const SizedBox(height: 10),

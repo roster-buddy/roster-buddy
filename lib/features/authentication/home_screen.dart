@@ -6717,6 +6717,9 @@ class _CalendarPageState extends State<_CalendarPage> {
     final bool isGrantedAnnualLeave =
         leaveRequest?.status == AnnualLeaveRequestStatus.granted;
 
+    final bool isUnavailable = !isGrantedAnnualLeave &&
+        duty?.dutyType == DutyType.unavailable;
+
     final Color dutyColour = isGrantedAnnualLeave
         ? leaveRed
         : duty == null
@@ -6740,7 +6743,10 @@ class _CalendarPageState extends State<_CalendarPage> {
       child: Material(
         color: dutyColour,
         borderRadius: BorderRadius.circular(11),
-        child: InkWell(
+        clipBehavior: Clip.antiAlias,
+        child: CustomPaint(
+          painter: isUnavailable ? const _UnavailableTilePainter() : null,
+          child: InkWell(
           borderRadius: BorderRadius.circular(11),
           onTap: () {
             if (_restDayPicker != null) {
@@ -6825,7 +6831,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                                       AnnualLeaveRequestType.floating
                                   ? 'ALD'
                                   : 'AW')
-                            : _sourceLabel(duty!.source),
+                            : isUnavailable ? 'U' : _sourceLabel(duty!.source),
                         style: TextStyle(
                           color: foreground,
                           fontSize: 7,
@@ -6952,6 +6958,7 @@ class _CalendarPageState extends State<_CalendarPage> {
             ),
           ),
         ),
+      ),
       ),
     );
   }
@@ -10613,6 +10620,24 @@ enum _CalendarDayAction {
   allocateShift,
   makeSundayAvailable,
   viewDay,
+}
+
+class _UnavailableTilePainter extends CustomPainter {
+  const _UnavailableTilePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Yellow is the material background. Grey fills the lower-right half.
+    final greyHalf = Path()
+      ..moveTo(size.width, 0)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(greyHalf, Paint()..color = const Color(0xFFB0B7BF));
+  }
+
+  @override
+  bool shouldRepaint(_UnavailableTilePainter oldDelegate) => false;
 }
 
 class _CalendarLegendItem extends StatelessWidget {

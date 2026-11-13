@@ -37,7 +37,11 @@ Future<bool> manageFloatingLeaveCancellation({
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text('Cancellation confirmed by DTCM / Rosters?',
-            style: const TextStyle(color: Color(0xFF102A43), fontSize: 22, fontWeight: FontWeight.w900)),
+            style: TextStyle(
+              color: Theme.of(sheetContext).brightness == Brightness.dark
+                  ? Theme.of(sheetContext).colorScheme.onSurface
+                  : const Color(0xFF102A43),
+              fontSize: 22, fontWeight: FontWeight.w900)),
           const SizedBox(height: 16),
           const SizedBox(height: 20),
           FilledButton.icon(
