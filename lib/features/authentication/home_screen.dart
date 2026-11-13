@@ -5231,22 +5231,25 @@ class _DutyHistoryEntry extends StatelessWidget {
 }
 
 class _RosterSourceBadge extends StatelessWidget {
-  const _RosterSourceBadge({required this.source});
+  const _RosterSourceBadge({required this.source, this.unavailable = false});
 
   final RosterSource source;
+  final bool unavailable;
 
   @override
   Widget build(BuildContext context) {
+    final colour = Theme.of(context).brightness == Brightness.dark
+        ? Theme.of(context).colorScheme.primary : const Color(0xFF1769AA);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: const Color(0xFF1769AA).withValues(alpha: 0.10),
+        color: colour.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        _label,
-        style: const TextStyle(
-          color: Color(0xFF1769AA),
+        unavailable ? 'U' : _label,
+        style: TextStyle(
+          color: colour,
           fontSize: 11,
           fontWeight: FontWeight.w800,
         ),
@@ -7816,13 +7819,6 @@ class _CalendarPageState extends State<_CalendarPage> {
                     ),
                     const SizedBox(height: 10),
                   ],
-                  if (duty != null && _isPostBlockUnavailableSunday(duty)) ...[
-                    _buildPostBlockSundayAction(
-                      sheetContext: sheetContext,
-                      date: date,
-                      duty: duty,
-                    ),
-                  ],
                 if (pendingMove != null) ...[
                   const SizedBox(height: 12),
                   FilledButton(
@@ -9432,16 +9428,6 @@ class _CalendarPageState extends State<_CalendarPage> {
         duty.rawText == 'permanent_sunday_unavailable';
   }
 
-  bool _isPostBlockUnavailableSunday(Duty? duty) {
-    if (duty == null) {
-      return false;
-    }
-
-    return duty.date.weekday == DateTime.sunday &&
-        duty.dutyType == DutyType.unavailable &&
-        duty.rawText == 'post_block_sunday';
-  }
-
   Future<void> _makeSundayAvailable({required DateTime date}) async {
     try {
       await _sundayAvailabilityService.makeSundayAvailable(date);
@@ -9468,91 +9454,6 @@ class _CalendarPageState extends State<_CalendarPage> {
         'Roster Buddy could not update your Sunday availability.',
       );
     }
-  }
-
-  Widget _buildPostBlockSundayAction({
-    required BuildContext sheetContext,
-    required DateTime date,
-    required Duty duty,
-  }) {
-    if (!_isPostBlockUnavailableSunday(duty)) {
-      return const SizedBox.shrink();
-    }
-
-    return FutureBuilder<bool>(
-      future: _sundayAvailabilityService.isPermanentlyUnavailableOnSundays(),
-      builder: (BuildContext context, AsyncSnapshot<bool> snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: null,
-              icon: const SizedBox(
-                width: 17,
-                height: 17,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              label: const Text('Checking Sunday availability…'),
-            ),
-          );
-        }
-
-        // Permanently unavailable drivers do not need the post-block prompt.
-        if (snapshot.data == true) {
-          return const SizedBox.shrink();
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(13),
-              decoration: BoxDecoration(
-                color: restYellow.withValues(alpha: 0.22),
-                borderRadius: BorderRadius.circular(11),
-                border: Border.all(color: restYellow.withValues(alpha: 0.8)),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.info_outline, color: navy, size: 21),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'This was a booked Sunday immediately after your '
-                      'block leave week, so you are currently marked '
-                      'unavailable. Make yourself available if you want '
-                      'to work your booked Sunday duty.',
-                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
-                        height: 1.35,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.of(sheetContext).pop();
-
-                Future<void>.delayed(const Duration(milliseconds: 150), () {
-                  if (mounted) {
-                    _makeSundayAvailable(date: date);
-                  }
-                });
-              },
-              icon: const Icon(Icons.check_circle_outline),
-              label: const Text('Make myself available'),
-              style: FilledButton.styleFrom(backgroundColor: workingGreen),
-            ),
-            const SizedBox(height: 10),
-          ],
-        );
-      },
-    );
   }
 
   void _showCalendarMessage(String message) {
@@ -11148,6 +11049,38 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
   Duty? get duty => widget.duty;
   DateTime get date => widget.date;
   bool get annualLeave => widget.annualLeave;
+  bool get _canMakeAvailable =>
+      !annualLeave &&
+      duty?.dutyType == DutyType.unavailable &&
+      date.weekday == DateTime.sunday &&
+      (duty?.rawText == 'permanent_sunday_unavailable' ||
+          duty?.rawText == 'post_block_sunday');
+
+  late final Future<Duty?> _rosteredShift = DutyResolver()
+      .getDutiesForDate(date)
+      .then((duties) => duties.where((duty) => duty.dutyType.countsAsWorking).firstOrNull);
+
+  bool _savingAvailability = false;
+
+  Future<void> _makeAvailable() async {
+    setState(() => _savingAvailability = true);
+    try {
+      await SundayAvailabilityService().makeSundayAvailable(date);
+      if (!mounted) return;
+      widget.onChanged();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sunday availability updated.')),
+      );
+      Navigator.of(context).pop();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _savingAvailability = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update Sunday availability. Please retry.')),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _startFocus.dispose(); _finishFocus.dispose();
@@ -11313,11 +11246,40 @@ class DayShiftSummaryState extends State<DayShiftSummary> {
             ])),
             if (!annualLeave && duty != null) ...[
               const SizedBox(width: 8),
-              _RosterSourceBadge(source: duty!.source),
+              _RosterSourceBadge(source: duty!.source,
+                unavailable: duty!.dutyType == DutyType.unavailable),
             ],
           ]),
         ),
         const SizedBox(height: 10),
+      ],
+      if (_canMakeAvailable) ...[
+        FutureBuilder<Duty?>(
+          future: _rosteredShift,
+          builder: (context, snapshot) {
+            final shift = snapshot.data;
+            if (shift == null) {
+              return Text(snapshot.connectionState == ConnectionState.waiting
+                  ? 'Loading rostered shift…'
+                  : 'Rostered shift details unavailable');
+            }
+            final turn = shift.turnNumber?.trim();
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.schedule),
+              title: Text(turn == null || turn.isEmpty
+                  ? 'Rostered shift' : 'Rostered shift · Turn $turn'),
+              subtitle: Text('${shift.bookOn ?? '—'}–${shift.bookOff ?? '—'}'),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+        FilledButton.icon(
+          onPressed: _savingAvailability ? null : _makeAvailable,
+          icon: const Icon(Icons.check_circle_outline),
+          label: const Text('Make myself available'),
+        ),
+        const SizedBox(height: 12),
       ],
       if (needsReview) Padding(
         padding: const EdgeInsets.only(bottom: 12),
