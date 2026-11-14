@@ -341,7 +341,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _navigateFromChild(int destination) async {
     if (destination == 2) {
-      await _pickDocument(UploadSource.file);
+      await _openUploadPicker();
       return;
     }
 
@@ -362,11 +362,9 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _pickDocument(UploadSource source) async {
+  Future<void> _openUploadPicker() async {
     try {
-      final UploadSource? selectedSource = source == UploadSource.file
-          ? await chooseUploadSource(context)
-          : source;
+      final UploadSource? selectedSource = await chooseUploadSource(context);
       if (selectedSource == null || !mounted) return;
       final PickedUpload? picked = await UploadService.pickDocument(selectedSource);
 
@@ -407,14 +405,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _openDepotDocuments() => Navigator.of(context).push<void>(
     MaterialPageRoute(builder: (_) => DepotDocumentsPage(
-      onUpload: () => _pickDocument(UploadSource.file),
+      onUpload: _openUploadPicker,
       onRosterChanged: _notifyRosterChanged,
     )),
   );
-
-  void _openUploadPage() {
-    _pickDocument(UploadSource.file);
-  }
 
   void _notifyRosterChanged() {
     setState(() {
@@ -457,7 +451,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (destination == 2) {
-      await _pickDocument(UploadSource.file);
+      await _openUploadPicker();
       return;
     }
 
@@ -478,7 +472,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final List<Widget> pages = [
       _DashboardPage(
         email: email,
-        onUpload: _openUploadPage,
+        onUpload: _openUploadPicker,
         onCalendarAction: _openCalendarAction,
         onRosterChanged: _notifyRosterChanged,
         refreshVersion: _dashboardRefreshVersion,
@@ -498,7 +492,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       _DashboardPage(
         email: email,
-        onUpload: _openUploadPage,
+        onUpload: _openUploadPicker,
         onCalendarAction: _openCalendarAction,
         onRosterChanged: _notifyRosterChanged,
         refreshVersion: _dashboardRefreshVersion,
@@ -549,6 +543,11 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Depot documents',
+            onPressed: _openDepotDocuments,
+            icon: const Icon(Icons.folder_open_outlined),
+          ),
           IconButton(
             tooltip: _pendingActionCount == 0
                 ? 'Pending Actions'
@@ -602,7 +601,7 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) async {
           if (index == 2) {
-            await _openDepotDocuments();
+            await _openUploadPicker();
             return;
           }
 
