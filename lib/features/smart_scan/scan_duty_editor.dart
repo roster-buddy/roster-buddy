@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/models/duty.dart';
+import '../../core/parser/parser_utils.dart';
 import '../../core/models/duty_type.dart';
 import '../../core/models/roster_source.dart';
 import '../../core/formatters/roster_date_format.dart';
@@ -10,12 +11,14 @@ class ScanDutyEditor extends StatefulWidget {
     this.initial,
     this.date,
     this.payroll,
+    this.scannedRow,
     super.key,
   });
   final RosterSource source;
   final Duty? initial;
   final DateTime? date;
   final String? payroll;
+  final String? scannedRow;
   @override
   State<ScanDutyEditor> createState() => _ScanDutyEditorState();
 }
@@ -25,10 +28,6 @@ class _ScanDutyEditorState extends State<ScanDutyEditor> {
   late final TextEditingController _date, _pay, _turn, _on, _off;
   late DutyType _type;
   String? _availabilityCode;
-  bool get _needsTimes =>
-      _type == DutyType.working ||
-      _type == DutyType.training ||
-      _type == DutyType.medical;
   @override
   void initState() {
     super.initState();
@@ -66,18 +65,22 @@ class _ScanDutyEditorState extends State<ScanDutyEditor> {
     return displayDate(d) == _date.text.trim() ? d : null;
   }
 
-  String? _clock(String? value) =>
-      RegExp(r'^(?:[01]\d|2[0-3]):[0-5]\d$').hasMatch(value ?? '')
-      ? null
-      : 'Use 24-hour HH:mm';
+  String? _optional(String value) => value.trim().isEmpty ? null : value.trim();
+
+  String? _clock(String? value) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) return null;
+    if (RegExp(r'^(?:[01]\d|2[0-3]):?[0-5]\d$').hasMatch(text)) return null;
+    return 'Use HH:mm or HHmm';
+  }
+
   void _save() {
     if (!_form.currentState!.validate()) return;
-    int? minutes;
-    if (_needsTimes) {
-      final a = _on.text.split(':').map(int.parse).toList();
-      final b = _off.text.split(':').map(int.parse).toList();
-      minutes = (b[0] * 60 + b[1] - (a[0] * 60 + a[1]) + 1440) % 1440;
-    }
+    final start = ParserUtils.normaliseTime(_on.text);
+    final end = ParserUtils.normaliseTime(_off.text);
+    final minutes = start == null || end == null
+        ? null
+        : ParserUtils.calculateDutyMinutes(start, end);
     Navigator.pop(
       context,
       Duty(
@@ -88,11 +91,9 @@ class _ScanDutyEditorState extends State<ScanDutyEditor> {
         driverName: widget.initial?.driverName,
         driverNumber: widget.initial?.driverNumber,
         depot: widget.initial?.depot,
-        turnNumber: _needsTimes && _turn.text.trim().isNotEmpty
-            ? _turn.text.trim()
-            : null,
-        bookOn: _needsTimes ? _on.text.trim() : null,
-        bookOff: _needsTimes ? _off.text.trim() : null,
+        turnNumber: _optional(_turn.text),
+        bookOn: start,
+        bookOff: end,
         rosteredMinutes: minutes,
         amendmentCode: _availabilityCode ?? (_type == DutyType.annualLeave
             ? 'ALD'
@@ -102,7 +103,7 @@ class _ScanDutyEditorState extends State<ScanDutyEditor> {
             : _availabilityCode == 'NDNA'
             ? 'No shift allocated — not available to work'
             : 'Checked against the document',
-        rawText: widget.initial?.rawText,
+        rawText: widget.initial?.rawText ?? widget.scannedRow,
         pageNumber: widget.initial?.pageNumber,
       ),
     );
@@ -111,7 +112,9 @@ class _ScanDutyEditorState extends State<ScanDutyEditor> {
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: Text(
-      widget.initial == null ? 'Add missing shift' : 'Correct record',
+      widget.initial == null && widget.scannedRow == null
+          ? 'Add missing shift'
+          : 'Correct record',
     ),
     content: SingleChildScrollView(
       child: Form(
@@ -119,9 +122,7 @@ class _ScanDutyEditorState extends State<ScanDutyEditor> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Enter the values printed on the roster. Nothing changes until you confirm the import.',
-            ),
+            if (widget.scannedRow case final String row) Text(row),
             TextFormField(
               controller: _date,
               decoration: const InputDecoration(labelText: 'Date (dd/mm/yyyy)'),
@@ -179,30 +180,23 @@ class _ScanDutyEditorState extends State<ScanDutyEditor> {
                 }
               },
             ),
-            if (_needsTimes) ...[
-              TextFormField(
-                controller: _turn,
-                decoration: const InputDecoration(
-                  labelText: 'Turn number (optional)',
-                ),
-                validator: (v) =>
-                    (v ?? '').isEmpty || RegExp(r'^\d{2,4}$').hasMatch(v!)
-                    ? null
-                    : 'Use the numeric turn',
-              ),
-              TextFormField(
-                controller: _on,
-                decoration: const InputDecoration(labelText: 'Book on (HH:mm)'),
-                validator: _clock,
-              ),
-              TextFormField(
-                controller: _off,
-                decoration: const InputDecoration(
-                  labelText: 'Book off (HH:mm)',
-                ),
-                validator: _clock,
-              ),
-            ],
+            TextFormField(
+              controller: _turn,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(labelText: 'Turn'),
+            ),
+            TextFormField(
+              controller: _on,
+              keyboardType: TextInputType.datetime,
+              decoration: const InputDecoration(labelText: 'Start (optional)'),
+              validator: _clock,
+            ),
+            TextFormField(
+              controller: _off,
+              keyboardType: TextInputType.datetime,
+              decoration: const InputDecoration(labelText: 'End (optional)'),
+              validator: _clock,
+            ),
           ],
         ),
       ),

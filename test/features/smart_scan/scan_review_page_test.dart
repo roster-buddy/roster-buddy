@@ -279,9 +279,8 @@ void main() {
     final fields = find.byType(TextFormField);
     await tester.enterText(fields.at(0), '05/11/2026');
     await tester.enterText(fields.at(1), '21910');
-    await tester.enterText(fields.at(2), '213');
-    await tester.enterText(fields.at(3), '16:53');
-    await tester.enterText(fields.at(4), '01:11');
+    await tester.enterText(fields.at(2), 'TW');
+    await tester.enterText(fields.at(3), '1653');
     await tester.tap(find.text('Use these values'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
@@ -337,6 +336,24 @@ void main() {
     expect(find.text('Tap to correct this row'), findsOneWidget);
     expect(tester.widget<FilledButton>(
       find.widgetWithText(FilledButton, 'Import records')).onPressed, isNull);
+  });
+
+  test('unresolved row suggestions keep the printed turn and shift times', () {
+    final parser = DailyAmendmentParser(
+      documentType: DocumentType.sevenDayAmendment,
+    );
+    final row = parser.reviewRow(
+      'R Driver 3686 WOD TW TW 05:00 13:45 8.45',
+      pageText: 'Report for Saturday 21/11/26 in All Links',
+      date: DateTime(2026, 11, 20),
+      pageNumber: 2,
+    )!;
+    expect(row.date, DateTime(2026, 11, 21));
+    expect(row.payrollNumber, '3686');
+    expect(row.turnNumber, 'TW');
+    expect(row.bookOn, '05:00');
+    expect(row.bookOff, '13:45');
+    expect(row.pageNumber, 2);
   });
 
   testWidgets('count mismatch shows only unresolved rows', (tester) async {

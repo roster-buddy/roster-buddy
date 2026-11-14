@@ -207,7 +207,7 @@ class DailyAmendmentParser implements BaseParser {
       if (!wasRecovered) warnings.add(unreadable.warning);
     }
 
-    if (duties.isEmpty) {
+    if (duties.isEmpty && unreadablePrintedRows.isEmpty) {
       warnings.add(
         const ParseWarning(
           message:
@@ -363,6 +363,59 @@ class DailyAmendmentParser implements BaseParser {
   static final _printedClock = RegExp(
     r'(?<![0-9])([0-2]?[0-9])[:;]([0-5][0-9])(?![0-9])',
   );
+
+  /// Suggestions for an unresolved row. These only enter the roster after
+  /// someone checks and accepts them in the scan editor.
+  Duty? reviewRow(String rawText, {String? pageText, DateTime? date, int? pageNumber}) {
+    final text = ParserUtils.normaliseWhitespace(rawText);
+    final named = _printedRow.firstMatch(text);
+    final payrollOnly = _printedPayrollRow.firstMatch(text);
+    final payroll = named?[2] ?? payrollOnly?[1];
+    final dutyDate = (pageText == null ? null : _extractPageDate(pageText)) ?? date;
+    if (payroll == null || dutyDate == null) return null;
+
+    final tail = _normalisePrintedTail(named?[4] ?? payrollOnly![3]!)
+        .replaceAll(RegExp(r'\[\s*\d+\s*\]|\(\s*\d+\s*\)'), ' ')
+        .trim()
+        .toUpperCase();
+    final clocks = _printedClock.allMatches(tail).toList();
+    final recovered = clocks.length == 2
+        ? null
+        : _recoverFusedClocks(tail) ?? _recoverDamagedStartClock(tail, clocks);
+    final prefix = clocks.isEmpty ? tail : tail.substring(0, clocks.first.start);
+    final tokens = prefix.split(RegExp(r'\s+'));
+    String? code;
+    String? turn;
+    for (final token in tokens) {
+      final candidate = clocks.isEmpty ? _correctNoDutyCode(token) : token;
+      if (DutyCodeLibrary.contains(candidate)) code ??= candidate;
+      if (RegExp(r'^(?:[A-Z]*\d+[A-Z0-9]*|[A-Z]{1,4})$').hasMatch(token) &&
+          !RegExp(r'^\d{5,}$').hasMatch(token)) {
+        turn = token.replaceFirst(RegExp(r'^WO(?=\d)'), '');
+      }
+    }
+    final type = _determineDutyType(
+      codeDefinition: DutyCodeLibrary.find(code),
+      rawText: ' $tail ',
+      hasTimes: clocks.isNotEmpty || recovered != null,
+    );
+    return Duty(
+      date: dutyDate,
+      source: rosterSource,
+      dutyType: type == DutyType.unknown && turn != null ? DutyType.working : type,
+      payrollNumber: payroll,
+      driverName: named?[1],
+      depot: named?[3] ?? payrollOnly?[2],
+      turnNumber: turn,
+      bookOn: recovered?.bookOn ??
+          (clocks.isEmpty ? null : ParserUtils.normaliseTime(clocks.first[0])),
+      bookOff: recovered?.bookOff ??
+          (clocks.length < 2 ? null : ParserUtils.normaliseTime(clocks[1][0])),
+      amendmentCode: code,
+      pageNumber: pageNumber,
+      rawText: rawText,
+    );
+  }
 
   Duty? _parseFallbackRow({
     required ExtractedTableRow row,

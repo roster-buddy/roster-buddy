@@ -1,4 +1,3 @@
-import '../../core/models/duty_type.dart';
 import '../../core/services/printed_roster_identity.dart';
 import 'package:flutter/material.dart';
 
@@ -7,7 +6,7 @@ import '../../core/models/document_type.dart';
 import '../../core/models/parse_result.dart';
 import '../../core/models/parse_warning.dart';
 import '../../core/models/duty.dart';
-import '../../core/models/roster_source.dart';
+import '../../core/parser/daily_amendment_parser.dart';
 import 'scan_duty_editor.dart';
 import '../upload/base_roster_activation_page.dart';
 import '../upload/document_processing_service.dart';
@@ -106,39 +105,49 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
     );
   }
 
+  String _warningRowText(ParseWarning warning) {
+    final text = warning.message.substring(warning.message.indexOf(':') + 1);
+    return text.replaceFirst(RegExp(r'^\s*:?\s*'), '').trim().replaceAll(
+      RegExp(r'\s+'),
+      ' ',
+    );
+  }
+
   Future<void> _editRecord([int? index, ParseWarning? warning]) async {
     final parsed = _parsed!;
-    final source = switch (_type) {
-      DocumentType.tenDayAmendment => RosterSource.tenDay,
-      DocumentType.fortyEightHourAmendment => RosterSource.fortyEightHour,
-      _ => RosterSource.sevenDay,
-    };
-    final rowText = warning?.message.split(': ').last;
-    final row = rowText == null ? null : RegExp(
-      r'^(.+?)\s+([0-9]{4,8})\s+([A-Za-z]{2,5})\b(.*)$',
-    ).firstMatch(rowText);
-    final date = parsed.duties.isNotEmpty
-        ? parsed.duties.first.date
-        : parsed.identifiedDates.isNotEmpty ? parsed.identifiedDates.first : null;
-    final seed = row == null || date == null ? null : Duty(
-      date: date, source: source, dutyType: DutyType.unknown,
-      payrollNumber: row.group(2), driverName: row.group(1),
-      depot: row.group(3), rawText: rowText, pageNumber: warning?.pageNumber,
+    final parser = DailyAmendmentParser(documentType: _type);
+    final date = parsed.identifiedDates.length == 1
+        ? parsed.identifiedDates.single
+        : null;
+    final pageNumber = warning?.pageNumber;
+    final pageText = pageNumber != null && pageNumber > 0 &&
+            pageNumber <= _pages!.length
+        ? _pages![pageNumber - 1].fullText
+        : null;
+    final rowText = warning == null ? null : _warningRowText(warning);
+    final seed = rowText == null ? null : parser.reviewRow(
+      rowText,
+      date: date,
+      pageText: pageText,
+      pageNumber: pageNumber,
     );
     final duty = await showDialog<Duty>(
       context: context,
       builder: (_) => ScanDutyEditor(
-        source: source,
+        source: parser.rosterSource,
         initial: index == null ? seed : parsed.duties[index],
         date: date,
-        payroll: warning == null ? parsed.payrollNumber : row?.group(2),
+        payroll: warning == null ? parsed.payrollNumber : null,
+        scannedRow: rowText,
       ),
     );
     if (!mounted || duty == null) return;
     final duties = List<Duty>.from(parsed.duties);
     if (index != null) duties.removeAt(index);
     duties.removeWhere(
-      (d) => d.payrollNumber == duty.payrollNumber && d.date == duty.date,
+      (d) => d.payrollNumber == duty.payrollNumber &&
+          d.date == duty.date &&
+          d.driverName == duty.driverName,
     );
     duties.insert(0, duty);
     setState(
@@ -406,7 +415,12 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
         : ScanImportPolicy.reviewReasons(parsed, _pages!);
     final unmatchedRows = parsed == null || !_daily
         ? const <ParseWarning>[]
-        : ScanImportPolicy.unmatchedRows(parsed, _pages!);
+        : ScanImportPolicy.unmatchedRows(parsed, _pages!)
+            .where((row) => !parsed.warnings.any((warning) =>
+                _unreadable(warning) &&
+                warning.pageNumber == row.pageNumber &&
+                _warningRowText(warning) == _warningRowText(row)))
+            .toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -506,7 +520,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
             for (final warning in unmatchedRows)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text(warning.message.split(': ').last),
+                title: Text(_warningRowText(warning)),
                 subtitle: const Text('Tap to correct only this row'),
                 trailing: const Icon(Icons.edit_outlined),
                 onTap: () => _editRecord(null, warning),
