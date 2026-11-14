@@ -33,6 +33,111 @@
   <link rel="manifest" href="manifest.json?v=train-1">
 </head>
 <body>
+  <style>
+    #roster-note-editor {
+      box-sizing: border-box;
+      width: min(420px, calc(100% - 40px));
+      max-height: calc(100% - 32px);
+      padding: 24px;
+      border: 0;
+      border-radius: 24px;
+      color: #102a43;
+      background: #f4f7fa;
+      font: 16px system-ui, sans-serif;
+      text-align: left;
+    }
+    #roster-note-editor[data-dark] {
+      color: #edf4fc;
+      background: #162435;
+      color-scheme: dark;
+    }
+    #roster-note-editor::backdrop { background: #0008; }
+    #roster-note-editor h2 { margin: 0 0 16px; font-size: 22px; }
+    #roster-note-editor textarea {
+      box-sizing: border-box;
+      display: block;
+      margin-top: 6px;
+      width: 100%;
+      padding: 10px;
+      border: 1px solid currentColor;
+      border-radius: 8px;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      resize: vertical;
+    }
+    #roster-note-editor footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    #roster-note-editor button {
+      padding: 10px 18px;
+      min-height: 44px;
+      border: 0;
+      border-radius: 24px;
+      color: inherit;
+      background: transparent;
+      font: inherit;
+    }
+    #roster-note-editor button[value="save"] {
+      background: #1769aa;
+      color: white;
+    }
+  </style>
+  <dialog id="roster-note-editor" aria-labelledby="roster-note-title">
+    <form method="dialog">
+      <h2 id="roster-note-title"></h2>
+      <label for="roster-note-input">Personal note</label>
+      <textarea id="roster-note-input" rows="3" maxlength="1000"
+        autocapitalize="sentences" placeholder="For example: Theatre at 19:30"
+        autofocus></textarea>
+      <footer>
+        <button value="cancel">Cancel</button>
+        <button value="save">Save</button>
+      </footer>
+    </form>
+  </dialog>
+  <script>
+    // iOS WebKit needs the editable element focused during the original tap.
+    // A Flutter route's autofocus runs after the tap handler has returned.
+    window.rosterOpenNoteEditor = function (title, note, dark) {
+      const dialog = document.getElementById('roster-note-editor');
+      if (dialog.open) return Promise.resolve(null);
+      const input = document.getElementById('roster-note-input');
+      const viewport = window.visualViewport;
+      document.getElementById('roster-note-title').textContent = title;
+      dialog.toggleAttribute('data-dark', dark);
+      dialog.returnValue = '';
+      input.value = note;
+
+      function fitAboveKeyboard() {
+        if (!viewport) return;
+        dialog.style.top = viewport.offsetTop + 'px';
+        dialog.style.bottom = 'auto';
+        dialog.style.maxHeight = Math.max(0, viewport.height - 16) + 'px';
+        dialog.style.marginTop = Math.max(8, (viewport.height - dialog.offsetHeight) / 2) + 'px';
+      }
+
+      return new Promise((resolve) => {
+        dialog.addEventListener('close', () => {
+          viewport?.removeEventListener('resize', fitAboveKeyboard);
+          viewport?.removeEventListener('scroll', fitAboveKeyboard);
+          dialog.removeAttribute('style');
+          const result = dialog.returnValue === 'save' ? input.value : null;
+          input.value = '';
+          resolve(result);
+        }, { once: true });
+        dialog.showModal();
+        input.focus();
+        input.setSelectionRange(note.length, note.length);
+        fitAboveKeyboard();
+        viewport?.addEventListener('resize', fitAboveKeyboard);
+        viewport?.addEventListener('scroll', fitAboveKeyboard);
+      });
+    };
+  </script>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader

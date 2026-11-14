@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/personal_day_note_service.dart';
+import 'personal_note_editor.dart';
 
 class PersonalDayNoteSection extends StatefulWidget {
   const PersonalDayNoteSection({required this.date, this.onChanged, super.key});
@@ -32,7 +33,7 @@ class _PersonalDayNoteSectionState extends State<PersonalDayNoteSection> {
     }
   }
 
-  Future<void> _edit() async {
+  Future<String?> _showNoteDialog() async {
     final controller = TextEditingController(text: _note ?? '');
     final String? result = await showDialog<String>(
       context: context,
@@ -64,6 +65,12 @@ class _PersonalDayNoteSectionState extends State<PersonalDayNoteSection> {
       ),
     );
     controller.dispose();
+    return result;
+  }
+
+  Future<void> _edit() async {
+    final result = await (openPlatformNoteEditor(context, _note) ??
+        _showNoteDialog());
     if (result == null || !mounted) return;
     try {
       await _service.saveNote(widget.date, result);
