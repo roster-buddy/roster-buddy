@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'access_pending_screen.dart';
+import 'app_access_service.dart';
 import 'home_screen.dart';
 import 'initial_setup_screen.dart';
 import 'welcome_screen.dart';
@@ -35,6 +37,11 @@ class _SessionStartupState extends State<SessionStartup> {
       session = (await client.auth.refreshSession()).session;
     }
     if (session == null) return const WelcomeScreen();
+
+    final accessStatus = await const AppAccessService().currentStatus();
+    if (accessStatus != AppAccessStatus.approved) {
+      return AccessPendingScreen(status: accessStatus);
+    }
 
     final profile = await client.from('driver_profiles')
         .select('setup_completed').eq('user_id', session.user.id).maybeSingle();

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'access_pending_screen.dart';
+import 'app_access_service.dart';
 import 'sign_up_screen.dart';
 import 'home_screen.dart';
 import 'initial_setup_screen.dart';
@@ -68,23 +70,30 @@ class _SignInScreenState extends State<SignInScreen> {
       final User? user = Supabase.instance.client.auth.currentUser;
 
       bool setupCompleted = false;
+      AppAccessStatus accessStatus = AppAccessStatus.pending;
 
       if (user != null) {
-        final Map<String, dynamic>? profile = await Supabase.instance.client
-            .from('driver_profiles')
-            .select('setup_completed')
-            .eq('user_id', user.id)
-            .maybeSingle();
+        accessStatus = await const AppAccessService().currentStatus();
+        if (accessStatus == AppAccessStatus.approved) {
+          final Map<String, dynamic>? profile = await Supabase.instance.client
+              .from('driver_profiles')
+              .select('setup_completed')
+              .eq('user_id', user.id)
+              .maybeSingle();
 
-        setupCompleted = profile?['setup_completed'] == true;
+          setupCompleted = profile?['setup_completed'] == true;
+        }
       }
 
       if (!mounted) return;
 
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute<void>(
-          builder: (_) =>
-              setupCompleted ? const HomeScreen() : const InitialSetupScreen(),
+          builder: (_) => accessStatus != AppAccessStatus.approved
+              ? AccessPendingScreen(status: accessStatus)
+              : setupCompleted
+                  ? const HomeScreen()
+                  : const InitialSetupScreen(),
         ),
         (Route<dynamic> route) => false,
       );

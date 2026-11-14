@@ -18,7 +18,9 @@ import '../../core/services/annual_leave_block_pending_action_service.dart';
 import '../../core/services/annual_leave_block_service.dart';
 import '../../core/services/annual_leave_service.dart';
 import '../../core/services/floating_leave_cancellation.dart';
+import '../authentication/app_access_service.dart';
 import '../upload/storage_service.dart';
+import 'access_requests_page.dart';
 
 class AppSettingsPage extends StatefulWidget {
   const AppSettingsPage({
@@ -50,6 +52,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
   Map<String, dynamic>? _driverProfile;
   bool _loadingProfile = true;
   bool _signingOut = false;
+  bool _isAccessAdministrator = false;
 
   Map<String, dynamic> get _metadata =>
       Supabase.instance.client.auth.currentUser?.userMetadata ?? {};
@@ -58,6 +61,19 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
   void initState() {
     super.initState();
     _loadDriverProfile();
+    _loadAccessAdministrator();
+  }
+
+  Future<void> _loadAccessAdministrator() async {
+    try {
+      final isAdministrator =
+          await const AppAccessService().isAdministrator();
+      if (mounted) {
+        setState(() => _isAccessAdministrator = isAdministrator);
+      }
+    } catch (_) {
+      // The administrator control stays hidden if the check is unavailable.
+    }
   }
 
   Future<void> _loadDriverProfile() async {
@@ -281,6 +297,25 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                 clipBehavior: Clip.antiAlias,
                 child: Column(
                   children: [
+                    if (_isAccessAdministrator) ...[
+                      ListTile(
+                        leading: const Icon(
+                          Icons.admin_panel_settings_outlined,
+                          color: railwayBlue,
+                        ),
+                        title: const Text('Access requests'),
+                        subtitle: const Text(
+                          'Approve or decline new Roster Buddy accounts',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(context).push<void>(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const AccessRequestsPage(),
+                          ),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                    ],
                     ListTile(
                       leading: const Icon(
                         Icons.badge_outlined,
