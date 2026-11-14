@@ -17,6 +17,8 @@ class SignInScreen extends StatefulWidget {
 }
 
 class _SignInScreenState extends State<SignInScreen> {
+  static const String _emailRedirectUrl =
+      'https://roster-buddy.github.io/roster-buddy/';
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -100,6 +102,11 @@ class _SignInScreenState extends State<SignInScreen> {
     } on AuthException catch (error) {
       if (!mounted) return;
 
+      if (error.message.toLowerCase().contains('email not confirmed')) {
+        await _showEmailNotConfirmedDialog();
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.message), backgroundColor: Colors.red),
       );
@@ -118,6 +125,61 @@ class _SignInScreenState extends State<SignInScreen> {
           _isSigningIn = false;
         });
       }
+    }
+  }
+
+  Future<void> _showEmailNotConfirmedDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Email not confirmed'),
+        content: const Text(
+          'Confirm your email address before signing in. If the original link has expired, send a new one now.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await _resendConfirmationEmail();
+            },
+            child: const Text('Resend confirmation email'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _resendConfirmationEmail() async {
+    try {
+      await Supabase.instance.client.auth.resend(
+        type: OtpType.signup,
+        email: _emailController.text.trim(),
+        emailRedirectTo: _emailRedirectUrl,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('A new confirmation email has been sent.'),
+          backgroundColor: railwayBlue,
+        ),
+      );
+    } on AuthException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message), backgroundColor: Colors.red),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to resend the confirmation email.'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 

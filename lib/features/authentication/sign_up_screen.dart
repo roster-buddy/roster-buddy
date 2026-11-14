@@ -9,6 +9,8 @@ class SignUpScreen extends StatefulWidget {
 }
 
 class _SignUpScreenState extends State<SignUpScreen> {
+  static const String _emailRedirectUrl =
+      'https://roster-buddy.github.io/roster-buddy/';
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -39,6 +41,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       final response = await Supabase.instance.client.auth.signUp(
         email: _emailController.text.trim(),
         password: _passwordController.text,
+        emailRedirectTo: _emailRedirectUrl,
       );
 
       if (!mounted) return;
