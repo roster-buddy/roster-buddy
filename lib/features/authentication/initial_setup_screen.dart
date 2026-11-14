@@ -16,10 +16,8 @@ class InitialSetupScreen extends StatefulWidget {
 }
 
 class _InitialSetupScreenState extends State<InitialSetupScreen> {
-  static const Color navy = Color(0xFF102A43);
+  static const List<String> _supportedDepots = <String>['Wolverhampton'];
   static const Color railwayBlue = Color(0xFF1769AA);
-  static const Color background = Color(0xFFF4F7FA);
-  static const Color textGrey = Color(0xFF52667A);
   static const Color leaveRed = Color(0xFFC62828);
 
   static const int _stepCount = 5;
@@ -33,7 +31,8 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
   final GlobalKey<FormState> _leaveFormKey = GlobalKey<FormState>();
 
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _depotController = TextEditingController();
+  final TextEditingController _depotController =
+      TextEditingController(text: 'Wolverhampton');
   final TextEditingController _driverNumberController = TextEditingController();
   final TextEditingController _rosterNumberController = TextEditingController();
   final TextEditingController _payrollNumberController =
@@ -105,7 +104,10 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
         user?.userMetadata ?? <String, dynamic>{};
 
     _nameController.text = (metadata['full_name'] ?? '').toString();
-    _depotController.text = (metadata['depot'] ?? '').toString();
+    final String savedDepot = (metadata['depot'] ?? '').toString();
+    _depotController.text = _supportedDepots.contains(savedDepot)
+        ? savedDepot
+        : _supportedDepots.first;
     _driverNumberController.text = (metadata['driver_number'] ?? '').toString();
     _rosterNumberController.text =
         (metadata['roster_number'] ?? metadata['driver_number'] ?? '')
@@ -566,19 +568,26 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
   }
 
   Widget _pageHeading(String title, String description) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           title,
-          style: const TextStyle(
-            color: navy,
+          style: TextStyle(
+            color: colors.onSurface,
             fontSize: 28,
             fontWeight: FontWeight.w800,
           ),
         ),
         const SizedBox(height: 8),
-        Text(description, style: const TextStyle(color: textGrey, height: 1.4)),
+        Text(
+          description,
+          style: TextStyle(
+            color: colors.onSurfaceVariant,
+            height: 1.4,
+          ),
+        ),
       ],
     );
   }
@@ -638,24 +647,29 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
             validator: (String? value) => _requiredText(value, 'full name'),
           ),
           const SizedBox(height: 16),
-          TextFormField(
-            controller: _depotController,
-            enabled: !_saving,
-            textCapitalization: TextCapitalization.words,
-            textInputAction: TextInputAction.next,
+          DropdownButtonFormField<String>(
+            initialValue: _depotController.text,
             decoration: const InputDecoration(
               labelText: 'Depot',
               prefixIcon: Icon(Icons.location_on_outlined),
               border: OutlineInputBorder(),
             ),
+            items: _supportedDepots
+                .map(
+                  (String depot) => DropdownMenuItem<String>(
+                    value: depot,
+                    child: Text(depot),
+                  ),
+                )
+                .toList(),
+            onChanged: _saving
+                ? null
+                : (String? value) {
+                    if (value != null) {
+                      setState(() => _depotController.text = value);
+                    }
+                  },
             validator: (String? value) => _requiredText(value, 'depot'),
-          ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              onPressed: _saving ? null : () => setState(() => _depotController.text = 'Wolverhampton'),
-              child: const Text('Select Wolverhampton'),
-            ),
           ),
           const SizedBox(height: 16),
           TextFormField(
@@ -746,8 +760,8 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
                 _baseRosterCommencementDate == null
                     ? 'Base Roster commencement'
                     : _formatDate(_baseRosterCommencementDate!),
-                style: const TextStyle(
-                  color: navy,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -791,9 +805,12 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
                 Icons.swap_horiz_outlined,
                 color: railwayBlue,
               ),
-              title: const Text(
+              title: Text(
                 'Mutual permanent roster swap',
-                style: TextStyle(color: navy, fontWeight: FontWeight.w800),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               subtitle: const Text(
                 'Switch this on if you alternate roster lines permanently '
@@ -815,9 +832,12 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
               validator: _optionalPartnerNumber,
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Which roster line applies at commencement?',
-              style: TextStyle(color: navy, fontWeight: FontWeight.w800),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.w800,
+              ),
             ),
             RadioGroup<String>(
               groupValue: _baseRosterStartingLine,
@@ -913,19 +933,22 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
+                  Text(
                     'Already-confirmed floating leave',
                     style: TextStyle(
-                      color: navy,
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 17,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     'Add floating annual leave that has already been '
                     'authorised. These dates will appear as ALD.',
-                    style: TextStyle(color: textGrey, height: 1.4),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      height: 1.4,
+                    ),
                   ),
                   if (_confirmedFloatingLeaveDates.isNotEmpty) ...[
                     const SizedBox(height: 14),
@@ -1006,9 +1029,12 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
               Icons.event_busy_outlined,
               color: railwayBlue,
             ),
-            title: const Text(
+            title: Text(
               'Permanently unavailable Sundays',
-              style: TextStyle(color: navy, fontWeight: FontWeight.w800),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.w800,
+              ),
             ),
             subtitle: const Text(
               'Switch this on if you are normally unavailable for Sunday '
@@ -1045,7 +1071,12 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
         children: [
           Expanded(
             flex: 4,
-            child: Text(label, style: const TextStyle(color: textGrey)),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1053,7 +1084,10 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
             child: Text(
               value,
               textAlign: TextAlign.right,
-              style: const TextStyle(color: navy, fontWeight: FontWeight.w800),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
         ],
@@ -1148,9 +1182,12 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Confirmed annual leave dates',
-                    style: TextStyle(color: navy, fontWeight: FontWeight.w800),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                   const SizedBox(height: 10),
                   ..._confirmedFloatingLeaveDates.map(
@@ -1222,14 +1259,13 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
     return PopScope(
       canPop: false,
       child: Scaffold(
-        backgroundColor: background,
+        backgroundColor: theme.scaffoldBackgroundColor,
         appBar: AppBar(
           automaticallyImplyLeading: false,
-          backgroundColor: Colors.white,
-          foregroundColor: navy,
           elevation: 0,
           title: const Text(
             'Initial Setup',

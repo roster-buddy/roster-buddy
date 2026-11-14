@@ -3957,10 +3957,12 @@ class DriverProfilePage extends StatefulWidget {
 
 class _DriverProfilePageState extends State<DriverProfilePage> {
   static const Color railwayBlue = Color(0xFF1769AA);
+  static const List<String> _supportedDepots = <String>['Wolverhampton'];
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _depotController = TextEditingController();
+  final TextEditingController _depotController =
+      TextEditingController(text: 'Wolverhampton');
   final TextEditingController _driverNumberController = TextEditingController();
   final TextEditingController _rosterCodeController = TextEditingController();
   final TextEditingController _payrollNumberController =
@@ -4004,7 +4006,10 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
     final Map<String, dynamic> metadata = user.userMetadata ?? {};
 
     _nameController.text = (metadata['full_name'] ?? '').toString();
-    _depotController.text = (metadata['depot'] ?? '').toString();
+    final String metadataDepot = (metadata['depot'] ?? '').toString();
+    _depotController.text = _supportedDepots.contains(metadataDepot)
+        ? metadataDepot
+        : _supportedDepots.first;
     _driverNumberController.text = (metadata['driver_number'] ?? '').toString();
     _rosterCodeController.text = (metadata['roster_number'] ?? '').toString();
     _payrollNumberController.text = (metadata['payroll_number'] ?? '')
@@ -4022,7 +4027,10 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
 
       if (profile != null) {
         _nameController.text = (profile['display_name'] ?? '').toString();
-        _depotController.text = (profile['depot'] ?? '').toString();
+        final String profileDepot = (profile['depot'] ?? '').toString();
+        _depotController.text = _supportedDepots.contains(profileDepot)
+            ? profileDepot
+            : _supportedDepots.first;
         _driverNumberController.text = (profile['driver_number'] ?? '')
             .toString();
         _rosterCodeController.text = (profile['roster_number'] ?? '').toString();
@@ -4274,16 +4282,30 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
                               _requiredValue(value, 'full name'),
                         ),
                         const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _depotController,
-                          enabled: !_saving,
-                          textCapitalization: TextCapitalization.words,
-                          textInputAction: TextInputAction.next,
+                        DropdownButtonFormField<String>(
+                          initialValue: _depotController.text,
                           decoration: const InputDecoration(
                             labelText: 'Depot',
                             prefixIcon: Icon(Icons.location_on_outlined),
                             border: OutlineInputBorder(),
                           ),
+                          items: _supportedDepots
+                              .map(
+                                (depot) => DropdownMenuItem<String>(
+                                  value: depot,
+                                  child: Text(depot),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: _saving
+                              ? null
+                              : (value) {
+                                  if (value != null) {
+                                    setState(
+                                      () => _depotController.text = value,
+                                    );
+                                  }
+                                },
                           validator: (value) => _requiredValue(value, 'depot'),
                         ),
                         const SizedBox(height: 16),
