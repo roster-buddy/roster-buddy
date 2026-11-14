@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/formatters/roster_date_format.dart';
 import '../../core/parser/base_roster_parser.dart';
 import '../smart_scan/scan_review_page.dart';
 import '../../core/models/document_type.dart';
@@ -38,11 +39,21 @@ class _DepotDocumentsPageState extends State<DepotDocumentsPage> {
         .select('depot').eq('user_id', _client.auth.currentUser!.id).single();
     final depot = (profile['depot'] as String? ?? '').trim();
     if (depot.isEmpty) return (depot: depot, documents: <Map<String, dynamic>>[]);
-    final documents = await _client.from('roster_documents')
-        .select('id, original_filename, detected_type, storage_path, base_roster_commencement')
-        .eq('depot', depot.toLowerCase())
-        .eq('processing_status', 'processed')
-        .order('created_at', ascending: false);
+    final documents = <Map<String, dynamic>>[];
+    const pageSize = 500;
+    for (var offset = 0; ; offset += pageSize) {
+      final page = await _client.from('roster_documents')
+          .select('id, user_id, original_filename, detected_type, storage_path, '
+              'base_roster_commencement, identified_dates, filing_category, '
+              'filing_date, filing_title')
+          .eq('depot', depot.toLowerCase())
+          .eq('processing_status', 'processed')
+          .order('created_at', ascending: false)
+          .order('id')
+          .range(offset, offset + pageSize - 1);
+      documents.addAll(page);
+      if (page.length < pageSize) break;
+    }
     return (depot: depot, documents: documents);
   }
 
@@ -113,15 +124,151 @@ class _DepotDocumentsPageState extends State<DepotDocumentsPage> {
     }
   }
 
-  String _label(Object? type) => switch (type) {
-    'base_roster' => DocumentType.baseRoster.scanLabel,
-    '10_day_amendment' => DocumentType.tenDayAmendment.scanLabel,
-    '7_day_amendment' => DocumentType.sevenDayAmendment.scanLabel,
-    '48_hour_amendment' => DocumentType.fortyEightHourAmendment.scanLabel,
-    'job_card' => DocumentType.jobCard.scanLabel,
-    'annual_leave_roster' => DocumentType.annualLeaveRoster.scanLabel,
-    _ => 'Roster document',
+  static const _categories = {
+    'base_roster': DocumentType.baseRoster,
+    '10_day_amendment': DocumentType.tenDayAmendment,
+    '7_day_amendment': DocumentType.sevenDayAmendment,
+    '48_hour_amendment': DocumentType.fortyEightHourAmendment,
+    'annual_leave_roster': DocumentType.annualLeaveRoster,
+    'job_card': DocumentType.jobCard,
   };
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  String? _category(Map<String, dynamic> row) {
+    final category = row['filing_category'];
+    return (category == 'automatic' ? row['detected_type'] : category) as String?;
+  }
+
+  List<DateTime> _dates(Map<String, dynamic> row) {
+    final assigned = DateTime.tryParse(row['filing_date'] as String? ?? '');
+    if (assigned != null) return [assigned];
+    final commencement = DateTime.tryParse(
+      row['base_roster_commencement'] as String? ?? '',
+    );
+    if (commencement != null) return [commencement];
+    return ((row['identified_dates'] as List?) ?? const [])
+        .map((value) => DateTime.tryParse(value.toString()))
+        .whereType<DateTime>()
+        .toList()..sort();
+  }
+
+  Future<void> _allocate(Map<String, dynamic> row) async {
+    final dates = _dates(row);
+    final suggestedCategory = _category(row) ?? row['detected_type'];
+    final placement = await showDialog<({String category, DateTime date, String title})>(
+      context: context,
+      builder: (_) => _DepotFilingDialog(
+        category: _categories.containsKey(suggestedCategory)
+            ? suggestedCategory as String
+            : null,
+        date: dates.firstOrNull,
+        title: row['filing_title'] as String? ?? '',
+        filename: row['original_filename'] as String,
+      ),
+    );
+    if (!mounted || placement == null) return;
+    await _run(() async {
+      await _client.from('roster_documents').update({
+        'filing_category': placement.category,
+        'filing_date': placement.date.toIso8601String().substring(0, 10),
+        'filing_title': placement.title.isEmpty ? null : placement.title,
+      }).eq('id', row['id'] as String).select('id').single();
+      if (mounted) setState(() => _data = _load());
+    });
+  }
+
+  Widget _document(Map<String, dynamic> row, {String? title}) {
+    final filename = row['original_filename'] as String;
+    final isOwner = row['user_id'] == _client.auth.currentUser?.id;
+    return Column(children: [
+      ListTile(
+        leading: const Icon(Icons.description_outlined),
+        title: Text(title ?? filename),
+        subtitle: title != null && title != filename ? Text(filename) : null,
+        trailing: isOwner
+            ? PopupMenuButton<String>(
+                enabled: !_busy,
+                onSelected: (_) => _allocate(row),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'file', child: Text('Allocate and rename')),
+                ],
+              )
+            : const Icon(Icons.open_in_new),
+        onTap: _busy ? null : () => _run(() => openUploadedDocument(
+          () => _client.storage.from('roster-documents')
+              .createSignedUrl(row['storage_path'] as String, 300),
+        )),
+      ),
+      if (row['base_roster_commencement'] != null)
+        TextButton(
+          onPressed: _busy ? null : () => _useRoster(row),
+          child: const Text('Use this Base Roster'),
+        ),
+    ]);
+  }
+
+  List<Widget> _folders(List<Map<String, dynamic>> documents) {
+    final folders = <String, Map<DateTime, List<({Map<String, dynamic> row, DateTime first, DateTime last})>>>{};
+    final unknown = <Map<String, dynamic>>[];
+    for (final row in documents) {
+      final category = _category(row);
+      final dates = _dates(row);
+      if (!_categories.containsKey(category) || dates.isEmpty) {
+        unknown.add(row);
+        continue;
+      }
+      final byMonth = <DateTime, List<DateTime>>{};
+      for (final date in dates) {
+        byMonth.putIfAbsent(DateTime(date.year, date.month), () => []).add(date);
+      }
+      final months = folders.putIfAbsent(category!, () => {});
+      for (final entry in byMonth.entries) {
+        months.putIfAbsent(entry.key, () => []).add(
+          (row: row, first: entry.value.first, last: entry.value.last),
+        );
+      }
+    }
+    return [
+      for (final category in _categories.entries)
+        if (folders[category.key] case final months?)
+          Card(child: ExpansionTile(
+            key: PageStorageKey(category.key),
+            leading: const Icon(Icons.folder_outlined),
+            title: Text(category.value.scanLabel),
+            children: [
+              for (final month in (months.keys.toList()..sort((a, b) => b.compareTo(a))))
+                ExpansionTile(
+                  key: PageStorageKey((category.key, month)),
+                  leading: const Icon(Icons.folder_outlined),
+                  title: Text("${_months[month.month - 1]} ${month.year.toString().substring(2)}"),
+                  children: [
+                    for (final item in (months[month]!..sort((a, b) => b.first.compareTo(a.first))))
+                      _document(
+                        item.row,
+                        title: item.row['filing_title'] as String? ??
+                            _dateTitle(item.first, item.last),
+                      ),
+                  ],
+                ),
+            ],
+          )),
+      if (unknown.isNotEmpty)
+        Card(child: ExpansionTile(
+          key: const PageStorageKey('unknown-depot-documents'),
+          leading: const Icon(Icons.folder_outlined),
+          title: const Text('Unknown'),
+          children: unknown.map((row) => _document(row)).toList(),
+        )),
+    ];
+  }
+
+  String _dateTitle(DateTime first, DateTime last) {
+    final start = displayDate(first).substring(0, 5);
+    return first == last ? start : '$start–${displayDate(last).substring(0, 5)}';
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -147,29 +294,99 @@ class _DepotDocumentsPageState extends State<DepotDocumentsPage> {
                 if (mounted) setState(() => _data = _load());
               }),
               icon: const Icon(Icons.upload_file),
-              label: Text('Upload to ${data.depot}'),
+              label: const Text('Upload'),
             ),
             if (data.documents.isEmpty) const Text('No depot documents have been uploaded yet.'),
-            for (final row in data.documents)
-              Card(child: Column(children: [
-                ListTile(
-                  title: Text(row['original_filename'] as String),
-                  subtitle: Text(_label(row['detected_type'])),
-                  trailing: const Icon(Icons.open_in_new),
-                  onTap: _busy ? null : () => _run(() => openUploadedDocument(
-                    () => _client.storage.from('roster-documents')
-                        .createSignedUrl(row['storage_path'] as String, 300),
-                  )),
-                ),
-                if (row['base_roster_commencement'] != null)
-                  TextButton(
-                    onPressed: _busy ? null : () => _useRoster(row),
-                    child: const Text('Use this Base Roster'),
-                  ),
-              ])),
+            ..._folders(data.documents),
           ],
         );
       },
     ),
+  );
+}
+
+
+class _DepotFilingDialog extends StatefulWidget {
+  const _DepotFilingDialog({
+    required this.category,
+    required this.date,
+    required this.title,
+    required this.filename,
+  });
+
+  final String? category;
+  final DateTime? date;
+  final String title;
+  final String filename;
+
+  @override
+  State<_DepotFilingDialog> createState() => _DepotFilingDialogState();
+}
+
+class _DepotFilingDialogState extends State<_DepotFilingDialog> {
+  late String? _category = widget.category;
+  late DateTime? _date = widget.date;
+  late final _title = TextEditingController(text: widget.title);
+
+  @override
+  void dispose() {
+    _title.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _date ?? DateTime.now(),
+      firstDate: DateTime(1900),
+      lastDate: DateTime(2200),
+      helpText: 'Choose document date',
+    );
+    if (mounted && date != null) setState(() => _date = date);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Allocate and rename'),
+    content: SingleChildScrollView(child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(widget.filename),
+        DropdownButtonFormField<String>(
+          initialValue: _category,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'Category'),
+          items: [
+            for (final entry in _DepotDocumentsPageState._categories.entries)
+              DropdownMenuItem(value: entry.key, child: Text(entry.value.scanLabel)),
+          ],
+          onChanged: (category) => setState(() => _category = category),
+        ),
+        TextButton.icon(
+          onPressed: _pickDate,
+          icon: const Icon(Icons.calendar_month_outlined),
+          label: Text(_date == null ? 'Choose document date' : displayDate(_date!)),
+        ),
+        TextField(
+          controller: _title,
+          decoration: InputDecoration(
+            labelText: 'Title (optional)',
+            hintText: _date == null ? null : displayDate(_date!).substring(0, 5),
+          ),
+        ),
+      ],
+    )),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+      FilledButton(
+        onPressed: _category == null || _date == null ? null : () {
+          Navigator.pop(context, (
+            category: _category!, date: _date!, title: _title.text.trim(),
+          ));
+        },
+        child: const Text('Save'),
+      ),
+    ],
   );
 }
