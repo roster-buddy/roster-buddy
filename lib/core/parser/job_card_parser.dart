@@ -18,12 +18,12 @@ class JobCardParser implements BaseParser {
 
   static final RegExp _dayCodeLabelPattern = RegExp(
     r'\b(?:DAY(?:\s+CODE)?|DAYS|APPLIES)\b\s*[:\-]?\s*'
-    r'(SUN|SU|SO|SAO|SX|(?:M|T|W|TH|F|S)+(?:O|X)?)\b',
+    r'(SUN|SU|SO|SAO|SX|T0|(?:M|T|W|TH|F|S)+(?:O|X)?)\b',
     caseSensitive: false,
   );
 
   static final RegExp _standaloneDayCodePattern = RegExp(
-    r'\b(SUN|SU|SO|SAO|SX|(?:M|T|W|TH|F|S)+(?:O|X))\b',
+    r'\b(SUN|SU|SO|SAO|SX|T0|(?:M|T|W|TH|F|S)+(?:O|X))\b',
     caseSensitive: false,
   );
 
@@ -83,7 +83,8 @@ class JobCardParser implements BaseParser {
         warnings.add(
           ParseWarning(
             message:
-                'No complete Job Card could be extracted from page $pageNumber.',
+                'No complete Job Card could be extracted from page $pageNumber. '
+                '${_missingFields(page)} Tap to correct this Job Card.',
             pageNumber: pageNumber,
             severity: ParseWarningSeverity.blocking,
           ),
@@ -109,6 +110,17 @@ class JobCardParser implements BaseParser {
       recordsDetected: cards.length,
       warnings: warnings,
     );
+  }
+
+  String _missingFields(String page) {
+    final missing = <String>[];
+    if (!_turnCodePattern.hasMatch(page)) missing.add('turn number');
+    if (_extractDayCode(page) == null) missing.add('day code');
+    if (_extractValidityDates(page).length < 2) missing.add('validity dates');
+    if (_extractBookOnAndOff(page).length < 2) missing.add('book-on/off times');
+    return missing.isEmpty
+        ? 'The scanned fields were split or inconsistent.'
+        : 'Could not recognise: ${missing.join(', ')}.';
   }
 
   JobCard? _parseCard(String text, {required int pageNumber}) {
@@ -298,7 +310,7 @@ class JobCardParser implements BaseParser {
 
   String? _normaliseDayCode(String? value) {
     final String cleaned =
-        value?.trim().replaceAll(RegExp(r'\s+'), '').toUpperCase() ?? '';
+        value?.trim().replaceAll(RegExp(r'\s+'), '').toUpperCase().replaceAll('0', 'O') ?? '';
 
     if (cleaned.isEmpty) {
       return null;
