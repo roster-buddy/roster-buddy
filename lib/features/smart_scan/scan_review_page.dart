@@ -6,6 +6,8 @@ import '../../core/models/document_type.dart';
 import '../../core/models/parse_result.dart';
 import '../../core/models/parse_warning.dart';
 import '../../core/models/duty.dart';
+import '../../core/models/job_card.dart';
+import 'job_card_correction_dialog.dart';
 import '../../core/parser/daily_amendment_parser.dart';
 import 'scan_duty_editor.dart';
 import '../upload/base_roster_activation_page.dart';
@@ -164,6 +166,26 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
     );
   }
 
+  Future<void> _correctJobCard(ParseWarning warning) async {
+    final parsed = _parsed;
+    final page = warning.pageNumber;
+    if (parsed == null || page == null || page < 1 || page > _pages!.length) return;
+    final corrected = await showDialog<JobCard>(
+      context: context,
+      builder: (_) => JobCardCorrectionDialog(
+        pageNumber: page, rawText: _pages![page - 1].fullText,
+      ),
+    );
+    if (!mounted || corrected == null) return;
+    final cards = List<JobCard>.from(parsed.jobCards)
+      ..removeWhere((card) => card.uniqueKey == corrected.uniqueKey)
+      ..add(corrected);
+    setState(() => _parsed = parsed.copyWith(
+      jobCards: cards, recordsDetected: cards.length,
+      warnings: parsed.warnings.where((w) =>
+        w.pageNumber != page || w.message != warning.message).toList(),
+    ));
+  }
   @override
   void initState() {
     super.initState();
@@ -539,7 +561,15 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
           for (final warning in parsed.warnings)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              child: _unreadable(warning)
+              child: _type == DocumentType.jobCard && warning.preventsImport
+                   ? ListTile(
+                       contentPadding: EdgeInsets.zero,
+                       title: Text(warning.message),
+                       subtitle: const Text('Tap to correct this Job Card'),
+                       trailing: const Icon(Icons.edit_outlined),
+                       onTap: () => _correctJobCard(warning),
+                     )
+                   : _unreadable(warning)
                   ? ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(warning.message),
