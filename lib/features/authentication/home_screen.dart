@@ -2996,7 +2996,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                       ),
                       decoration: BoxDecoration(
                         color: hasPersonalNote
-                            ? leaveRed
+                            ? const Color(0xFF8E24AA)
                             : darkText
                             ? railwayBlue.withValues(alpha: 0.12)
                             : Colors.white.withValues(alpha: 0.22),
@@ -6862,7 +6862,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                       ),
                       decoration: BoxDecoration(
                         color: hasPersonalNote
-                            ? leaveRed
+                            ? const Color(0xFF8E24AA)
                             : useDarkText
                             ? railwayBlue.withValues(alpha: 0.12)
                             : Colors.white.withValues(alpha: 0.22),
