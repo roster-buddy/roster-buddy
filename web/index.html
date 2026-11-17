@@ -102,12 +102,18 @@
   <script>
     // iOS WebKit needs the editable element focused during the original tap.
     // A Flutter route's autofocus runs after the tap handler has returned.
-    // Keep keystrokes inside the native note editor. Flutter's global
-    // keyboard shortcuts can otherwise intercept the iOS space bar.
+    // Flutter installs global keyboard handlers. Capture note-editor events at
+    // window level BEFORE Flutter loads, otherwise its space-bar shortcut can
+    // swallow a key before it reaches the native textarea on iOS.
+    // Do not preventDefault: the browser must still insert spaces/newlines.
+    const noteDialog = document.getElementById('roster-note-editor');
     const noteInput = document.getElementById('roster-note-input');
-    for (const eventName of ['keydown', 'keypress', 'keyup']) {
-      noteInput.addEventListener(eventName, (event) => {
-        event.stopImmediatePropagation();
+    for (const eventName of ['keydown', 'keypress', 'keyup', 'beforeinput']) {
+      window.addEventListener(eventName, (event) => {
+        if (noteDialog.open &&
+            (event.target === noteInput || document.activeElement === noteInput)) {
+          event.stopImmediatePropagation();
+        }
       }, { capture: true });
     }
 
