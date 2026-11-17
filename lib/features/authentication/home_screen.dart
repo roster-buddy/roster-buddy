@@ -3312,6 +3312,16 @@ class _DashboardPageState extends State<_DashboardPage> {
           children: [
                 PersonalDayNoteSection(
                   date: date,
+                  onNotePresenceChanged: (hasNote) {
+                    final key = _dashboardDateKey(date);
+                    setState(() {
+                      if (hasNote) {
+                        _dashboardPersonalNoteDateKeys.add(key);
+                      } else {
+                        _dashboardPersonalNoteDateKeys.remove(key);
+                      }
+                    });
+                  },
                   onChanged: () {
                     widget.onRosterChanged();
                     _loadDashboardDuties();
@@ -7678,7 +7688,20 @@ class _CalendarPageState extends State<_CalendarPage> {
           summary: DayShiftSummary(date: date, duty: duty, annualLeave: isGrantedAnnualLeave,
             onChanged: () { widget.onRosterChanged(); _loadMonth(); }),
           children: [
-                PersonalDayNoteSection(date: date, onChanged: _loadMonth),
+                PersonalDayNoteSection(
+                  date: date,
+                  onNotePresenceChanged: (hasNote) {
+                    final key = _dateKey(date);
+                    setState(() {
+                      if (hasNote) {
+                        _personalNoteDateKeys.add(key);
+                      } else {
+                        _personalNoteDateKeys.remove(key);
+                      }
+                    });
+                  },
+                  onChanged: _loadMonth,
+                ),
                 DayDocumentLinks(date: date, compact: true),
                 if (duty == null && !isGrantedAnnualLeave) ...[
                   const SizedBox(height: 12),
