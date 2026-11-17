@@ -4,9 +4,10 @@ import '../services/personal_day_note_service.dart';
 import 'personal_note_editor.dart';
 
 class PersonalDayNoteSection extends StatefulWidget {
-  const PersonalDayNoteSection({required this.date, this.onChanged, super.key});
+  const PersonalDayNoteSection({required this.date, this.onChanged, this.onNotePresenceChanged, super.key});
   final DateTime date;
   final VoidCallback? onChanged;
+  final ValueChanged<bool>? onNotePresenceChanged;
   @override
   State<PersonalDayNoteSection> createState() => _PersonalDayNoteSectionState();
 }
@@ -77,6 +78,7 @@ class _PersonalDayNoteSectionState extends State<PersonalDayNoteSection> {
       final saved = result.trim().isEmpty ? null : result.trim();
       if (!mounted) return;
       setState(() => _note = saved);
+      widget.onNotePresenceChanged?.call(saved != null);
       widget.onChanged?.call();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(saved == null ? 'Note removed' : 'Note saved')),
@@ -97,6 +99,7 @@ class _PersonalDayNoteSectionState extends State<PersonalDayNoteSection> {
       await _service.deleteNote(widget.date);
       if (!mounted) return;
       setState(() => _note = null);
+      widget.onNotePresenceChanged?.call(false);
       widget.onChanged?.call();
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Note removed')));
