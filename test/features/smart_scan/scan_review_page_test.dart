@@ -101,24 +101,25 @@ void main() {
     expect(parses, 1);
   });
 
-  testWidgets('selecting Base Roster opens starting-week setup immediately', (tester) async {
+  testWidgets('selecting Base Roster opens depot publication setup immediately', (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: ScanReviewPage(
         upload: upload,
         readDocument: (_) async => pages,
         parseDocument: (_, _, _) async {
-          fail('Parsing must wait for the commencement date and printed week');
+          fail('Parsing must wait for the official commencement date');
         },
       ),
     ));
     await tester.pumpAndSettle();
     await chooseType(tester, 'Base Roster');
-    expect(find.text('Activate Base Roster'), findsOneWidget);
+    expect(find.text('Publish Base Roster'), findsOneWidget);
     expect(find.text('Select commencement Sunday'), findsOneWidget);
-    expect(find.text('Your printed week number'), findsOneWidget);
+    expect(find.text('Your printed week number'), findsNothing);
+    expect(find.text('Mutual permanent swap'), findsNothing);
     await tester.pageBack();
     await tester.pumpAndSettle();
-    expect(find.text('Set starting week'), findsOneWidget);
+    expect(find.text('Set publish date'), findsOneWidget);
   });
 
   testWidgets('blocking parser warnings prevent import', (tester) async {

@@ -20,14 +20,13 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
   static const Color railwayBlue = Color(0xFF1769AA);
   static const Color leaveRed = Color(0xFFC62828);
 
-  static const int _stepCount = 5;
+  static const int _stepCount = 4;
 
   final AnnualLeaveService _annualLeaveService = AnnualLeaveService();
   final AnnualLeaveBlockService _annualLeaveBlockService =
       AnnualLeaveBlockService();
 
   final GlobalKey<FormState> _driverFormKey = GlobalKey<FormState>();
-  final GlobalKey<FormState> _rosterFormKey = GlobalKey<FormState>();
   final GlobalKey<FormState> _leaveFormKey = GlobalKey<FormState>();
 
   final TextEditingController _nameController = TextEditingController();
@@ -37,16 +36,11 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
   final TextEditingController _rosterNumberController = TextEditingController();
   final TextEditingController _payrollNumberController =
       TextEditingController();
-  final TextEditingController _swapPartnerController = TextEditingController();
   final TextEditingController _floatingBalanceController =
       TextEditingController(text: '14');
 
   int _step = 0;
   bool _saving = false;
-
-  DateTime? _baseRosterCommencementDate;
-  bool _hasMutualRosterSwap = false;
-  String _baseRosterStartingLine = 'mine';
 
   int? _blockWeekIndex;
   final List<DateTime> _confirmedFloatingLeaveDates = <DateTime>[];
@@ -71,7 +65,6 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
     _driverNumberController.dispose();
     _rosterNumberController.dispose();
     _payrollNumberController.dispose();
-    _swapPartnerController.dispose();
     _floatingBalanceController.dispose();
     super.dispose();
   }
@@ -115,17 +108,6 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
     _payrollNumberController.text = (metadata['payroll_number'] ?? '')
         .toString();
 
-    final String existingPartner =
-        (metadata['swap_partner_roster_number'] ??
-                metadata['swap_partner_driver_number'] ??
-                '')
-            .toString()
-            .trim();
-
-    if (existingPartner.isNotEmpty) {
-      _hasMutualRosterSwap = true;
-      _swapPartnerController.text = existingPartner;
-    }
   }
 
   String? _requiredText(String? value, String label) {
@@ -148,14 +130,6 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
     }
 
     return null;
-  }
-
-  String? _optionalPartnerNumber(String? value) {
-    if (!_hasMutualRosterSwap) {
-      return null;
-    }
-
-    return _requiredNumber(value, 'swap partner roster code');
   }
 
   String? _floatingBalanceValidator(String? value) {
@@ -194,18 +168,6 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
     });
   }
 
-  void _continueFromRosterSetup() {
-    FocusScope.of(context).unfocus();
-
-    if (!_rosterFormKey.currentState!.validate()) {
-      return;
-    }
-
-    setState(() {
-      _step = 2;
-    });
-  }
-
   void _continueFromAnnualLeave() {
     FocusScope.of(context).unfocus();
 
@@ -214,43 +176,13 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
     }
 
     setState(() {
-      _step = 3;
+      _step = 2;
     });
   }
 
   void _continueFromWorkPreferences() {
     setState(() {
-      _step = 4;
-    });
-  }
-
-  Future<void> _selectBaseRosterCommencementDate() async {
-    final DateTime today = DateUtils.dateOnly(DateTime.now());
-    final int daysUntilSunday =
-        (DateTime.sunday - today.weekday) % DateTime.daysPerWeek;
-
-    final DateTime initial =
-        _baseRosterCommencementDate ??
-        today.add(Duration(days: daysUntilSunday));
-
-    final DateTime? selected = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-      selectableDayPredicate: (DateTime date) =>
-          date.weekday == DateTime.sunday,
-      helpText: 'Select commencement Sunday',
-      fieldLabelText: 'Commencement Sunday',
-      errorInvalidText: 'The commencement date must be a Sunday',
-    );
-
-    if (selected == null || !mounted) {
-      return;
-    }
-
-    setState(() {
-      _baseRosterCommencementDate = DateUtils.dateOnly(selected);
+      _step = 3;
     });
   }
 
@@ -353,7 +285,7 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
 
     if (enteredRemainingBalance == null || enteredRemainingBalance < 0) {
       setState(() {
-        _step = 2;
+        _step = 1;
       });
 
       _showMessage('Check your floating annual leave balance.', isError: true);
@@ -385,16 +317,6 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
         'roster_number': rosterNumber,
         'payroll_number': payrollNumber,
         'permanently_unavailable_sundays': _permanentlyUnavailableSundays,
-        'base_roster_commencement_date': _baseRosterCommencementDate == null
-            ? null
-            : _databaseDate(_baseRosterCommencementDate!),
-        'has_mutual_roster_swap': _hasMutualRosterSwap,
-        'swap_partner_roster_number': _hasMutualRosterSwap
-            ? _swapPartnerController.text.trim()
-            : null,
-        'base_roster_starts_with_line': _hasMutualRosterSwap
-            ? _baseRosterStartingLine
-            : 'mine',
         'shift_reminder_minutes': _shiftReminderMinutes.toList()..sort(),
         'setup_completed': false,
       }, onConflict: 'user_id');
@@ -411,9 +333,6 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
             'driver_number': driverNumber,
             'roster_number': rosterNumber,
             'payroll_number': payrollNumber,
-            'swap_partner_roster_number': _hasMutualRosterSwap
-                ? _swapPartnerController.text.trim()
-                : null,
           },
         ),
       );
@@ -476,7 +395,9 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
       }
 
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute<void>(builder: (_) => const HomeScreen(showDepotDocuments: true)),
+        MaterialPageRoute<void>(
+          builder: (_) => const HomeScreen(showPendingActions: true),
+        ),
         (Route<dynamic> route) => false,
       );
     } on AnnualLeaveException catch (error) {
@@ -541,7 +462,6 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
   Widget _progressHeader() {
     const List<String> labels = <String>[
       'Driver',
-      'Roster',
       'Leave',
       'Preferences',
       'Review',
@@ -732,140 +652,6 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _rosterSetupStep() {
-    return Form(
-      key: _rosterFormKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _pageHeading(
-            'Roster setup',
-            'Tell Roster Buddy what you already know about your Base Roster. '
-                'You can leave the commencement date blank and set it when '
-                'you upload the Base Roster.',
-          ),
-          const SizedBox(height: 24),
-          Card(
-            child: ListTile(
-              leading: const Icon(
-                Icons.calendar_month_outlined,
-                color: railwayBlue,
-              ),
-              title: Text(
-                _baseRosterCommencementDate == null
-                    ? 'Base Roster commencement'
-                    : _formatDate(_baseRosterCommencementDate!),
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              subtitle: Text(
-                _baseRosterCommencementDate == null
-                    ? 'Optional — select the commencement Sunday if known.'
-                    : 'Saved commencement Sunday',
-              ),
-              trailing: _baseRosterCommencementDate == null
-                  ? const Icon(Icons.chevron_right)
-                  : IconButton(
-                      tooltip: 'Clear date',
-                      onPressed: () {
-                        setState(() {
-                          _baseRosterCommencementDate = null;
-                        });
-                      },
-                      icon: const Icon(Icons.close),
-                    ),
-              onTap: _selectBaseRosterCommencementDate,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Card(
-            clipBehavior: Clip.antiAlias,
-            child: SwitchListTile(
-              value: _hasMutualRosterSwap,
-              onChanged: _saving
-                  ? null
-                  : (bool value) {
-                      setState(() {
-                        _hasMutualRosterSwap = value;
-
-                        if (!value) {
-                          _swapPartnerController.clear();
-                          _baseRosterStartingLine = 'mine';
-                        }
-                      });
-                    },
-              secondary: const Icon(
-                Icons.swap_horiz_outlined,
-                color: railwayBlue,
-              ),
-              title: Text(
-                'Mutual permanent roster swap',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              subtitle: const Text(
-                'Switch this on if you alternate roster lines permanently '
-                'with another driver.',
-              ),
-            ),
-          ),
-          if (_hasMutualRosterSwap) ...[
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _swapPartnerController,
-              enabled: !_saving,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Swap partner roster code',
-                prefixIcon: Icon(Icons.badge_outlined),
-                border: OutlineInputBorder(),
-              ),
-              validator: _optionalPartnerNumber,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Which roster line applies at commencement?',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            RadioGroup<String>(
-              groupValue: _baseRosterStartingLine,
-              onChanged: (String? value) {
-                if (value == null) {
-                  return;
-                }
-
-                setState(() {
-                  _baseRosterStartingLine = value;
-                });
-              },
-              child: const Column(
-                children: [
-                  RadioListTile<String>(
-                    value: 'mine',
-                    title: Text('My roster line'),
-                  ),
-                  RadioListTile<String>(
-                    value: 'partner',
-                    title: Text("Swap partner's roster line"),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 28),
-          _backAndContinue(onContinue: _continueFromRosterSetup),
         ],
       ),
     );
@@ -1126,24 +912,9 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
                 ),
                 const Divider(height: 24),
                 _reviewRow(
-                  'Base Roster commencement',
-                  _baseRosterCommencementDate == null
-                      ? 'Add later'
-                      : _formatDate(_baseRosterCommencementDate!),
+                  'Base Roster',
+                  'Choose start Sunday and line after publication',
                 ),
-                _reviewRow(
-                  'Permanent roster swap',
-                  _hasMutualRosterSwap
-                      ? 'Yes — ${_swapPartnerController.text.trim()}'
-                      : 'No',
-                ),
-                if (_hasMutualRosterSwap)
-                  _reviewRow(
-                    'Starting roster line',
-                    _baseRosterStartingLine == 'partner'
-                        ? "Partner's line"
-                        : 'My line',
-                  ),
                 const Divider(height: 24),
                 _reviewRow(
                   'Floating days remaining',
@@ -1245,12 +1016,10 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
       case 0:
         return _driverDetailsStep();
       case 1:
-        return _rosterSetupStep();
-      case 2:
         return _annualLeaveStep();
-      case 3:
+      case 2:
         return _workPreferencesStep();
-      case 4:
+      case 3:
         return _reviewStep();
       default:
         return _driverDetailsStep();

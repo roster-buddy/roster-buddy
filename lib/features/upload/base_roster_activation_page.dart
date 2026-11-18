@@ -5,11 +5,20 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'storage_service.dart';
 
 class BaseRosterActivationPage extends StatefulWidget {
-  const BaseRosterActivationPage({required this.fileName, this.initial, this.earliestCommencement, super.key});
+  const BaseRosterActivationPage({
+    required this.fileName,
+    this.initial,
+    this.earliestCommencement,
+    this.personalSetup = false,
+    this.publicationOnly = false,
+    super.key,
+  });
 
   final String fileName;
   final BaseRosterActivation? initial;
   final DateTime? earliestCommencement;
+  final bool personalSetup;
+  final bool publicationOnly;
 
   @override
   State<BaseRosterActivationPage> createState() =>
@@ -169,12 +178,16 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
     Navigator.of(context).pop(
       BaseRosterActivation(
         commencementDate: _commencementDate!,
-        hasMutualSwap: _hasMutualSwap,
-        startWeekNumber: _weekNumber,
-        swapPartnerWeekNumber: _hasMutualSwap ? _swapWeekNumber : null,
-        startingLine: _hasMutualSwap
+        hasMutualSwap: widget.publicationOnly ? false : _hasMutualSwap,
+        startWeekNumber: widget.publicationOnly ? 1 : _weekNumber,
+        swapPartnerWeekNumber:
+            widget.publicationOnly ? null : (_hasMutualSwap ? _swapWeekNumber : null),
+        startingLine: widget.publicationOnly
+            ? BaseRosterStartingLine.mine
+            : _hasMutualSwap
             ? _startingLine
             : BaseRosterStartingLine.mine,
+        depotPublicationOnly: widget.publicationOnly,
       ),
     );
   }
@@ -215,8 +228,12 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
         backgroundColor: isDark ? null : Colors.white,
         foregroundColor: isDark ? null : navy,
         elevation: 0,
-        title: const Text(
-          'Activate Base Roster',
+        title: Text(
+          widget.publicationOnly
+              ? 'Publish Base Roster'
+              : widget.personalSetup
+                  ? 'Set up your Base Roster'
+                  : 'Activate Base Roster',
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
       ),
@@ -272,7 +289,11 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    'Commencement date',
+                    widget.publicationOnly
+                        ? 'Official roster start date'
+                        : widget.personalSetup
+                            ? 'Your starting Sunday'
+                            : 'Commencement date',
                     style: TextStyle(
                       color: headingColor,
                       fontSize: 19,
@@ -281,7 +302,11 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Choose the first Sunday and the week numbers printed in the first column.',
+                    widget.publicationOnly
+                        ? 'Publish the Sunday this depot roster officially starts. Each driver will then be notified to choose their own starting Sunday and numbered line.'
+                        : widget.personalSetup
+                        ? 'Choose the Sunday you start on this roster, then select the numbered line you will work that week.'
+                        : 'Choose the first Sunday and the week numbers printed in the first column.',
                     style: TextStyle(color: descriptionColor, height: 1.4),
                   ),
                   const SizedBox(height: 12),
@@ -297,29 +322,38 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                       ),
                       title: Text(
                         _commencementDate == null
-                            ? 'Select commencement Sunday'
+                            ? (widget.personalSetup
+                                ? 'Select your starting Sunday'
+                                : 'Select commencement Sunday')
                             : _formatDate(_commencementDate!),
                         style: TextStyle(
                           color: headingColor,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      subtitle: const Padding(
-                        padding: EdgeInsets.only(top: 4),
-                        child: Text('Only Sundays can be selected'),
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          widget.personalSetup
+                              ? 'Only Sundays on or after the published start date can be selected'
+                              : 'Only Sundays can be selected',
+                        ),
                       ),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: _selectCommencementDate,
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  _weekField(
-                    label: 'Your printed week number',
-                    selected: _weekNumber,
-                    onChanged: (value) => setState(() => _weekNumber = value),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
+                  if (!widget.publicationOnly) ...[
+                    const SizedBox(height: 24),
+                    _weekField(
+                      label: widget.personalSetup
+                          ? 'Numbered roster line for that week'
+                          : 'Your printed week number',
+                      selected: _weekNumber,
+                      onChanged: (value) => setState(() => _weekNumber = value),
+                    ),
+                    const SizedBox(height: 16),
+                    Card(
                     child: SwitchListTile(
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 18,
@@ -350,8 +384,8 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                         });
                       },
                     ),
-                  ),
-                  if (_hasMutualSwap) ...[
+                    ),
+                    if (_hasMutualSwap) ...[
                     const SizedBox(height: 14),
                     _weekField(
                       label: 'Swap partner’s printed week number',
@@ -408,6 +442,7 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                         ),
                       ),
                     ),
+                    ],
                   ],
                   const SizedBox(height: 28),
                   FilledButton.icon(
@@ -415,8 +450,12 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                     icon: const Icon(Icons.check_circle_outline),
                     label: const Padding(
                       padding: EdgeInsets.symmetric(vertical: 14),
-                      child: Text(
-                        'Continue and upload',
+                        child: Text(
+                        widget.publicationOnly
+                            ? 'Publish Base Roster'
+                            : widget.personalSetup
+                            ? 'Save and apply roster'
+                            : 'Continue and upload',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w800,

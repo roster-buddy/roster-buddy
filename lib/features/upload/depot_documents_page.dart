@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/formatters/roster_date_format.dart';
-import '../../core/parser/base_roster_parser.dart';
 import '../smart_scan/scan_review_page.dart';
 import '../../core/models/document_type.dart';
 import 'base_roster_activation_page.dart';
+import 'base_roster_setup_service.dart';
 import 'document_opener.dart';
 import 'storage_service.dart';
 
@@ -64,42 +64,31 @@ class _DepotDocumentsPageState extends State<DepotDocumentsPage> {
       MaterialPageRoute(builder: (_) => BaseRosterActivationPage(
         fileName: row['original_filename'] as String,
         earliestCommencement: commencement,
+        personalSetup: true,
       )),
     );
     if (!mounted || setup == null) return;
     await _run(() async {
+      if (commencement == null) {
+        throw StateError(
+          'This Base Roster does not have a published start date.',
+        );
+      }
       final document = await _client.from('roster_documents')
           .select('base_roster_pages').eq('id', id).single();
       final pages = (document['base_roster_pages'] as List?)?.cast<String>();
       if (pages == null || pages.isEmpty) {
         throw StateError('This older Base Roster needs to be uploaded once with the depot import.');
       }
-      final user = _client.auth.currentUser!;
-      final profile = await _client.from('driver_profiles').select('roster_number, driver_number')
-          .eq('user_id', user.id).single();
-      final result = await BaseRosterParser(
-        commencementDate: setup.commencementDate,
-        rosterNumber: (profile['roster_number'] ?? profile['driver_number']) as String?,
-        startWeekNumber: setup.startWeekNumber,
-        swapPartnerWeekNumber: setup.swapPartnerWeekNumber,
-        initialLine: setup.startingLine == BaseRosterStartingLine.partner
-            ? BaseRosterInitialLine.swapPartner : BaseRosterInitialLine.driver,
-      ).parse(pageText: pages);
-      if (!result.canImport) {
-        throw StateError(result.warnings.where((warning) => warning.preventsImport)
-            .map((warning) => warning.message).join('\n'));
-      }
-      await _client.from('base_rosters').upsert({
-        'user_id': user.id,
-        'document_id': id,
-        'commencement_date': setup.commencementDate.toIso8601String().substring(0, 10),
-        'has_mutual_swap': setup.hasMutualSwap,
-        'start_week_number': setup.startWeekNumber,
-        'swap_partner_week_number': setup.swapPartnerWeekNumber,
-        'swap_partner_driver_number': null,
-        'swap_partner_roster_number': null,
-        'starts_with_line': setup.startingLine.name,
-      }, onConflict: 'user_id,document_id');
+      await BaseRosterSetupService().activate(
+        action: PendingBaseRosterSetup(
+          documentId: id,
+          fileName: row['original_filename'] as String,
+          officialStartDate: commencement,
+          pages: pages,
+        ),
+        setup: setup,
+      );
       if (!mounted) return;
       widget.onRosterChanged();
       ScaffoldMessenger.of(context).showSnackBar(

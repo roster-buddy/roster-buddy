@@ -17,6 +17,7 @@ class BaseRosterActivation {
     this.swapPartnerRosterNumber,
     this.startWeekNumber,
     this.swapPartnerWeekNumber,
+    this.depotPublicationOnly = false,
   });
 
   final DateTime commencementDate;
@@ -25,6 +26,7 @@ class BaseRosterActivation {
   final int? startWeekNumber;
   final int? swapPartnerWeekNumber;
   final BaseRosterStartingLine startingLine;
+  final bool depotPublicationOnly;
 }
 
 enum UploadProcessingOutcome { processed, pending, failed }
@@ -218,7 +220,8 @@ class StorageService {
 
       documentId = documentRow['id'].toString();
 
-      if (baseRosterActivation != null) {
+      if (baseRosterActivation != null &&
+          !baseRosterActivation.depotPublicationOnly) {
         await _insertBaseRosterActivation(
           userId: user.id,
           documentId: documentId,

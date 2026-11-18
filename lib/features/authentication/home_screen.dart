@@ -1,4 +1,7 @@
 import '../upload/depot_documents_page.dart';
+import '../upload/base_roster_activation_page.dart';
+import '../upload/base_roster_setup_service.dart';
+import '../upload/storage_service.dart';
 import '../notifications/shift_reminder_link.dart';
 import '../../core/widgets/top_notice_banner.dart';
 import '../../core/widgets/day_details_panel.dart';
@@ -110,9 +113,14 @@ String _openJobCardLabel(JobCardMatch match) {
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({this.showDepotDocuments = false, super.key});
+  const HomeScreen({
+    this.showDepotDocuments = false,
+    this.showPendingActions = false,
+    super.key,
+  });
 
   final bool showDepotDocuments;
+  final bool showPendingActions;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -157,6 +165,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (widget.showDepotDocuments) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _openDepotDocuments();
+      });
+    }
+    if (widget.showPendingActions) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openPendingActions();
       });
     }
     _rosterNoticeTimer = Timer.periodic(const Duration(seconds: 30), (_) => _refreshPendingActionCount());
@@ -259,6 +272,12 @@ class _HomeScreenState extends State<HomeScreen> {
       } catch (_) {
         // A roster notice failure must not hide pending leave or swap actions.
       }
+      PendingBaseRosterSetup? baseRosterSetup;
+      try {
+        baseRosterSetup = await BaseRosterSetupService().loadPending();
+      } catch (_) {
+        // A Base Roster setup check must not hide other pending actions.
+      }
       if (mounted && rosterUpdates.isNotEmpty) {
         final latest = rosterUpdates.first.receivedAt;
         if ((!_noticesInitialised || _lastRosterNotice == null || latest.isAfter(_lastRosterNotice!))) {
@@ -278,7 +297,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _pendingActionCount =
-            floatingRows.length + cancellationRows.length + blockRows.length + newShiftSwapCount + rosterUpdates.length;
+            floatingRows.length + cancellationRows.length + blockRows.length +
+            newShiftSwapCount + rosterUpdates.length +
+            (baseRosterSetup == null ? 0 : 1);
       });
     } catch (_) {
       // Badge loading must never prevent the main app from loading.
@@ -679,6 +700,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   final JobCardService _shiftSwapJobCardService = JobCardService();
 
   List<RosterUpdateNotice> _rosterUpdates = [];
+  PendingBaseRosterSetup? _baseRosterSetup;
   bool _isLoading = true;
   String? _errorMessage;
   List<AnnualLeaveRequest> _requests = <AnnualLeaveRequest>[];
@@ -699,6 +721,38 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
     setState(() => _rosterUpdates.removeWhere((notice) =>
         !notice.needsInvestigation && keys.contains(notice.viewKey)));
     widget.onChanged();
+  }
+
+  Future<void> _completeBaseRosterSetup() async {
+    final action = _baseRosterSetup;
+    if (action == null) return;
+    final setup = await Navigator.of(context).push<BaseRosterActivation>(
+      MaterialPageRoute(
+        builder: (_) => BaseRosterActivationPage(
+          fileName: action.fileName,
+          earliestCommencement: action.officialStartDate,
+          personalSetup: true,
+        ),
+      ),
+    );
+    if (!mounted || setup == null) return;
+    setState(() => _isLoading = true);
+    try {
+      await BaseRosterSetupService().activate(action: action, setup: setup);
+      if (!mounted) return;
+      setState(() => _baseRosterSetup = null);
+      widget.onChanged();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Your Base Roster has been applied.')),
+      );
+      await _load();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not apply the Base Roster. $error')),
+      );
+    }
   }
 
   Future<void> _openRosterDocument(RosterUpdateNotice notice) async {
@@ -799,6 +853,8 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
 
       List<RosterUpdateNotice> rosterUpdates = [];
       try { rosterUpdates = await RosterUpdateService().load(); } catch (_) {}
+      PendingBaseRosterSetup? baseRosterSetup;
+      try { baseRosterSetup = await BaseRosterSetupService().loadPending(); } catch (_) {}
       if (!mounted) {
         return;
       }
@@ -828,6 +884,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
 
       setState(() {
         _rosterUpdates = rosterUpdates;
+        _baseRosterSetup = baseRosterSetup;
         _requests = orderedRequests;
         _blockActions = orderedBlockActions;
         _shiftSwaps = orderedShiftSwaps;
@@ -2081,6 +2138,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   @override
   Widget build(BuildContext context) {
     final bool hasPendingActions =
+        _baseRosterSetup != null ||
         _requests.isNotEmpty ||
         _blockActions.isNotEmpty ||
         _shiftSwaps.isNotEmpty;
@@ -2124,6 +2182,53 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                 style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
               const SizedBox(height: 16),
+              if (_baseRosterSetup case final action?) ...[
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.calendar_month_outlined),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'New Base Roster requires setup',
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.onSurface,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Published from ${displayDate(action.officialStartDate)}. '
+                          'Choose the Sunday you start, your numbered roster line, '
+                          'and any permanent mutual-swap arrangement.',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: _isLoading ? null : _completeBaseRosterSetup,
+                            icon: const Icon(Icons.playlist_add_check_circle_outlined),
+                            label: const Text('Set up my Base Roster'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
               RosterUpdatesSection(
                 notices: _rosterUpdates.where((notice) => !notice.needsInvestigation).toList(),
                 onViewed: _viewedRosterUpdates,
@@ -2185,8 +2290,8 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                         ),
                         SizedBox(height: 5),
                         Text(
-                          'Annual leave decisions, block leave changes and mutual '
-                          'shift swaps awaiting action will appear here.',
+                          'New Base Rosters, annual leave decisions, block leave '
+                          'changes and mutual swaps awaiting action will appear here.',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                         ),

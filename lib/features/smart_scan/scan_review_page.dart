@@ -286,7 +286,11 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
       final activation = await Navigator.of(context).push<BaseRosterActivation>(
         MaterialPageRoute(
           builder: (_) =>
-              BaseRosterActivationPage(fileName: widget.upload.fileName, initial: _activation),
+              BaseRosterActivationPage(
+                fileName: widget.upload.fileName,
+                initial: _activation,
+                publicationOnly: true,
+              ),
         ),
       );
       if (!mounted || activation == null) return;
@@ -773,7 +777,8 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
                             ),
                       child: Text(
                         parsed != null ? 'Import records'
-                            : _type == DocumentType.baseRoster ? 'Set starting week'
+                            : _type == DocumentType.baseRoster
+                                ? 'Set publish date'
                             : 'Check and apply',
                       ),
                     ),
