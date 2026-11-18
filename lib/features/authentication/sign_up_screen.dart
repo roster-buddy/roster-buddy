@@ -13,6 +13,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       'https://roster-buddy.github.io/roster-buddy/';
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+  String? _depot;
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
@@ -27,6 +30,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   void dispose() {
     _emailController.dispose();
+    _firstNameController.dispose();
+    _lastNameController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -42,6 +47,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
         emailRedirectTo: _emailRedirectUrl,
+        data: {
+          'first_name': _firstNameController.text.trim(),
+          'last_name': _lastNameController.text.trim(),
+          'full_name': '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}',
+          'depot': _depot,
+        },
       );
 
       if (!mounted) return;
@@ -124,6 +135,42 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                     ),
                     const SizedBox(height: 32),
+                    for (final (label, controller, hint) in [
+                      ('First name', _firstNameController, AutofillHints.givenName),
+                      ('Last name', _lastNameController, AutofillHints.familyName),
+                    ]) ...[
+                      TextFormField(
+                        controller: controller,
+                        textCapitalization: TextCapitalization.words,
+                        autofillHints: [hint],
+                        maxLength: 100,
+                        decoration: InputDecoration(
+                          labelText: label,
+                          border: const OutlineInputBorder(),
+                          counterText: '',
+                        ),
+                        validator: (value) => (value ?? '').trim().isEmpty
+                            ? 'Enter your ${label.toLowerCase()}'
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    DropdownButtonFormField<String>(
+                      initialValue: _depot,
+                      decoration: const InputDecoration(
+                        labelText: 'Depot',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Wolverhampton',
+                          child: Text('Wolverhampton'),
+                        ),
+                      ],
+                      onChanged: _isCreatingAccount ? null : (value) => setState(() => _depot = value),
+                      validator: (value) => value == null ? 'Select your depot' : null,
+                    ),
+                    const SizedBox(height: 16),
                     TextFormField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,

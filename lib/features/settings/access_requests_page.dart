@@ -15,7 +15,8 @@ class _AccessRequestsPageState extends State<AccessRequestsPage> {
   Future<List<Map<String, dynamic>>> _load() async {
     final rows = await Supabase.instance.client
         .from('app_access')
-        .select('user_id, email, status, requested_at, reviewed_at')
+        .select('user_id, email, status, requested_at, reviewed_at, '
+            'first_name, last_name, requested_depot')
         .order('requested_at', ascending: false);
     rows.sort((a, b) {
       final aPending = a['status'] == 'pending' ? 0 : 1;
@@ -82,6 +83,10 @@ class _AccessRequestsPageState extends State<AccessRequestsPage> {
               final id = request['user_id'] as String;
               final status = request['status'] as String;
               final busy = _updating == id;
+              final name = [request['first_name'], request['last_name']]
+                  .whereType<String>()
+                  .join(' ');
+              final depot = request['requested_depot'] as String?;
               return Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -89,11 +94,13 @@ class _AccessRequestsPageState extends State<AccessRequestsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        request['email'] as String,
+                        name.isEmpty ? request['email'] as String : name,
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
                       ),
+                      if (name.isNotEmpty) Text(request['email'] as String),
+                      Text(depot ?? 'Depot not provided'),
                       const SizedBox(height: 6),
                       Text('Status: ${status[0].toUpperCase()}${status.substring(1)}'),
                       const SizedBox(height: 12),
