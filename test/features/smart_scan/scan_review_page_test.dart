@@ -113,7 +113,10 @@ void main() {
     ));
     await tester.pumpAndSettle();
     await chooseType(tester, 'Base Roster');
-    expect(find.text('Publish Base Roster'), findsOneWidget);
+    expect(
+      find.widgetWithText(FilledButton, 'Publish Base Roster'),
+      findsOneWidget,
+    );
     expect(find.text('Select commencement Sunday'), findsOneWidget);
     expect(find.text('Your printed week number'), findsNothing);
     expect(find.text('Mutual permanent swap'), findsNothing);
