@@ -225,7 +225,7 @@ class DutyResolver {
         .from(_manualDutyTableName)
         .select(
           'duty_date, duty_type, turn_number, book_on, book_off, '
-          'rostered_minutes, remarks, manual_change_type, updated_at',
+          'rostered_minutes, remarks, manual_change_type, display_source, updated_at',
         )
         .eq('user_id', user.id)
         .eq('duty_date', _databaseDate(date));
@@ -358,7 +358,7 @@ class DutyResolver {
         .from(_manualDutyTableName)
         .select(
           'duty_date, duty_type, turn_number, book_on, book_off, '
-          'rostered_minutes, remarks, manual_change_type, updated_at',
+          'rostered_minutes, remarks, manual_change_type, display_source, updated_at',
         )
         .eq('user_id', user.id)
         .gte('duty_date', databaseStart)
@@ -1285,7 +1285,9 @@ class DutyResolver {
 
     return Duty(
       date: DateTime.parse(dateValue),
-      source: RosterSource.manual,
+      source: row['display_source'] == 'base' && row['duty_type'] != 'annual_leave'
+          ? RosterSource.baseRoster
+          : RosterSource.manual,
       dutyType: _dutyType(row['duty_type']),
       turnNumber: _nullableString(row['turn_number']),
       bookOn: _databaseTimeToAppTime(row['book_on']),
