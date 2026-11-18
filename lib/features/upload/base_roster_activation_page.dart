@@ -477,15 +477,15 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                   FilledButton.icon(
                     onPressed: _activateRoster,
                     icon: const Icon(Icons.check_circle_outline),
-                    label: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 14),
+                    label: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
                         child: Text(
                         widget.publicationOnly
                             ? 'Publish Base Roster'
                             : widget.personalSetup
                             ? 'Save and apply roster'
                             : 'Continue and upload',
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
                         ),
