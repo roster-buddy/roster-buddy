@@ -65,6 +65,9 @@ class _DepotDocumentsPageState extends State<DepotDocumentsPage> {
         fileName: row['original_filename'] as String,
         earliestCommencement: commencement,
         personalSetup: true,
+        onOpenDocument: () => openUploadedDocument(() async => _client.storage
+            .from('roster-documents')
+            .createSignedUrl(row['storage_path'] as String, 300)),
       )),
     );
     if (!mounted || setup == null) return;

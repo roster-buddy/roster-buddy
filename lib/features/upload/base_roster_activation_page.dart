@@ -11,6 +11,7 @@ class BaseRosterActivationPage extends StatefulWidget {
     this.earliestCommencement,
     this.personalSetup = false,
     this.publicationOnly = false,
+    this.onOpenDocument,
     super.key,
   });
 
@@ -19,6 +20,7 @@ class BaseRosterActivationPage extends StatefulWidget {
   final DateTime? earliestCommencement;
   final bool personalSetup;
   final bool publicationOnly;
+  final Future<void> Function()? onOpenDocument;
 
   @override
   State<BaseRosterActivationPage> createState() =>
@@ -114,6 +116,21 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
 
   String _formatDate(DateTime date) {
     return displayDate(date);
+  }
+
+  Future<void> _openDocument() async {
+    final openDocument = widget.onOpenDocument;
+    if (openDocument == null) return;
+    try {
+      await openDocument();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not open the Base Roster. Please try again.'),
+        ),
+      );
+    }
   }
 
   Future<void> _selectCommencementDate() async {
@@ -287,6 +304,18 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                       ],
                     ),
                   ),
+                  if (widget.personalSetup &&
+                      widget.onOpenDocument != null) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: _openDocument,
+                      icon: const Icon(Icons.open_in_new_outlined),
+                      label: const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Text('Open Base Roster'),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   Text(
                     widget.publicationOnly

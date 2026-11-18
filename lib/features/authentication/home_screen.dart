@@ -732,6 +732,17 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
           fileName: action.fileName,
           earliestCommencement: action.officialStartDate,
           personalSetup: true,
+          onOpenDocument: () => openUploadedDocument(() async {
+            final client = Supabase.instance.client;
+            final document = await client
+                .from('roster_documents')
+                .select('storage_path')
+                .eq('id', action.documentId)
+                .single();
+            return client.storage
+                .from('roster-documents')
+                .createSignedUrl(document['storage_path'] as String, 300);
+          }),
         ),
       ),
     );
