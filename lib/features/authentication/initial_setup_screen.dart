@@ -1,5 +1,9 @@
 import '../notifications/push_notification_settings.dart';
 import '../notifications/shift_reminder_preferences.dart';
+import '../upload/base_roster_activation_page.dart';
+import '../upload/base_roster_setup_service.dart';
+import '../upload/document_opener.dart';
+import '../upload/storage_service.dart' show BaseRosterActivation;
 import '../../core/formatters/roster_date_format.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -320,6 +324,33 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
         'shift_reminder_minutes': _shiftReminderMinutes.toList()..sort(),
         'setup_completed': false,
       }, onConflict: 'user_id');
+
+      final rosterSetup = BaseRosterSetupService(client: supabase);
+      final roster = await rosterSetup.loadPending();
+      if (!mounted) return;
+      if (roster != null) {
+        final selection = await Navigator.of(context).push<BaseRosterActivation>(
+          MaterialPageRoute(
+            builder: (_) => BaseRosterActivationPage(
+              fileName: roster.fileName,
+              earliestCommencement: roster.officialStartDate,
+              personalSetup: true,
+              onOpenDocument: () => openUploadedDocument(() async {
+                final document = await supabase
+                    .from('roster_documents')
+                    .select('storage_path')
+                    .eq('id', roster.documentId)
+                    .single();
+                return supabase.storage
+                    .from('roster-documents')
+                    .createSignedUrl(document['storage_path'] as String, 300);
+              }),
+            ),
+          ),
+        );
+        if (!mounted || selection == null) return;
+        await rosterSetup.activate(action: roster, setup: selection);
+      }
 
       // --------------------------------------------------------
       // Account metadata
@@ -771,15 +802,18 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          const Card(
-            color: Color(0xFFE8F1F8),
+          Card(
+            color: Theme.of(context).colorScheme.secondaryContainer,
             child: Padding(
-              padding: EdgeInsets.all(14),
+              padding: const EdgeInsets.all(14),
               child: Text(
                 'Your entered remaining balance will remain your remaining '
                 'balance after these already-confirmed dates are recorded. '
                 'Roster Buddy will not deduct them twice.',
-                style: TextStyle(height: 1.4),
+                style: TextStyle(
+                  height: 1.4,
+                  color: Theme.of(context).colorScheme.onSecondaryContainer,
+                ),
               ),
             ),
           ),
