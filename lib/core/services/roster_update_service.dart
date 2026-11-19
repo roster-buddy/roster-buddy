@@ -38,17 +38,22 @@ class RosterUpdateService {
     final client = Supabase.instance.client;
     final user = client.auth.currentUser;
     if (user == null) return [];
-    final profile = await client.from('driver_profiles').select('payroll_number, roster_updates_seen_at')
+    final profile = await client.from('driver_profiles')
+        .select('payroll_number, roster_updates_seen_at, roster_history_start_date')
         .eq('user_id', user.id).maybeSingle();
     final payroll = profile?['payroll_number']?.toString();
     final key = PrintedRosterIdentity.payrollKey(payroll);
     if (key == null) return [];
     final cutoff = since ?? DateTime.now().subtract(const Duration(days: 30));
-    final rows = await client.from('document_duties')
+    final historyStart = profile?['roster_history_start_date'] as String?;
+    final query = client.from('document_duties')
         .select('duty_date, source, payroll_number, duty_type, document_id, book_on, book_off, turn_number, amendment_code, created_at')
         .like('payroll_number', '%$key')
         .inFilter('source', ['10_day', '7_day', '48_hour'])
-        .gt('created_at', cutoff.toUtc().toIso8601String())
+        .gt('created_at', cutoff.toUtc().toIso8601String());
+    final rows = await (historyStart == null
+        ? query
+        : query.gte('duty_date', historyStart))
         .order('created_at', ascending: false);
     final dates = rows.map((row) => DateTime.tryParse(row['duty_date']?.toString() ?? ''))
         .whereType<DateTime>().toList()..sort();

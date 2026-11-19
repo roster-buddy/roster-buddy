@@ -12,6 +12,7 @@ class BaseRosterActivationPage extends StatefulWidget {
     this.personalSetup = false,
     this.publicationOnly = false,
     this.onOpenDocument,
+    this.confirmLabel,
     super.key,
   });
 
@@ -21,6 +22,7 @@ class BaseRosterActivationPage extends StatefulWidget {
   final bool personalSetup;
   final bool publicationOnly;
   final Future<void> Function()? onOpenDocument;
+  final String? confirmLabel;
 
   @override
   State<BaseRosterActivationPage> createState() =>
@@ -480,11 +482,11 @@ class _BaseRosterActivationPageState extends State<BaseRosterActivationPage> {
                     label: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                         child: Text(
-                        widget.publicationOnly
+                        widget.confirmLabel ?? (widget.publicationOnly
                             ? 'Publish Base Roster'
                             : widget.personalSetup
                             ? 'Save and apply roster'
-                            : 'Continue and upload',
+                            : 'Continue and upload'),
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w800,

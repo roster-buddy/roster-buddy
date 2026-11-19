@@ -45,6 +45,8 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
 
   int _step = 0;
   bool _saving = false;
+  PendingBaseRosterSetup? _setupRoster;
+  BaseRosterActivation? _rosterSelection;
 
   int? _blockWeekIndex;
   final List<DateTime> _confirmedFloatingLeaveDates = <DateTime>[];
@@ -184,10 +186,71 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
     });
   }
 
-  void _continueFromWorkPreferences() {
-    setState(() {
-      _step = 3;
-    });
+  Future<void> _continueFromWorkPreferences() async {
+    if (_saving) return;
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    if (user == null) return;
+    setState(() => _saving = true);
+    try {
+      // Depot document access is based on the driver's saved depot.
+      await _saveSetupProfile(client, user);
+      final roster = await BaseRosterSetupService(client: client).loadPending();
+      if (!mounted) return;
+      BaseRosterActivation? selection;
+      if (roster != null) {
+        selection = await Navigator.of(context).push<BaseRosterActivation>(
+          MaterialPageRoute(
+            builder: (_) => BaseRosterActivationPage(
+              fileName: roster.fileName,
+              earliestCommencement: roster.officialStartDate,
+              personalSetup: true,
+              initial: _setupRoster?.documentId == roster.documentId
+                  ? _rosterSelection
+                  : null,
+              confirmLabel: 'Continue to review',
+              onOpenDocument: () => openUploadedDocument(() async {
+                final document = await client
+                    .from('roster_documents')
+                    .select('storage_path')
+                    .eq('id', roster.documentId)
+                    .single();
+                return client.storage
+                    .from('roster-documents')
+                    .createSignedUrl(document['storage_path'] as String, 300);
+              }),
+            ),
+          ),
+        );
+        if (!mounted || selection == null) return;
+      }
+      setState(() {
+        _setupRoster = roster;
+        _rosterSelection = selection;
+        _step = 3;
+      });
+    } catch (_) {
+      if (mounted) {
+        _showMessage('Could not prepare your Base Roster. Please try again.',
+            isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _saveSetupProfile(SupabaseClient client, User user) async {
+    await client.from('driver_profiles').upsert(<String, dynamic>{
+      'user_id': user.id,
+      'display_name': _nameController.text.trim(),
+      'depot': _depotController.text.trim(),
+      'driver_number': _driverNumberController.text.trim(),
+      'roster_number': _rosterNumberController.text.trim(),
+      'payroll_number': _payrollNumberController.text.trim(),
+      'permanently_unavailable_sundays': _permanentlyUnavailableSundays,
+      'shift_reminder_minutes': _shiftReminderMinutes.toList()..sort(),
+      'setup_completed': false,
+    }, onConflict: 'user_id');
   }
 
   Future<void> _addConfirmedFloatingLeaveDate() async {
@@ -313,43 +376,12 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
       // been saved successfully.
       // --------------------------------------------------------
 
-      await supabase.from('driver_profiles').upsert(<String, dynamic>{
-        'user_id': user.id,
-        'display_name': displayName,
-        'depot': depot,
-        'driver_number': driverNumber,
-        'roster_number': rosterNumber,
-        'payroll_number': payrollNumber,
-        'permanently_unavailable_sundays': _permanentlyUnavailableSundays,
-        'shift_reminder_minutes': _shiftReminderMinutes.toList()..sort(),
-        'setup_completed': false,
-      }, onConflict: 'user_id');
-
-      final rosterSetup = BaseRosterSetupService(client: supabase);
-      final roster = await rosterSetup.loadPending();
-      if (!mounted) return;
-      if (roster != null) {
-        final selection = await Navigator.of(context).push<BaseRosterActivation>(
-          MaterialPageRoute(
-            builder: (_) => BaseRosterActivationPage(
-              fileName: roster.fileName,
-              earliestCommencement: roster.officialStartDate,
-              personalSetup: true,
-              onOpenDocument: () => openUploadedDocument(() async {
-                final document = await supabase
-                    .from('roster_documents')
-                    .select('storage_path')
-                    .eq('id', roster.documentId)
-                    .single();
-                return supabase.storage
-                    .from('roster-documents')
-                    .createSignedUrl(document['storage_path'] as String, 300);
-              }),
-            ),
-          ),
-        );
-        if (!mounted || selection == null) return;
-        await rosterSetup.activate(action: roster, setup: selection);
+      await _saveSetupProfile(supabase, user);
+      final roster = _setupRoster;
+      final selection = _rosterSelection;
+      if (roster != null && selection != null) {
+        await BaseRosterSetupService(client: supabase)
+            .activate(action: roster, setup: selection);
       }
 
       // --------------------------------------------------------
@@ -418,7 +450,10 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
 
       await supabase
           .from('driver_profiles')
-          .update(<String, dynamic>{'setup_completed': true})
+          .update(<String, dynamic>{
+            'setup_completed': true,
+            'roster_history_start_date': DateTime.now().toIso8601String().substring(0, 10),
+          })
           .eq('user_id', user.id);
 
       if (!mounted) {
@@ -947,7 +982,10 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
                 const Divider(height: 24),
                 _reviewRow(
                   'Base Roster',
-                  'Choose start Sunday and line after publication',
+                  _rosterSelection == null
+                      ? 'No published roster to set up'
+                      : 'Line ${_rosterSelection!.startWeekNumber} from '
+                          '${_formatDate(_rosterSelection!.commencementDate)}',
                 ),
                 const Divider(height: 24),
                 _reviewRow(

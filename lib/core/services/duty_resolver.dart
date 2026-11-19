@@ -60,7 +60,7 @@ class DutyResolver {
         .from(_profileTableName)
         .select(
           'payroll_number, roster_number, driver_number, '
-          'permanently_unavailable_sundays',
+          'permanently_unavailable_sundays, roster_history_start_date',
         )
         .eq('user_id', user.id)
         .maybeSingle();
@@ -85,31 +85,31 @@ class DutyResolver {
       return const [];
     }
 
-    final dutyFilter = applicableDutyFilter(
-      payrollNumber: payrollNumber,
-      rosterNumber: rosterNumber,
-    );
-    final dutyQuery = _supabase
-        .from(_dutyTableName)
-        .select(_dutyColumns)
-        .eq('duty_date', _databaseDate(date));
-    final List<dynamic> response = await (dutyFilter == null
-        ? dutyQuery
-        : dutyQuery.or(dutyFilter));
-
-    final List<Duty> duties = response
-        .whereType<Map<String, dynamic>>()
-        .where(
+    final duties = <Duty>[];
+    final historyStart = _rosterHistoryStart(profile);
+    if (historyStart == null || !_dateOnly(date).isBefore(historyStart)) {
+      final dutyFilter = applicableDutyFilter(
+        payrollNumber: payrollNumber,
+        rosterNumber: rosterNumber,
+      );
+      final dutyQuery = _supabase
+          .from(_dutyTableName)
+          .select(_dutyColumns)
+          .eq('duty_date', _databaseDate(date));
+      final List<dynamic> response = await (dutyFilter == null
+          ? dutyQuery
+          : dutyQuery.or(dutyFilter));
+      duties.addAll(
+        response.whereType<Map<String, dynamic>>().where(
           (row) => matchesProfile(
             row: row,
             payrollNumber: payrollNumber,
             rosterNumber: rosterNumber,
           ),
-        )
-        .map(_dutyFromRow)
-        .toList();
-
-    await _applyBaseRoster(duties, user.id, rosterNumber, date, date);
+        ).map(_dutyFromRow),
+      );
+      await _applyBaseRoster(duties, user.id, rosterNumber, date, date);
+    }
 
     if (driverNumber != null) {
       final String databaseDate = _databaseDate(date);
@@ -277,7 +277,7 @@ class DutyResolver {
         .from(_profileTableName)
         .select(
           'payroll_number, roster_number, driver_number, '
-          'permanently_unavailable_sundays',
+          'permanently_unavailable_sundays, roster_history_start_date',
         )
         .eq('user_id', user.id)
         .maybeSingle();
@@ -302,6 +302,9 @@ class DutyResolver {
       return const <String, Duty>{};
     }
 
+    final historyStart = _rosterHistoryStart(profile);
+    final rosterStart =
+        historyStart != null && historyStart.isAfter(start) ? historyStart : start;
     final String databaseStart = _databaseDate(start);
     final String databaseEnd = _databaseDate(end);
 
@@ -314,7 +317,7 @@ class DutyResolver {
     final dutyQuery = _supabase
         .from(_dutyTableName)
         .select(_dutyColumns)
-        .gte('duty_date', databaseStart)
+        .gte('duty_date', _databaseDate(rosterStart))
         .lte('duty_date', databaseEnd);
 
     // These reads share only the profile/range and can run together.
@@ -370,7 +373,9 @@ class DutyResolver {
         ),
       SundayAvailabilityService(supabase: _supabase)
           .getAvailableSundayDatesForRange(start, end),
-      _loadBaseRosters(user.id, rosterNumber, end),
+      rosterStart.isAfter(end)
+          ? Future.value(<_BaseRosterCycle>[])
+          : _loadBaseRosters(user.id, rosterNumber, end),
     ]);
 
     final List<Duty> duties = <Duty>[];
@@ -390,7 +395,9 @@ class DutyResolver {
           .map(_dutyFromRow),
     );
 
-    _projectBaseRosters(duties, responses[7] as List<_BaseRosterCycle>, start, end);
+    _projectBaseRosters(
+      duties, responses[7] as List<_BaseRosterCycle>, rosterStart, end,
+    );
 
     if (driverNumber != null) {
       final List<dynamic> annualLeaveResponse = responses[1] as List<dynamic>;
@@ -1105,6 +1112,9 @@ class DutyResolver {
         return 'Winter block annual leave';
     }
   }
+
+  static DateTime? _rosterHistoryStart(Map<String, dynamic> profile) =>
+      DateTime.tryParse(profile['roster_history_start_date'] as String? ?? '');
 
   static DateTime _dateOnly(DateTime value) {
     return DateTime(value.year, value.month, value.day);
