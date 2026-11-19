@@ -4,6 +4,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'access_pending_screen.dart';
+import 'password_reset_screen.dart';
 import 'app_access_service.dart';
 import 'sign_up_screen.dart';
 import 'home_screen.dart';
@@ -324,13 +325,18 @@ class _SignInScreenState extends State<SignInScreen> {
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const SignUpScreen(),
-                            ),
-                          );
-                        },
+                        onPressed: _isSigningIn
+                            ? null
+                            : () {
+                                _autofillSubmitter.cancel();
+                                Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => PasswordResetScreen(
+                                      email: _emailController.text.trim(),
+                                    ),
+                                  ),
+                                );
+                              },
                         child: const Text('Forgot password?'),
                       ),
                     ),

@@ -3,23 +3,31 @@ import 'core/services/roster_theme_preference.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'features/authentication/password_reset_screen.dart';
 import 'features/authentication/session_startup.dart';
 import 'supabase_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  final recoveryLink = takePasswordRecoveryLink();
+
   await Supabase.initialize(
     url: SupabaseConfig.url,
     publishableKey: SupabaseConfig.publishableKey,
+    authOptions: FlutterAuthClientOptions(
+      detectSessionInUri: recoveryLink == null,
+    ),
   );
 
   await RosterThemePreference.load();
-  runApp(const RosterBuddyApp());
+  runApp(RosterBuddyApp(recoveryLink: recoveryLink));
 }
 
 class RosterBuddyApp extends StatelessWidget {
-  const RosterBuddyApp({super.key});
+  const RosterBuddyApp({super.key, this.recoveryLink});
+
+  final Uri? recoveryLink;
 
   @override
   Widget build(BuildContext context) {
@@ -107,7 +115,9 @@ class RosterBuddyApp extends StatelessWidget {
             unselectedItemColor: Color(0xFFB5C2D1),
           ),
         ),
-        home: const SessionStartup(),
+        home: recoveryLink == null
+            ? const SessionStartup()
+            : PasswordResetScreen(recoveryLink: recoveryLink),
       ),
     );
   }
