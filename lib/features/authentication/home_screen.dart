@@ -17,6 +17,8 @@ import '../upload/job_card_viewer.dart';
 import '../../core/services/roster_update_service.dart';
 import '../roster/roster_job_summary.dart';
 import 'sign_out.dart';
+import 'access_pending_screen.dart';
+import 'app_access_service.dart';
 import '../upload/upload_source_picker.dart';
 import '../../core/services/driver_email_identity.dart';
 import '../../core/formatters/roster_date_format.dart';
@@ -190,6 +192,16 @@ class _HomeScreenState extends State<HomeScreen> {
       final User? user = supabase.auth.currentUser;
 
       if (user == null) {
+        return;
+      }
+
+      final accessStatus = await const AppAccessService().currentStatus();
+      if (!mounted) return;
+      if (accessStatus == AppAccessStatus.renewalRequired) {
+        Navigator.of(context).pushAndRemoveUntil<void>(
+          MaterialPageRoute(builder: (_) => AccessPendingScreen(status: accessStatus)),
+          (_) => false,
+        );
         return;
       }
 

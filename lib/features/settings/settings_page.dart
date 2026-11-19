@@ -53,6 +53,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
   bool _loadingProfile = true;
   bool _signingOut = false;
   bool _isAccessAdministrator = false;
+  DateTime? _subscriptionExpiry;
 
   Map<String, dynamic> get _metadata =>
       Supabase.instance.client.auth.currentUser?.userMetadata ?? {};
@@ -62,6 +63,16 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
     super.initState();
     _loadDriverProfile();
     _loadAccessAdministrator();
+    _loadSubscriptionExpiry();
+  }
+
+  Future<void> _loadSubscriptionExpiry() async {
+    try {
+      final expiry = await const AppAccessService().subscriptionExpiry();
+      if (mounted) setState(() => _subscriptionExpiry = expiry);
+    } catch (_) {
+      // Settings remains available if the subscription lookup fails.
+    }
   }
 
   Future<void> _loadAccessAdministrator() async {
@@ -297,15 +308,23 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                 clipBehavior: Clip.antiAlias,
                 child: Column(
                   children: [
+                    if (_subscriptionExpiry case final expiry?)
+                      ListTile(
+                        leading: const Icon(Icons.event_outlined),
+                        title: const Text('Subscription'),
+                        subtitle: Text(
+                          '${subscriptionDaysLeft(expiry)} days remaining · ${displayDate(expiry.toLocal())}',
+                        ),
+                      ),
                     if (_isAccessAdministrator) ...[
                       ListTile(
                         leading: const Icon(
                           Icons.admin_panel_settings_outlined,
                           color: railwayBlue,
                         ),
-                        title: const Text('Access requests'),
+                        title: const Text('Access and subscriptions'),
                         subtitle: const Text(
-                          'Approve or decline new Roster Buddy accounts',
+                          'Review requests, suspend accounts and renew access',
                         ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => Navigator.of(context).push<void>(

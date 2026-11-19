@@ -16,6 +16,7 @@ class AccessPendingScreen extends StatefulWidget {
 
 class _AccessPendingScreenState extends State<AccessPendingScreen> {
   bool _checking = false;
+  late AppAccessStatus _status = widget.status;
 
   Future<void> _checkAgain() async {
     if (_checking) return;
@@ -41,12 +42,15 @@ class _AccessPendingScreenState extends State<AccessPendingScreen> {
         );
         return;
       }
+      setState(() => _status = status);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            status == AppAccessStatus.declined
-                ? 'Access has not been approved.'
-                : 'Your account is still waiting for approval.',
+            status == AppAccessStatus.renewalRequired
+                ? 'Your subscription still needs renewal.'
+                : status == AppAccessStatus.declined
+                    ? 'Access has not been approved.'
+                    : 'Your account is still waiting for approval.',
           ),
         ),
       );
@@ -62,7 +66,8 @@ class _AccessPendingScreenState extends State<AccessPendingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final declined = widget.status == AppAccessStatus.declined;
+    final declined = _status == AppAccessStatus.declined;
+    final renewal = _status == AppAccessStatus.renewalRequired;
     return Scaffold(
       appBar: AppBar(title: const Text('Roster Buddy')),
       body: Center(
@@ -82,7 +87,9 @@ class _AccessPendingScreenState extends State<AccessPendingScreen> {
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  declined ? 'Access not approved' : 'Waiting for approval',
+                  renewal
+                      ? 'Subscription renewal required'
+                      : declined ? 'Access not approved' : 'Waiting for approval',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w800,
@@ -90,7 +97,9 @@ class _AccessPendingScreenState extends State<AccessPendingScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  declined
+                  renewal
+                      ? 'Contact the Roster Buddy administrator to reactivate your account. Your roster history will be there when you return.'
+                      : declined
                       ? 'The Roster Buddy administrator has declined this access request.'
                       : 'Your email is confirmed. The Roster Buddy administrator must approve your account before you can continue.',
                   textAlign: TextAlign.center,
