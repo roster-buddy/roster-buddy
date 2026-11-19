@@ -99,7 +99,6 @@ class _AccessRequestsPageState extends State<AccessRequestsPage> {
             itemCount: requests.length,
             itemBuilder: (context, index) {
               final request = requests[index];
-              final id = request['user_id'] as String;
               final status = request['status'] as String;
               final busy = _updating != null;
               final pending = status == 'pending';
