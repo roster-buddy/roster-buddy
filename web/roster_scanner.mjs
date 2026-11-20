@@ -864,7 +864,7 @@ export function documentVerticalBounds(pixels, width, height) {
   return bottom - top >= height * 0.35 ? {top, bottom} : {top: 0, bottom: height};
 }
 
-function flattenShadows(imageData) {
+function flattenShadows(imageData, inkContrast) {
   const {data: pixels, width, height} = imageData;
   const stride = width + 1;
   const sums = new Float64Array(stride * (height + 1));
@@ -887,7 +887,9 @@ function flattenShadows(imageData) {
         sums[y1 * stride + x0] + sums[y0 * stride + x0]) / ((x1 - x0) * (y1 - y0));
       const i = (y * width + x) * 4;
       const grey = pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114;
-      const value = Math.min(255, Math.round(255 * grey / Math.max(1, background)));
+      const value = inkContrast == null
+        ? Math.min(255, Math.round(255 * grey / Math.max(1, background)))
+        : grey < background - inkContrast ? 0 : 255;
       pixels[i] = pixels[i + 1] = pixels[i + 2] = value;
     }
   }
@@ -1027,6 +1029,7 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}, retryU
           const bounds = [0, first];
           while (bounds.at(-1) < image.height) bounds.push(Math.min(image.height, bounds.at(-1) + step));
           const results = [];
+          const dailyReport = /\bDaily\s+Roster\s+Report\b/i.test(pageResult.fullText);
           session.sections = true;
           await worker.setParameters({tessedit_pageseg_mode: '6'});
           for (let i=0; i<bounds.length-1; i++) {
@@ -1037,7 +1040,14 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}, retryU
             const scale=Math.min(2,3000/image.width,Math.sqrt(4800000/(image.width*(bottom-top))));
             const tile=document.createElement('canvas');
             tile.width=Math.round(image.width*scale); tile.height=Math.round((bottom-top)*scale);
-            tile.getContext('2d').drawImage(image,0,top,image.width,bottom-top,0,0,tile.width,tile.height);
+            const context = tile.getContext('2d');
+            context.drawImage(image,0,top,image.width,bottom-top,0,0,tile.width,tile.height);
+            if (dailyReport) {
+              // Suppress paper texture and shadows around the small duty clocks.
+              const raster = context.getImageData(0, 0, tile.width, tile.height);
+              flattenShadows(raster, 30);
+              context.putImageData(raster, 0, 0);
+            }
             try {
               const {data}=await worker.recognize(tile,{}, {text:true,blocks:true});
               check();
