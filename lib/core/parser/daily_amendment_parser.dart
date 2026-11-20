@@ -426,7 +426,9 @@ class DailyAmendmentParser implements BaseParser {
         ? _printedPayrollRow.firstMatch(row.rawText)
         : null;
     if (named == null && payrollOnly == null) return null;
-    final name = named?.group(1)?.trim();
+    final name = named?.group(1)
+        ?.replaceFirst(RegExp(r'^[/\\|]+\s*'), '')
+        .trim();
     if (name != null &&
         (!RegExp(r'[A-Za-z]{2,}').hasMatch(name) ||
             RegExp(r'[0-9]{3,}|[/\\:]').hasMatch(name) ||
@@ -694,10 +696,15 @@ class DailyAmendmentParser implements BaseParser {
     // Narrow printed columns commonly split NDNA into separate OCR words.
     // "Exchanged" belongs to the depot indicator, so it can safely remain in
     // the row while the actual no-duty code is joined for normal parsing.
-    return value.replaceAllMapped(
-      RegExp(r'\bN\s*D\s*N\s*A\b', caseSensitive: false),
-      (_) => 'NDNA',
-    );
+    return value
+        .replaceAllMapped(
+          RegExp(r'\bN\s*D\s*N\s*A\b', caseSensitive: false),
+          (_) => 'NDNA',
+        )
+        .replaceAllMapped(
+          RegExp(r'(?<![\d:;])([01]?\d|2[0-3])\s*([:;])\s*([0-5]\d)\b'),
+          (clock) => '${clock[1]}${clock[2]}${clock[3]}',
+        );
   }
 
   String? _normaliseAmendmentCode(String? value) {
