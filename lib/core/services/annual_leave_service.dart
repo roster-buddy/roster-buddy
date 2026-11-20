@@ -19,47 +19,14 @@ class AnnualLeaveService {
   /// 365 calendar days ahead.
   bool shouldSendAnnualLeaveRequestNow(DateTime date, {DateTime? asOf}) {
     final DateTime reference = asOf ?? DateTime.now();
-    final DateTime today = DateTime(
-      reference.year,
-      reference.month,
-      reference.day,
-    );
-    final DateTime leaveDate = DateTime(date.year, date.month, date.day);
-    final DateTime lastImmediateDate = today.add(const Duration(days: 365));
-
-    return !leaveDate.isAfter(lastImmediateDate);
+    final DateTime today = DateTime.utc(reference.year, reference.month, reference.day);
+    return !reminderDateFor(date).isAfter(today);
   }
 
-  /// Returns the instant at which a future annual leave request becomes
-  /// eligible to be sent: midnight exactly 365 days before the leave date.
-  ///
-  /// DateTime is deliberately created in local time before being converted
-  /// to UTC so UK GMT/BST is respected for the actual scheduled date.
-  DateTime scheduledSendTimeFor(DateTime date) {
-    final DateTime leaveDate = DateTime(date.year, date.month, date.day);
-    final DateTime sendDate = leaveDate.subtract(const Duration(days: 365));
+  static DateTime reminderDateFor(DateTime leaveDate) =>
+      DateTime.utc(leaveDate.year, leaveDate.month, leaveDate.day - 365);
 
-    final DateTime localMidnight = DateTime(
-      sendDate.year,
-      sendDate.month,
-      sendDate.day,
-    );
-
-    return localMidnight.toUtc();
-  }
-
-  /// Stores one future floating annual leave request for later transmission.
-  ///
-  /// Scheduled requests are deliberately separate from active annual leave
-  /// requests. They do not become AL REQ and do not reduce the live floating
-  /// balance until the scheduled request is actually sent to Rosters.
-  /// Stores one future floating annual leave request together with the
-  /// completed Rosters email that will be sent when the request enters the
-  /// 365-day window.
-  ///
-  /// Supabase calculates the actual send instant at 00:00 Europe/London,
-  /// exactly 365 days before the leave date.
-  Future<void> scheduleFloatingLeaveRequest({
+  Future<void> trackAdvanceFloatingLeaveRequest({
     required DateTime date,
     required String recipientEmail,
     required String emailSubject,
@@ -70,7 +37,7 @@ class AnnualLeaveService {
 
     if (user == null) {
       throw const AnnualLeaveException(
-        'You must be signed in before scheduling annual leave.',
+        'You must be signed in before tracking annual leave.',
       );
     }
 
@@ -98,7 +65,7 @@ class AnnualLeaveService {
 
     if (cleanedSubject.isEmpty || cleanedBody.isEmpty) {
       throw const AnnualLeaveException(
-        'The scheduled annual leave email could not be prepared.',
+        'The annual leave email could not be prepared.',
       );
     }
 
@@ -121,7 +88,7 @@ class AnnualLeaveService {
 
     try {
       await _supabase.rpc(
-        'schedule_annual_leave_email',
+        'track_advance_annual_leave',
         params: <String, dynamic>{
           'p_leave_date': dateValue,
           'p_recipient_email': cleanedRecipient,
@@ -138,24 +105,22 @@ class AnnualLeaveService {
       }
 
       throw const AnnualLeaveException(
-        'Roster Buddy could not schedule this annual leave email.',
+        'Roster Buddy could not track this annual leave request.',
       );
     }
   }
 
-  /// Cancels a future annual leave email that has not yet been sent.
+  /// Stops tracking an advance request.
   ///
   /// The row is retained with status 'cancelled' for history/audit purposes.
-  /// Cancelled scheduled requests do not appear as AL QUEUED and the same
-  /// leave date can be scheduled again later.
-  Future<void> cancelScheduledFloatingLeaveRequest({
+  Future<void> removeAdvanceFloatingLeaveRequest({
     required DateTime date,
   }) async {
     final User? user = _supabase.auth.currentUser;
 
     if (user == null) {
       throw const AnnualLeaveException(
-        'You must be signed in before cancelling scheduled annual leave.',
+        'You must be signed in before removing this annual leave request.',
       );
     }
 
@@ -168,12 +133,12 @@ class AnnualLeaveService {
         .select('id')
         .eq('user_id', user.id)
         .eq('leave_date', dateValue)
-        .eq('status', 'scheduled')
+        .eq('status', 'manual_review')
         .maybeSingle();
 
     if (existing == null) {
       throw const AnnualLeaveException(
-        'There is no queued annual leave request for this date.',
+        'There is no advance annual leave request for this date.',
       );
     }
 
@@ -186,12 +151,10 @@ class AnnualLeaveService {
         })
         .eq('id', existing['id'])
         .eq('user_id', user.id)
-        .eq('status', 'scheduled');
+        .eq('status', 'manual_review');
   }
 
-  Future<List<Map<String, dynamic>>> getScheduledFloatingRequestsForYear(
-    int leaveYear,
-  ) async {
+  Future<List<Map<String, dynamic>>> getAdvanceFloatingRequests() async {
     final User? user = _supabase.auth.currentUser;
 
     if (user == null) {
@@ -204,12 +167,10 @@ class AnnualLeaveService {
         .from('annual_leave_scheduled_requests')
         .select(
           'id, leave_date, scheduled_for, notes, status, '
-          'recipient_email, email_subject, created_at',
+          'recipient_email, email_subject, email_body',
         )
         .eq('user_id', user.id)
-        .eq('status', 'scheduled')
-        .gte('leave_date', '$leaveYear-01-01')
-        .lte('leave_date', '$leaveYear-12-31')
+        .eq('status', 'manual_review')
         .order('leave_date');
 
     return response
@@ -218,8 +179,22 @@ class AnnualLeaveService {
         .toList(growable: false);
   }
 
-  Future<String> confirmScheduledFloatingLeaveGranted({
+  Future<List<Map<String, dynamic>>> getDueAdvanceFloatingRequests() async {
+    final User? user = _supabase.auth.currentUser;
+    if (user == null) return [];
+    final now = DateTime.now().toUtc();
+    return await _supabase
+        .from('annual_leave_scheduled_requests')
+        .select('leave_date')
+        .eq('user_id', user.id)
+        .eq('status', 'manual_review')
+        .lte('scheduled_for', now.toIso8601String())
+        .order('leave_date');
+  }
+
+  Future<String> recordAdvanceFloatingLeaveOutcome({
     required DateTime date,
+    bool inAbeyance = false,
   }) async {
     final User? user = _supabase.auth.currentUser;
 
@@ -231,8 +206,9 @@ class AnnualLeaveService {
 
     try {
       final dynamic requestId = await _supabase.rpc(
-        'confirm_scheduled_annual_leave_granted',
+        'record_advance_annual_leave_outcome',
         params: <String, dynamic>{
+          'p_in_abeyance': inAbeyance,
           'p_leave_date': _databaseDate(
             DateTime(date.year, date.month, date.day),
           ),

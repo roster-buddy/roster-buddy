@@ -1,3 +1,4 @@
+import '../annual_leave/advance_leave_email.dart';
 import '../upload/depot_documents_page.dart';
 import '../upload/base_roster_activation_page.dart';
 import '../upload/base_roster_setup_service.dart';
@@ -242,6 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (lastSeen != null) {
         cancellationQuery = cancellationQuery.gt('updated_at', lastSeen.toUtc().toIso8601String());
       }
+      final dueLeaveReminders = await _pendingActionsAnnualLeaveService.getDueAdvanceFloatingRequests();
       final List<dynamic> cancellationRows = await cancellationQuery;
       final List<dynamic> floatingRows = await floatingQuery;
       final List<dynamic> blockRows = await blockQuery;
@@ -310,7 +312,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _pendingActionCount =
             floatingRows.length + cancellationRows.length + blockRows.length +
-            newShiftSwapCount + rosterUpdates.length +
+            newShiftSwapCount + rosterUpdates.length + dueLeaveReminders.length +
             (baseRosterSetup == null ? 0 : 1);
       });
     } catch (_) {
@@ -715,6 +717,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   PendingBaseRosterSetup? _baseRosterSetup;
   bool _isLoading = true;
   String? _errorMessage;
+  List<Map<String, dynamic>> _dueLeaveReminders = [];
   List<AnnualLeaveRequest> _requests = <AnnualLeaveRequest>[];
   List<AnnualLeaveBlockPendingAction> _blockActions =
       <AnnualLeaveBlockPendingAction>[];
@@ -873,6 +876,8 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
           await _blockPendingService.getPendingActions();
 
       final List<ShiftSwap> shiftSwaps = await _shiftSwapService.getRequests();
+      final dueLeaveReminders =
+          await widget.annualLeaveService.getDueAdvanceFloatingRequests();
 
       List<RosterUpdateNotice> rosterUpdates = [];
       try { rosterUpdates = await RosterUpdateService().load(); } catch (_) {}
@@ -909,6 +914,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
         _rosterUpdates = rosterUpdates;
         _baseRosterSetup = baseRosterSetup;
         _requests = orderedRequests;
+        _dueLeaveReminders = dueLeaveReminders;
         _blockActions = orderedBlockActions;
         _shiftSwaps = orderedShiftSwaps;
         _isLoading = false;
@@ -1755,7 +1761,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
       context: context,
       builder: (BuildContext dialogContext) {
         return RosterDecisionSheet(
-          title: const Text('Cancel queued request?'),
+          title: const Text('Remove reminder?'),
           content: Text(
             'Remove the queued ${_blockChangeTypeLabel(action).toLowerCase()} '
             'for ${_blockPeriodLabel(action)}?',
@@ -1993,7 +1999,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                 child: OutlinedButton.icon(
                   onPressed: () => _cancelScheduledBlockAction(action),
                   icon: const Icon(Icons.cancel_outlined),
-                  label: const Text('Cancel queued request'),
+                  label: const Text('Remove reminder'),
                   style: OutlinedButton.styleFrom(foregroundColor: leaveRed),
                 ),
               ),
@@ -2265,6 +2271,23 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                     onUseShift: () => _useRosteredShift(notice)),
                 const SizedBox(height: 16),
               ],
+              for (final reminder in _dueLeaveReminders)
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.notifications_outlined),
+                    title: Text(
+                      'Check annual leave for '
+                      '${displayDate(DateTime.parse(reminder['leave_date'] as String))}',
+                    ),
+                    subtitle: const Text(
+                      'Check your email was sent and whether Rosters approved '
+                      'the request or put it in abeyance. Record the outcome '
+                      'under Requested annual leave.',
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.pop(context, 3),
+                  ),
+                ),
               if (_isLoading)
                 const Padding(
                   padding: EdgeInsets.only(top: 50),
@@ -5619,7 +5642,7 @@ class _CalendarPageState extends State<_CalendarPage> {
   Map<String, Duty> _dutiesByDate = <String, Duty>{};
   Map<String, AnnualLeaveRequest> _leaveRequestsByDate =
       <String, AnnualLeaveRequest>{};
-  Set<String> _scheduledAnnualLeaveDateKeys = <String>{};
+  Set<String> _advanceLeaveDateKeys = <String>{};
   Set<String> _personalNoteDateKeys = <String>{};
 
   bool _isSelectingAnnualLeaveDates = false;
@@ -5746,7 +5769,7 @@ class _CalendarPageState extends State<_CalendarPage> {
             .from('annual_leave_scheduled_requests')
             .select('leave_date')
             .eq('user_id', user.id)
-            .eq('status', 'scheduled')
+            .eq('status', 'manual_review')
             .gte('leave_date', _dateKey(calendarDates.first))
             .lte('leave_date', _dateKey(calendarDates.last));
       }
@@ -5774,7 +5797,7 @@ class _CalendarPageState extends State<_CalendarPage> {
         _restDayMoves = moves.where((move) => move.status == ShiftSwapStatus.pending && move.notes?.startsWith('TYPE=Rest day move') == true).toList();
         _dutiesByDate = dutiesByDate;
         _leaveRequestsByDate = leaveRequestsByDate;
-        _scheduledAnnualLeaveDateKeys = scheduledDateKeys;
+        _advanceLeaveDateKeys = scheduledDateKeys;
         _personalNoteDateKeys = personalNoteDateKeys;
         _isLoading = false;
       });
@@ -5786,7 +5809,7 @@ class _CalendarPageState extends State<_CalendarPage> {
       setState(() {
         _dutiesByDate = <String, Duty>{};
         _leaveRequestsByDate = <String, AnnualLeaveRequest>{};
-        _scheduledAnnualLeaveDateKeys = <String>{};
+        _advanceLeaveDateKeys = <String>{};
         _isLoading = false;
         _loadError = error is DutyResolverException
             ? error.message
@@ -6167,7 +6190,7 @@ class _CalendarPageState extends State<_CalendarPage> {
     if (scheduledDates.isNotEmpty) {
       summary.writeln(
         '${scheduledDates.length} date${scheduledDates.length == 1 ? '' : 's'} '
-        'will be scheduled for 00:00 UK time, exactly 365 days beforehand:',
+        'need a separate email scheduled in your email app:',
       );
 
       for (final DateTime date in scheduledDates) {
@@ -6427,25 +6450,6 @@ class _CalendarPageState extends State<_CalendarPage> {
         if (depot.isNotEmpty) depot,
       ];
 
-      // Future requests store their fully populated email now. Supabase
-      // schedules each email for 00:00 Europe/London exactly 365 days before
-      // the requested leave date.
-      for (final DateTime date in scheduledDates) {
-        final String body =
-            'Please can I request floating annual leave for:\n\n'
-            '${_fullDate(date)}\n\n'
-            '${signature.isEmpty ? '' : '\n${signature.join('\n')}'}';
-
-        final String subject = 'Annual Leave Request - ${_fullDate(date)}';
-
-        await _annualLeaveService.scheduleFloatingLeaveRequest(
-          date: date,
-          recipientEmail: 'drivers.rosters@wmtrains.co.uk',
-          emailSubject: subject,
-          emailBody: body,
-        );
-      }
-
       // Dates already inside the request window become live requests now.
       for (final DateTime date in immediateDates) {
         await _annualLeaveService.requestFloatingLeave(date: date);
@@ -6455,6 +6459,14 @@ class _CalendarPageState extends State<_CalendarPage> {
 
       if (emailLaunchFuture != null) {
         emailOpened = await emailLaunchFuture ?? false;
+      }
+
+      for (final DateTime date in scheduledDates) {
+        if (!mounted) return;
+        final subject = 'Annual Leave Request - ${_fullDate(date)}';
+        final body = 'Please can I request floating annual leave for:\n\n'
+            '${_fullDate(date)}\n\n${signature.join('\n')}';
+        await _trackAndOpenAdvanceLeaveEmail(date, subject, body);
       }
 
       await _loadMonth();
@@ -6470,19 +6482,9 @@ class _CalendarPageState extends State<_CalendarPage> {
         _selectedAnnualLeaveDateKeys.clear();
       });
 
-      if (immediateDates.isNotEmpty && scheduledDates.isNotEmpty) {
+      if (scheduledDates.isNotEmpty) {
         _showCalendarMessage(
-          '${immediateDates.length} annual leave '
-          '${immediateDates.length == 1 ? 'request is' : 'requests are'} ready '
-          'to send now and ${scheduledDates.length} '
-          '${scheduledDates.length == 1 ? 'date has' : 'dates have'} been '
-          'scheduled for later.',
-        );
-      } else if (scheduledDates.isNotEmpty) {
-        _showCalendarMessage(
-          '${scheduledDates.length} annual leave '
-          '${scheduledDates.length == 1 ? 'date has' : 'dates have'} been '
-          'scheduled for the 365-day request point.',
+          'Advance requests saved under Requested annual leave.',
         );
       } else {
         _showCalendarMessage(
@@ -6511,6 +6513,28 @@ class _CalendarPageState extends State<_CalendarPage> {
 
       _showCalendarMessage(
         'Roster Buddy could not process the selected annual leave dates.',
+      );
+    }
+  }
+
+  Future<void> _trackAndOpenAdvanceLeaveEmail(
+    DateTime date, String subject, String body,
+  ) async {
+    await _annualLeaveService.trackAdvanceFloatingLeaveRequest(
+      date: date,
+      recipientEmail: 'drivers.rosters@wmtrains.co.uk',
+      emailSubject: subject,
+      emailBody: body,
+    );
+    if (!mounted) return;
+    final opened = await openAdvanceLeaveEmail(
+      context,
+      leaveDate: date,
+      email: _rosterBuddyMailUri(subject: subject, body: body),
+    );
+    if (opened == false && mounted) {
+      _showCalendarMessage(
+        'Could not open your email app. Reopen the draft from Annual Leave.',
       );
     }
   }
@@ -6647,28 +6671,10 @@ class _CalendarPageState extends State<_CalendarPage> {
       }
 
       if (!_annualLeaveService.shouldSendAnnualLeaveRequestNow(date)) {
-        await _annualLeaveService.scheduleFloatingLeaveRequest(
-          date: date,
-          recipientEmail: 'drivers.rosters@wmtrains.co.uk',
-          emailSubject: subject,
-          emailBody: body,
-        );
-
-        if (!mounted) {
-          return;
-        }
-
-        final DateTime sendDate = DateTime(
-          date.year,
-          date.month,
-          date.day,
-        ).subtract(const Duration(days: 365));
-
-        _showCalendarMessage(
-          'Annual leave for ${_fullDate(date)} is scheduled to be sent '
-          'at 00:00 on ${_fullDate(sendDate)}.',
-        );
-
+        await _trackAndOpenAdvanceLeaveEmail(date, subject, body);
+        if (!mounted) return;
+        await _loadMonth();
+        if (mounted) widget.onRosterChanged();
         return;
       }
 
@@ -6765,9 +6771,9 @@ class _CalendarPageState extends State<_CalendarPage> {
     required DateTime date,
     required Duty duty,
   }) async {
-    if (_scheduledAnnualLeaveDateKeys.contains(_dateKey(date))) {
+    if (_advanceLeaveDateKeys.contains(_dateKey(date))) {
       _showCalendarMessage(
-        'Annual leave for this date is already queued to be sent.',
+        'This date is already tracked under Requested annual leave.',
       );
       return;
     }
@@ -6863,7 +6869,7 @@ class _CalendarPageState extends State<_CalendarPage> {
         final String dateKey = _dateKey(date);
         final Duty? duty = _dutiesByDate[dateKey];
         final AnnualLeaveRequest? leaveRequest = _leaveRequestsByDate[dateKey];
-        final bool isQueuedAnnualLeave = _scheduledAnnualLeaveDateKeys.contains(
+        final bool isAdvanceAnnualLeave = _advanceLeaveDateKeys.contains(
           dateKey,
         );
 
@@ -6871,7 +6877,7 @@ class _CalendarPageState extends State<_CalendarPage> {
           date: date,
           duty: duty,
           leaveRequest: leaveRequest,
-          isQueuedAnnualLeave: isQueuedAnnualLeave,
+          isAdvanceAnnualLeave: isAdvanceAnnualLeave,
         );
       },
     );
@@ -6881,7 +6887,7 @@ class _CalendarPageState extends State<_CalendarPage> {
     required DateTime date,
     required Duty? duty,
     required AnnualLeaveRequest? leaveRequest,
-    required bool isQueuedAnnualLeave,
+    required bool isAdvanceAnnualLeave,
   }) {
     final bool belongsToDisplayedMonth =
         date.year == _displayedMonth.year &&
@@ -7046,7 +7052,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                       ),
                   ],
                 ),
-                if (isQueuedAnnualLeave && !isGrantedAnnualLeave) ...[
+                if (isAdvanceAnnualLeave && !isGrantedAnnualLeave) ...[
                   const SizedBox(height: 3),
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -7058,7 +7064,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                       borderRadius: BorderRadius.circular(5),
                     ),
                     child: const Text(
-                      'AL QUEUED',
+                      'AL REQUEST',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -7524,29 +7530,29 @@ class _CalendarPageState extends State<_CalendarPage> {
     }
   }
 
-  Future<void> _cancelQueuedAnnualLeaveRequest(DateTime date) async {
+  Future<void> _removeAdvanceAnnualLeaveRequest(DateTime date) async {
     final bool? confirmed = await showRosterDecisionSheet<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
         return RosterDecisionSheet(
-          title: const Text('Cancel queued annual leave?'),
+          title: const Text('Remove advance annual leave request?'),
           content: Text(
-            'The scheduled annual leave request for ${_fullDate(date)} '
-            'will be removed from the send queue.',
+            'The reminder for ${_fullDate(date)} '
+            'will be removed from Roster Buddy. Manage any scheduled email in your email app.',
           ),
           actions: [
             CupertinoDialogAction(
               onPressed: () {
                 Navigator.of(dialogContext).pop(false);
               },
-              child: const Text('Keep queued'),
+              child: const Text('Keep reminder'),
             ),
             CupertinoDialogAction(
               isDestructiveAction: true,
               onPressed: () {
                 Navigator.of(dialogContext).pop(true);
               },
-              child: const Text('Cancel request'),
+              child: const Text('Remove reminder'),
             ),
           ],
         );
@@ -7558,7 +7564,7 @@ class _CalendarPageState extends State<_CalendarPage> {
     }
 
     try {
-      await _annualLeaveService.cancelScheduledFloatingLeaveRequest(date: date);
+      await _annualLeaveService.removeAdvanceFloatingLeaveRequest(date: date);
 
       await _loadMonth();
 
@@ -7569,7 +7575,7 @@ class _CalendarPageState extends State<_CalendarPage> {
       widget.onRosterChanged();
 
       _showCalendarMessage(
-        'Queued annual leave cancelled for ${_fullDate(date)}.',
+        'Advance annual leave reminder removed for ${_fullDate(date)}.',
       );
     } on AnnualLeaveException catch (error) {
       if (!mounted) {
@@ -7583,7 +7589,7 @@ class _CalendarPageState extends State<_CalendarPage> {
       }
 
       _showCalendarMessage(
-        'Roster Buddy could not cancel this queued annual leave request.',
+        'Roster Buddy could not remove this annual leave reminder.',
       );
     }
   }
@@ -7858,7 +7864,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                     onChanged: () { widget.onRosterChanged(); _loadMonth(); },
                   ),
                   const SizedBox(height: 22),
-                  if (_scheduledAnnualLeaveDateKeys.contains(
+                  if (_advanceLeaveDateKeys.contains(
                     _dateKey(date),
                   )) ...[
                     const SizedBox(height: 18),
@@ -7884,14 +7890,14 @@ class _CalendarPageState extends State<_CalendarPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Annual leave queued',
+                                  'Advance annual leave request',
                                   style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                                     fontWeight: FontWeight.w900,
                                   ),
                                 ),
                                 SizedBox(height: 3),
                                 Text(
-                                  'This request is waiting for its 365-day send date.',
+                                  'Open Annual Leave to check the email date and record the outcome.',
                                   style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant,
                                     height: 1.3,
                                   ),
@@ -7964,7 +7970,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                           },
                     ),
                     const SizedBox(height: 12),
-                    if (!_scheduledAnnualLeaveDateKeys.contains(
+                    if (!_advanceLeaveDateKeys.contains(
                           _dateKey(date),
                         ) &&
                         (_leaveRequestsByDate[_dateKey(date)] == null ||
@@ -8024,17 +8030,17 @@ class _CalendarPageState extends State<_CalendarPage> {
                       ? 'Allocate new working day' : 'Action pending rest day move'),
                   ),
                 ],
-                  if (_scheduledAnnualLeaveDateKeys.contains(_dateKey(date))) ...[
+                  if (_advanceLeaveDateKeys.contains(_dateKey(date))) ...[
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
                         onPressed: () {
                           Navigator.of(sheetContext).pop();
-                          _cancelQueuedAnnualLeaveRequest(date);
+                          _removeAdvanceAnnualLeaveRequest(date);
                         },
                         icon: const Icon(Icons.cancel_outlined),
-                        label: const Text('Cancel queued request'),
+                        label: const Text('Remove reminder'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: leaveRed,
                         ),

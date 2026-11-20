@@ -1,3 +1,4 @@
+import '../annual_leave/advance_leave_email.dart';
 import '../../core/app_build.dart';
 import '../../core/services/roster_theme_preference.dart';
 import '../notifications/shift_reminder_preferences.dart';
@@ -560,7 +561,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
   int _remainingDays = 14;
 
   List<AnnualLeaveRequest> _requests = <AnnualLeaveRequest>[];
-  List<Map<String, dynamic>> _scheduledRequests = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _advanceRequests = <Map<String, dynamic>>[];
   List<_AnnualLeaveBlockPeriod> _blockPeriods = <_AnnualLeaveBlockPeriod>[];
 
   AnnualLeaveBlockCycle? _blockCycle;
@@ -607,7 +608,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
       final results = await Future.wait<Object?>([
         _annualLeaveService.getBalanceForYear(_leaveYear),
         _annualLeaveService.getRequestsForRange(yearStart, yearEnd),
-        _annualLeaveService.getScheduledFloatingRequestsForYear(_leaveYear),
+        _annualLeaveService.getAdvanceFloatingRequests(),
         _annualLeaveBlockService.getCycleForYear(_leaveYear),
         _annualLeaveBlockService.getOverridesForYear(_leaveYear),
         supabase
@@ -752,7 +753,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
         _lieuDays = balance.lieuDays;
         _remainingDays = balance.remainingDays;
         _requests = requests;
-        _scheduledRequests = scheduledRequests;
+        _advanceRequests = scheduledRequests;
         _blockPeriods = blockPeriods;
         _blockCycle = blockCycle;
         _blockOverrides = blockOverrides;
@@ -844,7 +845,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                           const SizedBox(height: 18),
                           _buildBlockLeaveCard(),
                           const SizedBox(height: 18),
-                          _buildScheduledRequestsCard(),
+                          _buildAdvanceRequestsCard(),
                         ],
                         const SizedBox(height: 30),
                       ],
@@ -3408,7 +3409,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
     }
   }
 
-  Widget _buildScheduledRequestsCard() {
+  Widget _buildAdvanceRequestsCard() {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -3417,28 +3418,30 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
           ListTile(
             leading: CircleAvatar(
               backgroundColor: Color(0x1AF59E0B),
-              child: Icon(Icons.schedule_send_outlined, color: abeyanceAmber),
+              child: Icon(Icons.notifications_outlined, color: abeyanceAmber),
             ),
             title: Text(
-              'Scheduled annual leave',
+              'Requested annual leave',
               style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900),
             ),
             subtitle: Text('Requests more than 365 days ahead'),
           ),
           const Divider(height: 1),
-          if (_scheduledRequests.isEmpty)
+          if (_advanceRequests.isEmpty)
             Padding(
               padding: EdgeInsets.all(18),
               child: Text(
-                'You have no annual leave requests waiting for the '
-                '365-day send window in this leave year.',
+                'You have no advance annual leave requests.',
                 style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.4),
               ),
             )
           else
-            ..._scheduledRequests.map((Map<String, dynamic> scheduled) {
-              final DateTime? leaveDate = _scheduledLeaveDate(scheduled);
-              final DateTime? scheduledFor = _scheduledLeaveSendDate(scheduled);
+            ..._advanceRequests.map((Map<String, dynamic> scheduled) {
+              final DateTime? leaveDate = _advanceLeaveDate(scheduled);
+              final DateTime? scheduledFor =
+                  DateTime.tryParse((scheduled['scheduled_for'] ?? '').toString());
+              final bool due = scheduledFor != null &&
+                  !scheduledFor.isAfter(DateTime.now());
 
               if (leaveDate == null) {
                 return const SizedBox.shrink();
@@ -3450,7 +3453,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                 children: [
                   ListTile(
                     leading: const Icon(
-                      Icons.schedule_send_outlined,
+                      Icons.notifications_outlined,
                       color: abeyanceAmber,
                     ),
                     title: Text(
@@ -3461,9 +3464,10 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                     ),
                     subtitle: Text(
                       [
-                        if (scheduledFor != null)
-                          'Scheduled to send '
-                              '${_displayDate(scheduledFor.toLocal())}',
+                        due
+                            ? 'Check email and outcome'
+                            : 'Schedule your email for 00:00 UK time on '
+                                '${_displayDate(AnnualLeaveService.reminderDateFor(leaveDate))}',
                         if (notes.isNotEmpty) notes,
                       ].join('\n'),
                     ),
@@ -3471,7 +3475,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'QUEUED',
+                          'TRACKED',
                           style: TextStyle(
                             color: abeyanceAmber,
                             fontSize: 11,
@@ -3483,22 +3487,21 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                       ],
                     ),
                     onTap: () =>
-                        _showScheduledRequestActions(scheduled, leaveDate),
+                        _showAdvanceRequestActions(scheduled, leaveDate),
                   ),
-                  if (scheduled != _scheduledRequests.last)
+                  if (scheduled != _advanceRequests.last)
                     const Divider(height: 1),
                 ],
               );
             }),
-          if (_scheduledRequests.isNotEmpty) ...[
+          if (_advanceRequests.isNotEmpty) ...[
             const Divider(height: 1),
             Padding(
               padding: EdgeInsets.all(16),
               child: Text(
-                'Queued requests do not use a floating day until they are '
-                'actually sent. If Rosters grants a queued date before then, '
-                'use Confirm granted to record it immediately and remove the '
-                'email from the send queue.',
+                'Schedule the email in your email app. The bell will remind '
+                'you to check the email and record the outcome 365 days '
+                'before the leave date.',
                 style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12, height: 1.4),
               ),
             ),
@@ -3508,7 +3511,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
     );
   }
 
-  Future<void> _showScheduledRequestActions(
+  Future<void> _showAdvanceRequestActions(
     Map<String, dynamic> scheduled,
     DateTime leaveDate,
   ) async {
@@ -3529,9 +3532,28 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                       fontWeight: FontWeight.w900,
                     ),
                   ),
-                  subtitle: Text('Scheduled annual leave request'),
+                  subtitle: const Text('Advance annual leave request'),
                 ),
                 const Divider(height: 1),
+                if (scheduled['email_body'] is String &&
+                    scheduled['email_subject'] is String &&
+                    scheduled['recipient_email'] is String)
+                  ListTile(
+                    leading: const Icon(Icons.email_outlined),
+                    title: const Text('Open email draft'),
+                    onTap: () {
+                      Navigator.of(sheetContext).pop();
+                      _reopenAdvanceLeaveDraft(scheduled, leaveDate);
+                    },
+                  ),
+                ListTile(
+                  leading: const Icon(Icons.hourglass_empty),
+                  title: const Text('Mark in abeyance'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _recordAdvanceLeaveOutcome(leaveDate, inAbeyance: true);
+                  },
+                ),
                 ListTile(
                   leading: const Icon(
                     Icons.event_available_outlined,
@@ -3539,22 +3561,22 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                   ),
                   title: Text('Confirm granted'),
                   subtitle: Text(
-                    'Record the leave as granted and remove the queued email.',
+                    'Record the approval from Rosters.',
                   ),
                   onTap: () {
                     Navigator.of(sheetContext).pop();
-                    _confirmScheduledLeaveGranted(leaveDate);
+                    _recordAdvanceLeaveOutcome(leaveDate);
                   },
                 ),
                 ListTile(
                   leading: const Icon(Icons.cancel_outlined, color: leaveRed),
-                  title: Text('Cancel queued request'),
+                  title: Text('Remove reminder'),
                   subtitle: Text(
-                    'Remove this email from the future send queue.',
+                    'Manage any scheduled email in your email app.',
                   ),
                   onTap: () {
                     Navigator.of(sheetContext).pop();
-                    _cancelScheduledLeave(leaveDate);
+                    _removeAdvanceLeave(leaveDate);
                   },
                 ),
               ],
@@ -3565,13 +3587,30 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
     );
   }
 
-  Future<void> _confirmScheduledLeaveGranted(DateTime leaveDate) async {
+  Future<void> _reopenAdvanceLeaveDraft(
+    Map<String, dynamic> request, DateTime leaveDate,
+  ) async {
+    final subject = Uri.encodeComponent(request['email_subject'] as String);
+    final body = Uri.encodeComponent(request['email_body'] as String);
+    final email = Uri.parse(
+      'mailto:${request['recipient_email']}?subject=$subject&body=$body',
+    );
+    final opened = await openAdvanceLeaveEmail(
+      context, leaveDate: leaveDate, email: email,
+    );
+    if (opened == false && mounted) {
+      _showAnnualLeaveMessage('Could not open your email app.');
+    }
+  }
+
+  Future<void> _recordAdvanceLeaveOutcome(
+    DateTime leaveDate, {bool inAbeyance = false}
+  ) async {
+    final outcome = inAbeyance ? 'in abeyance' : 'granted';
     final bool confirmed = await _confirmAnnualLeaveAction(
-      title: 'Confirm annual leave granted?',
-      message:
-          'This will mark ${_displayDate(leaveDate)} as granted and remove '
-          'its scheduled email from the send queue.',
-      confirmLabel: 'Confirm granted',
+      title: 'Record annual leave outcome?',
+      message: 'Mark ${_displayDate(leaveDate)} as $outcome?',
+      confirmLabel: inAbeyance ? 'Mark in abeyance' : 'Confirm granted',
     );
 
     if (!confirmed) {
@@ -3579,8 +3618,9 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
     }
 
     try {
-      await _annualLeaveService.confirmScheduledFloatingLeaveGranted(
+      await _annualLeaveService.recordAdvanceFloatingLeaveOutcome(
         date: leaveDate,
+        inAbeyance: inAbeyance,
       );
 
       await _load();
@@ -3590,7 +3630,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
       }
 
       _showAnnualLeaveMessage(
-        '${_displayDate(leaveDate)} confirmed as granted.',
+        '${_displayDate(leaveDate)} recorded as $outcome.',
       );
     } on AnnualLeaveException catch (error) {
       _showAnnualLeaveMessage(error.message);
@@ -3601,12 +3641,12 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
     }
   }
 
-  Future<void> _cancelScheduledLeave(DateTime leaveDate) async {
+  Future<void> _removeAdvanceLeave(DateTime leaveDate) async {
     final bool confirmed = await _confirmAnnualLeaveAction(
-      title: 'Cancel queued annual leave?',
+      title: 'Remove reminder?',
       message:
-          'The scheduled annual leave request for '
-          '${_displayDate(leaveDate)} will be removed from the send queue.',
+          'The reminder for '
+          '${_displayDate(leaveDate)} will be removed from Roster Buddy.',
       confirmLabel: 'Cancel request',
       destructive: true,
     );
@@ -3616,7 +3656,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
     }
 
     try {
-      await _annualLeaveService.cancelScheduledFloatingLeaveRequest(
+      await _annualLeaveService.removeAdvanceFloatingLeaveRequest(
         date: leaveDate,
       );
 
@@ -3627,24 +3667,21 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
       }
 
       _showAnnualLeaveMessage(
-        '${_displayDate(leaveDate)} removed from the send queue.',
+        '${_displayDate(leaveDate)} reminder removed.',
       );
     } on AnnualLeaveException catch (error) {
       _showAnnualLeaveMessage(error.message);
     } catch (_) {
       _showAnnualLeaveMessage(
-        'Roster Buddy could not cancel this queued request.',
+        'Roster Buddy could not remove this reminder.',
       );
     }
   }
 
-  DateTime? _scheduledLeaveDate(Map<String, dynamic> row) {
+  DateTime? _advanceLeaveDate(Map<String, dynamic> row) {
     return DateTime.tryParse((row['leave_date'] ?? '').toString());
   }
 
-  DateTime? _scheduledLeaveSendDate(Map<String, dynamic> row) {
-    return DateTime.tryParse((row['scheduled_for'] ?? '').toString());
-  }
 
   Future<bool> _confirmAnnualLeaveAction({
     required String title,
