@@ -40,9 +40,7 @@ class _SignInScreenState extends State<SignInScreen> {
   bool _hidePassword = true;
   bool _isSigningIn = false;
 
-  static const Color navy = Color(0xFF102A43);
   static const Color railwayBlue = Color(0xFF1769AA);
-  static const Color background = Color(0xFFF4F7FA);
 
   @override
   void dispose() {
@@ -186,11 +184,12 @@ class _SignInScreenState extends State<SignInScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     return Scaffold(
-      backgroundColor: background,
       appBar: AppBar(
-        backgroundColor: background,
-        foregroundColor: navy,
+        backgroundColor: theme.scaffoldBackgroundColor,
+        foregroundColor: colors.onSurface,
         elevation: 0,
         title: const Text(
           'Sign In',
@@ -198,9 +197,10 @@ class _SignInScreenState extends State<SignInScreen> {
         ),
       ),
       body: SafeArea(
-        child: Center(
+        child: Align(
+          alignment: Alignment.topCenter,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 460),
               child: AutofillGroup(
@@ -213,38 +213,38 @@ class _SignInScreenState extends State<SignInScreen> {
                     Align(
                       alignment: Alignment.centerLeft,
                       child: Container(
-                        width: 82,
-                        height: 82,
+                        width: 56,
+                        height: 56,
                         decoration: BoxDecoration(
-                          color: navy,
+                          color: colors.primaryContainer,
                           borderRadius: BorderRadius.circular(22),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.train_rounded,
-                          size: 46,
-                          color: Colors.white,
+                          size: 32,
+                          color: colors.onPrimaryContainer,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 28),
-                    const Text(
+                    const SizedBox(height: 16),
+                    Text(
                       'Welcome back',
                       style: TextStyle(
                         fontSize: 30,
                         fontWeight: FontWeight.w800,
-                        color: navy,
+                        color: colors.onSurface,
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'Sign in to view your latest railway roster.',
                       style: TextStyle(
                         fontSize: 16,
                         height: 1.4,
-                        color: Color(0xFF52667A),
+                        color: colors.onSurfaceVariant,
                       ),
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 24),
                     TextFormField(
                       controller: _emailController,
                       onChanged: _autofillSubmitter.emailChanged,
@@ -256,7 +256,8 @@ class _SignInScreenState extends State<SignInScreen> {
                         labelText: 'Email address',
                         prefixIcon: const Icon(Icons.email_outlined),
                         filled: true,
-                        fillColor: Colors.white,
+                        fillColor: colors.surface,
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
@@ -304,7 +305,8 @@ class _SignInScreenState extends State<SignInScreen> {
                           ),
                         ),
                         filled: true,
-                        fillColor: Colors.white,
+                        fillColor: colors.surface,
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),

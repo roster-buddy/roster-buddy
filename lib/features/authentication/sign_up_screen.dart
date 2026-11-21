@@ -23,9 +23,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _hideConfirmPassword = true;
   bool _isCreatingAccount = false;
 
-  static const Color navy = Color(0xFF102A43);
   static const Color railwayBlue = Color(0xFF1769AA);
-  static const Color background = Color(0xFFF4F7FA);
 
   @override
   void dispose() {
@@ -90,51 +88,49 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     return Scaffold(
-      backgroundColor: background,
       appBar: AppBar(
-        backgroundColor: background,
-        foregroundColor: navy,
+        backgroundColor: theme.scaffoldBackgroundColor,
+        foregroundColor: colors.onSurface,
         elevation: 0,
         centerTitle: true,
         title: const Text(
           'Create account',
-          style: TextStyle(fontWeight: FontWeight.w700, color: navy),
+          style: TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
       body: SafeArea(
-        child: Center(
+        child: Align(
+          alignment: Alignment.topCenter,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 410),
+              constraints: const BoxConstraints(maxWidth: 460),
               child: Form(
                 key: _formKey,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Icon(Icons.train, size: 62, color: navy),
-                    const SizedBox(height: 24),
-                    const Text(
+                    Text(
                       'Join Roster Buddy',
-                      textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 30,
                         fontWeight: FontWeight.w800,
-                        color: navy,
+                        color: colors.onSurface,
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'Create an account to manage your railway roster.',
-                      textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 16,
                         height: 1.4,
-                        color: Color(0xFF52667A),
+                        color: colors.onSurfaceVariant,
                       ),
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 24),
                     for (final (label, controller, hint) in [
                       ('First name', _firstNameController, AutofillHints.givenName),
                       ('Last name', _lastNameController, AutofillHints.familyName),
@@ -142,11 +138,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       TextFormField(
                         controller: controller,
                         textCapitalization: TextCapitalization.words,
+                        textInputAction: TextInputAction.next,
                         autofillHints: [hint],
                         maxLength: 100,
                         decoration: InputDecoration(
                           labelText: label,
                           border: const OutlineInputBorder(),
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
                           counterText: '',
                         ),
                         validator: (value) => (value ?? '').trim().isEmpty
@@ -160,6 +158,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Depot',
                         border: OutlineInputBorder(),
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
                       ),
                       items: const [
                         DropdownMenuItem(
@@ -174,11 +173,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     TextFormField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
+                      textInputAction: TextInputAction.next,
                       autofillHints: const [AutofillHints.email],
                       decoration: const InputDecoration(
                         labelText: 'Email address',
                         prefixIcon: Icon(Icons.email_outlined),
                         border: OutlineInputBorder(),
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
                       ),
                       validator: (value) {
                         final email = value?.trim() ?? '';
@@ -195,11 +196,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     TextFormField(
                       controller: _passwordController,
                       obscureText: _hidePassword,
+                      textInputAction: TextInputAction.next,
                       autofillHints: const [AutofillHints.newPassword],
                       decoration: InputDecoration(
                         labelText: 'Password',
                         prefixIcon: const Icon(Icons.lock_outline),
                         border: const OutlineInputBorder(),
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
                         suffixIcon: IconButton(
                           onPressed: () {
                             setState(() {
@@ -229,6 +232,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         labelText: 'Confirm password',
                         prefixIcon: const Icon(Icons.lock_outline),
                         border: const OutlineInputBorder(),
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
                         suffixIcon: IconButton(
                           onPressed: () {
                             setState(() {

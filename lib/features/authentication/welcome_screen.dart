@@ -6,129 +6,131 @@ import 'sign_up_screen.dart';
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
 
-  static const Color navy = Color(0xFF102A43);
   static const Color railwayBlue = Color(0xFF1769AA);
-  static const Color background = Color(0xFFF4F7FA);
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     return Scaffold(
-      backgroundColor: background,
       body: SafeArea(
         child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 600),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
-              child: Column(
-                children: [
-                  const Align(
-                    alignment: Alignment.topRight,
-                    child: CloudStatusIndicator(),
-                  ),
-                  const Spacer(),
-                  Container(
-                    width: 104,
-                    height: 104,
-                    decoration: BoxDecoration(
-                      color: navy,
-                      borderRadius: BorderRadius.circular(28),
-                      boxShadow: const [
-                        BoxShadow(
-                          blurRadius: 24,
-                          offset: Offset(0, 10),
-                          color: Color(0x33000000),
-                        ),
-                      ],
+          child: SingleChildScrollView(
+              child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 600),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Align(
+                      alignment: Alignment.topRight,
+                      child: CloudStatusIndicator(),
                     ),
-                    child: const Icon(
-                      Icons.train_rounded,
-                      size: 58,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-                  const Text(
-                    'Roster Buddy',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 36,
-                      fontWeight: FontWeight.w800,
-                      color: navy,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'Your railway roster, all in one place.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 17,
-                      height: 1.4,
-                      color: Color(0xFF52667A),
-                    ),
-                  ),
-                  const Spacer(),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    child: FilledButton(
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const SignInScreen(),
+                    const SizedBox(height: 28),
+                    Container(
+                      width: 104,
+                      height: 104,
+                      decoration: BoxDecoration(
+                        color: colors.primaryContainer,
+                        borderRadius: BorderRadius.circular(28),
+                        boxShadow: const [
+                          BoxShadow(
+                            blurRadius: 24,
+                            offset: Offset(0, 10),
+                            color: Color(0x33000000),
                           ),
-                        );
-                      },
-                      style: FilledButton.styleFrom(
-                        backgroundColor: railwayBlue,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
+                        ],
                       ),
-                      child: const Text(
-                        'Sign In',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                        ),
+                      child: Icon(
+                        Icons.train_rounded,
+                        size: 58,
+                        color: colors.onPrimaryContainer,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    child: OutlinedButton(
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const SignUpScreen(),
+                    const SizedBox(height: 28),
+                    Text(
+                      'Roster Buddy',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.w800,
+                        color: colors.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Your railway roster, all in one place.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 17,
+                        height: 1.4,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 54,
+                      child: FilledButton(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const SignInScreen(),
+                            ),
+                          );
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: railwayBlue,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
                           ),
-                        );
-                      },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: navy,
-                        side: const BorderSide(color: Color(0xFFBCC8D3)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
                         ),
-                      ),
-                      child: const Text(
-                        'Create Account',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
+                        child: const Text(
+                          'Sign In',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 22),
-                  const Text(
-                    'Version 0.1.0',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF7B8C9D)),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 54,
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const SignUpScreen(),
+                            ),
+                          );
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: colors.onSurface,
+                          side: BorderSide(color: colors.outline),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: const Text(
+                          'Create Account',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    Text(
+                      'Version 0.1.0',
+                      style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -143,24 +145,25 @@ class CloudStatusIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFD9E2EC)),
+        border: Border.all(color: colors.outlineVariant),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          CircleAvatar(radius: 5, backgroundColor: Color(0xFF21A366)),
-          SizedBox(width: 7),
+          const CircleAvatar(radius: 5, backgroundColor: Color(0xFF21A366)),
+          const SizedBox(width: 7),
           Text(
             'Connected',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: WelcomeScreen.navy,
+              color: colors.onSurface,
             ),
           ),
         ],
