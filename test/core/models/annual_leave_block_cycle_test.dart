@@ -39,6 +39,21 @@ void main() {
       expect(projections.first.nextYearWeekIndex, 6);
     });
 
+    test('Wolverhampton applies the 2027 headings to physical columns', () {
+      const allocation = AnnualLeaveBlockCycle(
+        leaveYear: 2027, weekIndex: 9, source: 'manual',
+      );
+      expect(allocation.wolverhamptonColumn, 2);
+      final next = allocation.projectToYear(2028);
+      expect(next.wolverhamptonColumn, 7);
+      final dates = next.wolverhamptonBlockStarts;
+      expect(dates.spring, DateTime(2028, 2, 14));
+      expect(dates.summerFirst, DateTime(2028, 6, 26));
+      expect(dates.summerSecond, DateTime(2028, 7, 3));
+      expect(dates.winter, DateTime(2028, 11, 13));
+      expect(allocation.projectToYear(2029).wolverhamptonColumn, 12);
+    });
+
     test('rejects values outside 1 to 13', () {
       expect(
         () => AnnualLeaveBlockCycle.advanceWeekIndex(0),

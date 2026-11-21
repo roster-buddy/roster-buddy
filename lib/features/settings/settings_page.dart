@@ -565,6 +565,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
   List<_AnnualLeaveBlockPeriod> _blockPeriods = <_AnnualLeaveBlockPeriod>[];
 
   AnnualLeaveBlockCycle? _blockCycle;
+  bool _isWolverhampton = false;
   List<AnnualLeaveBlockOverride> _blockOverrides = <AnnualLeaveBlockOverride>[];
 
   @override
@@ -613,7 +614,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
         _annualLeaveBlockService.getOverridesForYear(_leaveYear),
         supabase
           .from('driver_profiles')
-          .select('driver_number')
+          .select('driver_number, depot')
           .eq('user_id', user.id)
           .maybeSingle(),
       ]);
@@ -628,6 +629,14 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
           .toString()
           .trim();
 
+      final isWolverhampton =
+          (profile?['depot'] ?? user.userMetadata?['depot'] ?? '')
+              .toString().trim().toLowerCase() == 'wolverhampton';
+      final forecast = isWolverhampton && blockCycle != null &&
+              _leaveYear >= 2028
+          ? blockCycle.wolverhamptonBlockStarts
+          : null;
+
       final List<_AnnualLeaveBlockPeriod> blockPeriods =
           <_AnnualLeaveBlockPeriod>[];
 
@@ -637,11 +646,10 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
             .select(
               'period_type, start_date, end_date, '
               'annual_leave_allocations!inner('
-              'driver_number, is_confirmed'
+              'driver_number, is_confirmed, leave_year'
               ')',
             )
-            .lte('start_date', _databaseDate(yearEnd))
-            .gte('end_date', _databaseDate(yearStart))
+            .eq('annual_leave_allocations.leave_year', _leaveYear)
             .eq('annual_leave_allocations.driver_number', driverNumber)
             .eq('annual_leave_allocations.is_confirmed', true)
             .order('start_date');
@@ -690,6 +698,26 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
             if (value.periodType == type) {
               stored = value;
               break;
+            }
+          }
+
+          if (forecast != null) {
+            final start = switch (type) {
+              AnnualLeaveBlockPeriodType.spring => forecast.spring,
+              AnnualLeaveBlockPeriodType.summerFirstWeek => forecast.summerFirst,
+              AnnualLeaveBlockPeriodType.summerSecondWeek => forecast.summerSecond,
+              AnnualLeaveBlockPeriodType.winter => forecast.winter,
+            };
+            if (stored == null || stored.originalStartDate == start &&
+                stored.changeType != AnnualLeaveBlockChangeType.manual) {
+              blockPeriods.add(_AnnualLeaveBlockPeriod(
+                type: _blockPeriodDatabaseValue(type),
+                start: start,
+                end: DateTime(start.year, start.month, start.day + 5),
+                isOfficial: false,
+                isProjected: true,
+              ));
+              continue;
             }
           }
 
@@ -756,6 +784,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
         _advanceRequests = scheduledRequests;
         _blockPeriods = blockPeriods;
         _blockCycle = blockCycle;
+        _isWolverhampton = isWolverhampton;
         _blockOverrides = blockOverrides;
         _loading = false;
       });
@@ -1507,6 +1536,19 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                   }
                 }
 
+                final int nextColumn;
+                if (_isWolverhampton && _leaveYear >= 2027) {
+                  nextColumn = AnnualLeaveBlockCycle(
+                    leaveYear: _leaveYear + 1,
+                    weekIndex: selectedBlock,
+                    source: 'calculated',
+                  ).wolverhamptonColumn;
+                } else {
+                  nextColumn = selectedBlock == _blockCycle?.weekIndex
+                      ? _blockCycle!.nextYearWeekIndex
+                      : AnnualLeaveBlockCycle.advanceWeekIndex(selectedBlock);
+                }
+
                 return SafeArea(
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(
@@ -1573,8 +1615,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              'Next year: Group $selectedBlock • Column '
-                              '${selectedBlock == _blockCycle?.weekIndex ? _blockCycle!.nextYearWeekIndex : AnnualLeaveBlockCycle.advanceWeekIndex(selectedBlock)}',
+                              'Next year: Group $selectedBlock • Column $nextColumn',
                               style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                                 fontWeight: FontWeight.w800,
                               ),
@@ -1637,9 +1678,11 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
       final AnnualLeaveBlockPeriodType? type = _blockPeriodType(period.type);
 
       if (type != null) {
-        starts[type] = period.start;
+        starts[type] = _effectiveBlockPeriodStart(period);
       }
     }
+
+    final originalStarts = Map.of(starts);
 
     bool saving = false;
     String? errorMessage;
@@ -1734,6 +1777,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                     for (final MapEntry<AnnualLeaveBlockPeriodType, DateTime?>
                         entry
                         in starts.entries) {
+                      if (entry.value == originalStarts[entry.key]) continue;
                       final DateTime start = entry.value!;
                       final DateTime end = start.add(const Duration(days: 5));
 
@@ -2005,6 +2049,26 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
       return null;
     }
 
+    if (response.isEmpty && _isWolverhampton && _leaveYear >= 2028) {
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: DateTime(_leaveYear, 1, 1),
+        firstDate: DateTime(_leaveYear, 1, 1),
+        lastDate: DateTime(_leaveYear, 12, 31),
+        helpText: 'Choose a date in the replacement week',
+      );
+      if (picked == null || !mounted) return null;
+
+      final start = DateTime(picked.year, picked.month,
+          picked.day - (picked.weekday - DateTime.monday));
+      final end = DateTime(start.year, start.month, start.day + 5);
+      if (start.year != _leaveYear || excluded.contains(start)) {
+        _showAnnualLeaveMessage('Choose another replacement week.');
+        return null;
+      }
+      return _AnnualLeaveRosterWeekChoice(start: start, end: end);
+    }
+
     if (choices.isEmpty) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -2178,7 +2242,8 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               });
 
               try {
-                final preparedEmail = await _buildBlockUnionEmail(
+                final isManual = changeType == AnnualLeaveBlockChangeType.manual;
+                final preparedEmail = isManual ? null : await _buildBlockUnionEmail(
                   leaveYear: _leaveYear, blockNumber: _blockCycle?.weekIndex,
                   periodType: periodType, changeType: changeType,
                   originalStart: period.start, originalEnd: period.end,
@@ -2188,7 +2253,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                 );
                 if (!sheetContext.mounted) return;
                 Future<bool>? emailOpening;
-                final bool? unionConfirmed = await showCupertinoModalPopup<bool>(
+                final bool? unionConfirmed = isManual ? true : await showCupertinoModalPopup<bool>(
                   context: sheetContext,
                   builder: (BuildContext dialogContext) => CupertinoActionSheet(
                     title: Text('Has this been actioned by the Union?'),
@@ -2200,7 +2265,10 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                       ),
                       CupertinoActionSheetAction(
                         onPressed: () {
-                          emailOpening = _openBlockUnionEmail(subject: preparedEmail.subject, body: preparedEmail.body);
+                          final email = preparedEmail!;
+                          emailOpening = _openBlockUnionEmail(
+                            subject: email.subject, body: email.body,
+                          );
                           Navigator.of(dialogContext).pop(false);
                         },
                         child: Text('No – email the Union'),
@@ -2230,7 +2298,9 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                     originalEndDate: period.end,
                     overrideStartDate: selectedStart,
                     overrideEndDate: selectedEnd,
-                    changeType: changeType,
+                    changeType: isManual
+                        ? AnnualLeaveBlockChangeType.agreedMove
+                        : changeType,
                     swapDriverNumber:
                         changeType == AnnualLeaveBlockChangeType.mutualSwap
                         ? driverController.text
@@ -2326,7 +2396,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               });
 
               try {
-                if (period.isOfficial) {
+                if (period.isOfficial || period.isProjected) {
                   await _annualLeaveBlockService.removeOverride(
                     leaveYear: _leaveYear,
                     periodType: periodType,
@@ -2404,7 +2474,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                       ),
                       const SizedBox(height: 5),
                       Text(
-                        '${period.isOfficial ? 'Official' : 'Manual'} '
+                        '${period.isOfficial ? 'Official' : period.isProjected ? 'Projected' : 'Manual'} '
                         'allocation: '
                         '${_displayDate(period.start)} – '
                         '${_displayDate(period.end)}',
@@ -2419,6 +2489,10 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                           border: OutlineInputBorder(),
                         ),
                         items: const [
+                          DropdownMenuItem(
+                            value: AnnualLeaveBlockChangeType.manual,
+                            child: Text('Manual swap'),
+                          ),
                           DropdownMenuItem(
                             value: AnnualLeaveBlockChangeType.agreedMove,
                             child: Text('Agreed move'),
@@ -2539,6 +2613,8 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                             label: Text(
                               period.isOfficial
                                   ? 'Restore official allocation'
+                                  : period.isProjected
+                                  ? 'Restore projected allocation'
                                   : 'Restore manual allocation',
                             ),
                           ),
@@ -2578,7 +2654,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
               _blockCycle == null
                   ? 'Block allocation not set'
                   : 'Group ${_blockCycle!.weekIndex} • $_leaveYear'
-                        '${_blockCycle!.source == 'calculated' ? ' • Column ${_blockCycle!.columnIndex} (projected)' : ''}',
+                        '${_isWolverhampton && _leaveYear >= 2028 ? ' • Column ${_blockCycle!.wolverhamptonColumn}' : ''}',
             ),
             trailing: IconButton(
               tooltip: _blockCycle == null
@@ -2591,6 +2667,14 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
             ),
           ),
           const Divider(height: 1),
+          if (_blockPeriods.any((period) => period.isProjected))
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Text(
+                'Dates are projected from the first Monday in January. '
+                'The published roster supplies the official dates.',
+              ),
+            ),
 
           if (_blockPeriods.isEmpty)
             Padding(
@@ -2751,7 +2835,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                 Text(
                   period.isOfficial
                       ? 'Official Annual Leave Roster'
-                      : 'Manual allocation',
+                      : period.isProjected ? 'Projected dates' : 'Manual allocation',
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
                 ),
                 if (override != null && period.isOfficial) ...[
@@ -3958,12 +4042,14 @@ class _AnnualLeaveBlockPeriod {
     required this.start,
     required this.end,
     this.isOfficial = true,
+    this.isProjected = false,
   });
 
   final String type;
   final DateTime start;
   final DateTime end;
   final bool isOfficial;
+  final bool isProjected;
 }
 
 class _AnnualLeaveSummaryRow extends StatelessWidget {

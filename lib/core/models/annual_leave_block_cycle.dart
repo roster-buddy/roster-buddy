@@ -38,6 +38,28 @@ class AnnualLeaveBlockCycle {
     return ((currentWeekIndex - 1 + 5 * years) % 13) + 1;
   }
 
+  /// Wolverhampton's 2027 roster starts at Group 8. The printed group
+  /// numbers advance left to right and wrap after 13.
+  int get wolverhamptonColumn {
+    final label = advanceWeekIndex(weekIndex, years: leaveYear - 2027);
+    return (label - 8) % 13 + 1;
+  }
+
+  ({DateTime spring, DateTime summerFirst, DateTime summerSecond,
+    DateTime winter}) get wolverhamptonBlockStarts {
+    final januaryFirst = DateTime(leaveYear, 1, 1);
+    final firstMonday = 1 + (DateTime.monday - januaryFirst.weekday) % 7;
+    final columnOffset = wolverhamptonColumn - 1;
+    DateTime week(int offset) => DateTime(leaveYear, 1, firstMonday + 7 * offset);
+
+    return (
+      spring: week(columnOffset),
+      summerFirst: week(13 + 2 * columnOffset),
+      summerSecond: week(14 + 2 * columnOffset),
+      winter: week(39 + columnOffset),
+    );
+  }
+
   factory AnnualLeaveBlockCycle.fromMap(Map<String, dynamic> row) {
     return AnnualLeaveBlockCycle(
       leaveYear: _asInt(row['leave_year']) ?? DateTime.now().year,
