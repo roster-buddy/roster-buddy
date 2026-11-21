@@ -34,11 +34,7 @@ class AnnualLeaveBlockService {
     );
     if (anchor.leaveYear == leaveYear) return anchor;
 
-    return AnnualLeaveBlockCycle(
-      leaveYear: leaveYear,
-      weekIndex: anchor.weekIndexForYear(leaveYear),
-      source: 'calculated',
-    );
+    return anchor.projectToYear(leaveYear);
   }
 
   Future<AnnualLeaveBlockCycle> saveCycleForYear({

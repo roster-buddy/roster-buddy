@@ -1455,10 +1455,12 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                   });
 
                   try {
-                    await _annualLeaveBlockService.saveCycleForYear(
-                      leaveYear: _leaveYear,
-                      weekIndex: selectedBlock,
-                    );
+                    if (selectedBlock != _blockCycle?.weekIndex) {
+                      await _annualLeaveBlockService.saveCycleForYear(
+                        leaveYear: _leaveYear,
+                        weekIndex: selectedBlock,
+                      );
+                    }
 
                     if (!sheetContext.mounted) {
                       return;
@@ -1527,15 +1529,16 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'Choose the block number allocated to you on the '
-                            'Annual Leave Roster.',
+                            'Choose the group shown against your name on the '
+                            'Annual Leave Roster. Your group stays the same '
+                            'as its column moves forward each year.',
                             style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.4),
                           ),
                           const SizedBox(height: 20),
                           DropdownButtonFormField<int>(
                             value: selectedBlock,
                             decoration: const InputDecoration(
-                              labelText: 'Allocated block',
+                              labelText: 'Allocated group',
                               prefixIcon: Icon(Icons.date_range_outlined),
                               border: OutlineInputBorder(),
                             ),
@@ -1546,7 +1549,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
 
                               return DropdownMenuItem<int>(
                                 value: value,
-                                child: Text('Block $value'),
+                                child: Text('Group $value'),
                               );
                             }),
                             onChanged: saving
@@ -1570,9 +1573,8 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              'Next year: Block '
-                              '${AnnualLeaveBlockCycle.advanceWeekIndex(selectedBlock)} '
-                              '(moves forward 5 blocks)',
+                              'Next year: Group $selectedBlock • Column '
+                              '${selectedBlock == _blockCycle?.weekIndex ? _blockCycle!.nextYearWeekIndex : AnnualLeaveBlockCycle.advanceWeekIndex(selectedBlock)}',
                               style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                                 fontWeight: FontWeight.w800,
                               ),
@@ -2575,8 +2577,8 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
             subtitle: Text(
               _blockCycle == null
                   ? 'Block allocation not set'
-                  : 'Block ${_blockCycle!.weekIndex} • $_leaveYear'
-                        '${_blockCycle!.source == 'calculated' ? ' (projected)' : ''}',
+                  : 'Group ${_blockCycle!.weekIndex} • $_leaveYear'
+                        '${_blockCycle!.source == 'calculated' ? ' • Column ${_blockCycle!.columnIndex} (projected)' : ''}',
             ),
             trailing: IconButton(
               tooltip: _blockCycle == null

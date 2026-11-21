@@ -24,17 +24,19 @@ void main() {
       expect(week, 1);
     });
 
-    test('projects directly from a saved year across missing years', () {
+    test('keeps Group 9 while projecting columns across missing years', () {
       const anchor = AnnualLeaveBlockCycle(
         leaveYear: 2027,
         weekIndex: 9,
         source: 'manual',
       );
-      expect(anchor.weekIndexForYear(2027), 9);
-      expect(anchor.weekIndexForYear(2028), 1);
-      expect(anchor.weekIndexForYear(2029), 6);
-      expect(anchor.weekIndexForYear(2030), 11);
-      expect(anchor.weekIndexForYear(2031), 3);
+      final projections = [
+        for (final year in [2028, 2029, 2030, 2031])
+          anchor.projectToYear(year),
+      ];
+      expect(projections.map((cycle) => cycle.weekIndex), [9, 9, 9, 9]);
+      expect(projections.map((cycle) => cycle.columnIndex), [1, 6, 11, 3]);
+      expect(projections.first.nextYearWeekIndex, 6);
     });
 
     test('rejects values outside 1 to 13', () {
