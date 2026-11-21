@@ -2002,162 +2002,43 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
     return excluded;
   }
 
-  Future<_AnnualLeaveRosterWeekChoice?> _showAvailableBlockWeekPicker({
-    required AnnualLeaveBlockPeriodType periodType,
-  }) async {
-    final String group = _blockWeekGroup(periodType);
-
-    final List<dynamic> response = await Supabase.instance.client
+  Future<List<_AnnualLeaveRosterWeekChoice>> _loadReplacementBlockWeeks(
+    AnnualLeaveBlockPeriodType periodType,
+  ) async {
+    final year = _leaveYear;
+    final group = _blockWeekGroup(periodType);
+    final excluded = _excludedBlockWeekStarts(periodType);
+    final response = await Supabase.instance.client
         .from('annual_leave_roster_weeks')
         .select('week_start, week_end')
-        .eq('leave_year', _leaveYear)
+        .eq('leave_year', year)
         .eq('period_group', group)
         .order('week_start');
 
-    final Set<DateTime> excluded = _excludedBlockWeekStarts(periodType);
-
-    final List<_AnnualLeaveRosterWeekChoice> choices = response
-        .whereType<Map<String, dynamic>>()
-        .map((Map<String, dynamic> row) {
-          final DateTime? start = DateTime.tryParse(
-            (row['week_start'] ?? '').toString(),
-          );
-          final DateTime? end = DateTime.tryParse(
-            (row['week_end'] ?? '').toString(),
-          );
-
-          if (start == null || end == null) {
-            return null;
-          }
-
-          return _AnnualLeaveRosterWeekChoice(start: start, end: end);
-        })
-        .whereType<_AnnualLeaveRosterWeekChoice>()
-        .where((choice) {
-          final DateTime date = DateTime(
-            choice.start.year,
-            choice.start.month,
-            choice.start.day,
-          );
-
-          return !excluded.contains(date);
-        })
-        .toList(growable: false)
-        ..sort((a, b) => a.start.compareTo(b.start));
-
-    if (!mounted) {
-      return null;
-    }
-
-    if (response.isEmpty && _isWolverhampton && _leaveYear >= 2028) {
-      final picked = await showDatePicker(
-        context: context,
-        initialDate: DateTime(_leaveYear, 1, 1),
-        firstDate: DateTime(_leaveYear, 1, 1),
-        lastDate: DateTime(_leaveYear, 12, 31),
-        helpText: 'Choose a date in the replacement week',
-      );
-      if (picked == null || !mounted) return null;
-
-      final start = DateTime(picked.year, picked.month,
-          picked.day - (picked.weekday - DateTime.monday));
-      final end = DateTime(start.year, start.month, start.day + 5);
-      if (start.year != _leaveYear || excluded.contains(start)) {
-        _showAnnualLeaveMessage('Choose another replacement week.');
-        return null;
+    final weeks = <DateTime, _AnnualLeaveRosterWeekChoice>{};
+    for (final row in response) {
+      final start = DateTime.tryParse((row['week_start'] ?? '').toString());
+      final end = DateTime.tryParse((row['week_end'] ?? '').toString());
+      if (start != null && end != null) {
+        weeks[start] = _AnnualLeaveRosterWeekChoice(start: start, end: end);
       }
-      return _AnnualLeaveRosterWeekChoice(start: start, end: end);
+    }
+    if (weeks.isEmpty && _isWolverhampton && year >= 2027) {
+      final (first, count) = switch (group) {
+        'spring' => (0, 13),
+        'summer' => (13, 26),
+        _ => (39, 13),
+      };
+      for (int offset = first; offset < first + count; offset++) {
+        final start = AnnualLeaveBlockCycle.wolverhamptonWeekStart(year, offset);
+        final end = DateTime(start.year, start.month, start.day + 5);
+        weeks[start] = _AnnualLeaveRosterWeekChoice(start: start, end: end);
+      }
     }
 
-    if (choices.isEmpty) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(
-              'No available ${group.toLowerCase()} block weeks '
-              'were found for $_leaveYear.',
-            ),
-          ),
-        );
-
-      return null;
-    }
-
-    return showModalBottomSheet<_AnnualLeaveRosterWeekChoice>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (BuildContext sheetContext) {
-        return SafeArea(
-          child: SizedBox(
-            height: MediaQuery.sizeOf(sheetContext).height * 0.78,
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const CircleAvatar(
-                    child: Icon(Icons.calendar_view_week_outlined),
-                  ),
-                  title: Text(
-                    periodType == AnnualLeaveBlockPeriodType.spring
-                        ? 'Choose Spring week'
-                        : periodType == AnnualLeaveBlockPeriodType.winter
-                        ? 'Choose Winter week'
-                        : 'Choose Summer week',
-                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  subtitle: Text(
-                    periodType == AnnualLeaveBlockPeriodType.summerFirstWeek ||
-                            periodType ==
-                                AnnualLeaveBlockPeriodType.summerSecondWeek
-                        ? '${choices.length} available weeks. '
-                              'Your two existing Summer weeks are excluded.'
-                        : '${choices.length} available weeks. '
-                              'Your current week is excluded.',
-                  ),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: ListView.separated(
-                    itemCount: choices.length,
-                    separatorBuilder: (context, index) =>
-                        const Divider(height: 1),
-                    itemBuilder: (BuildContext context, int index) {
-                      final _AnnualLeaveRosterWeekChoice choice =
-                          choices[index];
-
-                      return ListTile(
-                        leading: const Icon(
-                          Icons.date_range_outlined,
-                          color: railwayBlue,
-                        ),
-                        title: Text(
-                          'Week commencing '
-                          '${_displayDate(choice.start)}',
-                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        subtitle: Text(
-                          'Ends ${_displayDate(choice.end)} '
-                          '• Monday–Saturday',
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          Navigator.of(sheetContext).pop(choice);
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+    return weeks.values
+        .where((week) => !excluded.contains(DateUtils.dateOnly(week.start)))
+        .toList(growable: false);
   }
 
   Future<void> _showBlockOverrideDialog(_AnnualLeaveBlockPeriod period) async {
@@ -2190,6 +2071,9 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
       text: existing?.notes ?? '',
     );
 
+    var replacementWeeks = _loadReplacementBlockWeeks(periodType);
+    DateTime? chosenReplacement;
+
     bool saving = false;
     String? errorMessage;
 
@@ -2200,22 +2084,15 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
       builder: (BuildContext sheetContext) {
         return StatefulBuilder(
           builder: (BuildContext sheetContext, void Function(void Function()) setSheetState) {
-            Future<void> selectStart() async {
-              final _AnnualLeaveRosterWeekChoice? selected =
-                  await _showAvailableBlockWeekPicker(periodType: periodType);
-
-              if (selected == null || !sheetContext.mounted) {
+            Future<void> save() async {
+              if (saving) {
                 return;
               }
 
-              setSheetState(() {
-                selectedStart = selected.start;
-                selectedEnd = selected.end;
-              });
-            }
-
-            Future<void> save() async {
-              if (saving) {
+              if (existing == null && chosenReplacement == null) {
+                setSheetState(() {
+                  errorMessage = 'Choose a replacement week.';
+                });
                 return;
               }
 
@@ -2513,23 +2390,57 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                               },
                       ),
                       const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: saving ? null : selectStart,
-                          icon: const Icon(Icons.calendar_view_week_outlined),
-                          label: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Text(
-                              'Choose replacement week\n'
-                              'Week commencing '
-                              '${_displayDate(selectedStart)}\n'
-                              'Ends ${_displayDate(selectedEnd)} '
-                              '• Monday–Saturday',
-                              textAlign: TextAlign.center,
+                      FutureBuilder<List<_AnnualLeaveRosterWeekChoice>>(
+                        future: replacementWeeks,
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState != ConnectionState.done) {
+                            return const LinearProgressIndicator();
+                          }
+                          if (snapshot.hasError) {
+                            return OutlinedButton(
+                              onPressed: () => setSheetState(() {
+                                replacementWeeks = _loadReplacementBlockWeeks(periodType);
+                              }),
+                              child: const Text('Retry loading replacement weeks'),
+                            );
+                          }
+                          final weeks = snapshot.data!;
+                          final season = _blockWeekGroup(periodType);
+                          return DropdownButtonFormField<DateTime>(
+                            initialValue: chosenReplacement,
+                            isExpanded: true,
+                            menuMaxHeight: 360,
+                            decoration: InputDecoration(
+                              labelText: 'Replacement $season week',
+                              helperText: weeks.isEmpty ? 'No replacement weeks available' : null,
+                              prefixIcon: const Icon(Icons.calendar_view_week_outlined),
+                              border: const OutlineInputBorder(),
                             ),
-                          ),
-                        ),
+                            hint: existing == null
+                                ? const Text('Choose a week')
+                                : Text('${_displayDate(existing.overrideStartDate)} – '
+                                    '${_displayDate(existing.overrideEndDate)}'),
+                            items: [
+                              for (final week in weeks)
+                                DropdownMenuItem(
+                                  value: week.start,
+                                  child: Text(
+                                    '${_displayDate(week.start)} – ${_displayDate(week.end)}',
+                                  ),
+                                ),
+                            ],
+                            onChanged: saving || weeks.isEmpty ? null : (start) {
+                              if (start == null) return;
+                              final week = weeks.firstWhere((week) => week.start == start);
+                              setSheetState(() {
+                                chosenReplacement = start;
+                                selectedStart = week.start;
+                                selectedEnd = week.end;
+                                errorMessage = null;
+                              });
+                            },
+                          );
+                        },
                       ),
                       if (changeType ==
                           AnnualLeaveBlockChangeType.mutualSwap) ...[

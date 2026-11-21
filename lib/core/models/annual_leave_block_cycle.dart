@@ -47,10 +47,8 @@ class AnnualLeaveBlockCycle {
 
   ({DateTime spring, DateTime summerFirst, DateTime summerSecond,
     DateTime winter}) get wolverhamptonBlockStarts {
-    final januaryFirst = DateTime(leaveYear, 1, 1);
-    final firstMonday = 1 + (DateTime.monday - januaryFirst.weekday) % 7;
     final columnOffset = wolverhamptonColumn - 1;
-    DateTime week(int offset) => DateTime(leaveYear, 1, firstMonday + 7 * offset);
+    DateTime week(int offset) => wolverhamptonWeekStart(leaveYear, offset);
 
     return (
       spring: week(columnOffset),
@@ -58,6 +56,12 @@ class AnnualLeaveBlockCycle {
       summerSecond: week(14 + 2 * columnOffset),
       winter: week(39 + columnOffset),
     );
+  }
+
+  static DateTime wolverhamptonWeekStart(int year, int offset) {
+    final januaryFirst = DateTime(year, 1, 1);
+    final firstMonday = 1 + (DateTime.monday - januaryFirst.weekday) % 7;
+    return DateTime(year, 1, firstMonday + 7 * offset);
   }
 
   factory AnnualLeaveBlockCycle.fromMap(Map<String, dynamic> row) {
