@@ -29,19 +29,27 @@ class _AccessRequestsPageState extends State<AccessRequestsPage> {
     return rows;
   }
 
+  String _depotName(Map<String, dynamic> request) {
+    final depot = (request['requested_depot'] as String? ?? '').trim();
+    return depot.isEmpty ? 'Depot not provided' : depot;
+  }
+
   Future<void> _setStatus(Map<String, dynamic> request, String status) async {
     if (_updating != null) return;
-    if (status == 'declined') {
+    final deleting = status == 'declined';
+    if (deleting) {
+      final pending = request['status'] == 'pending';
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Decline and delete account?'),
+          title: Text(pending ? 'Decline and delete account?' : 'Delete account?'),
           content: Text(
-            '${request['email']} and their personal data will be permanently deleted.',
+            '${request['email']} and their personal data will be permanently deleted. '
+            'Their uploaded documents will stay in the depot.',
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Decline and delete')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(pending ? 'Decline and delete' : 'Delete account')),
           ],
         ),
       );
@@ -55,11 +63,20 @@ class _AccessRequestsPageState extends State<AccessRequestsPage> {
           .update({'status': status})
           .eq('user_id', id)
           .eq('status', request['status'] as String);
-      if (mounted) setState(() => _requests = _load());
+      if (mounted) {
+        setState(() => _requests = _load());
+        if (deleting) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Account deleted.')),
+          );
+        }
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('The access request could not be updated.')),
+          SnackBar(content: Text(deleting
+              ? 'The account could not be deleted.'
+              : 'The access request could not be updated.')),
         );
       }
     } finally {
@@ -88,6 +105,15 @@ class _AccessRequestsPageState extends State<AccessRequestsPage> {
         if (requests.isEmpty) {
           return const Center(child: Text('There are no access requests.'));
         }
+        final grouped = <String, List<Map<String, dynamic>>>{};
+        for (final request in requests) {
+          grouped.putIfAbsent(_depotName(request).toLowerCase(), () => [])
+              .add(request);
+        }
+        final depots = grouped.keys.toList()..sort();
+        final visibleRows = <Map<String, dynamic>?>[
+          for (final depot in depots) ...[null, ...grouped[depot]!],
+        ];
         return RefreshIndicator(
           onRefresh: () async {
             final requests = _load();
@@ -96,9 +122,18 @@ class _AccessRequestsPageState extends State<AccessRequestsPage> {
           },
           child: ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: requests.length,
+            itemCount: visibleRows.length,
             itemBuilder: (context, index) {
-              final request = requests[index];
+              final request = visibleRows[index];
+              if (request == null) {
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+                  child: Text(
+                    _depotName(visibleRows[index + 1]!),
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                );
+              }
               final status = request['status'] as String;
               final busy = _updating != null;
               final pending = status == 'pending';
@@ -110,7 +145,6 @@ class _AccessRequestsPageState extends State<AccessRequestsPage> {
               final name = [request['first_name'], request['last_name']]
                   .whereType<String>()
                   .join(' ');
-              final depot = request['requested_depot'] as String?;
               return Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -124,7 +158,6 @@ class _AccessRequestsPageState extends State<AccessRequestsPage> {
                         ),
                       ),
                       if (name.isNotEmpty) Text(request['email'] as String),
-                      Text(depot ?? 'Depot not provided'),
                       const SizedBox(height: 6),
                       Text(pending
                           ? 'Waiting for approval'
@@ -157,7 +190,16 @@ class _AccessRequestsPageState extends State<AccessRequestsPage> {
                                   ? null
                                   : () => _setStatus(request, pending ? 'declined' : 'suspended'),
                               icon: Icon(pending ? Icons.close : Icons.pause_circle_outline),
-                              label: Text(pending ? 'Decline' : 'Suspend'),
+                              label: Text(pending ? 'Decline and delete' : 'Suspend'),
+                            ),
+                          if (!pending)
+                            TextButton.icon(
+                              onPressed: busy ? null : () => _setStatus(request, 'declined'),
+                              icon: const Icon(Icons.delete_outline),
+                              label: const Text('Delete account'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Theme.of(context).colorScheme.error,
+                              ),
                             ),
                         ],
                       ),
