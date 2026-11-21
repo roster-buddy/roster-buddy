@@ -4020,13 +4020,6 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
   String _displayDate(DateTime date) {
     return displayDate(date);
   }
-
-  static String _databaseDate(DateTime date) {
-    final String month = date.month.toString().padLeft(2, '0');
-    final String day = date.day.toString().padLeft(2, '0');
-
-    return '${date.year}-$month-$day';
-  }
 }
 
 class _AnnualLeaveRosterWeekChoice {
