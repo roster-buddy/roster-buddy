@@ -731,7 +731,7 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
         children: [
           _pageHeading(
             'Annual leave setup',
-            'Set your current floating-leave balance and block-week '
+            'Set your current floating-leave balance and annual leave block '
                 'allocation, then add any floating dates already confirmed '
                 'by Rosters or your DTCM.',
           ),
@@ -752,8 +752,8 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
           DropdownButtonFormField<int?>(
             initialValue: _blockWeekIndex,
             decoration: InputDecoration(
-              labelText: '$_currentLeaveYear block-leave week',
-              helperText: 'Choose your allocated week number if you know it.',
+              labelText: 'Annual leave block number',
+              helperText: 'Choose your annual leave block for $_currentLeaveYear.',
               prefixIcon: const Icon(Icons.date_range_outlined),
               border: const OutlineInputBorder(),
             ),
@@ -766,7 +766,7 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
                 13,
                 (int index) => DropdownMenuItem<int?>(
                   value: index + 1,
-                  child: Text('Week ${index + 1}'),
+                  child: Text('Block ${index + 1}'),
                 ),
               ),
             ],
@@ -993,10 +993,10 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
                   _floatingBalanceController.text.trim(),
                 ),
                 _reviewRow(
-                  'Block-leave allocation',
+                  'Annual leave block number',
                   _blockWeekIndex == null
                       ? 'Add later'
-                      : 'Week $_blockWeekIndex',
+                      : 'Block $_blockWeekIndex',
                 ),
                 _reviewRow(
                   'Confirmed floating dates',
