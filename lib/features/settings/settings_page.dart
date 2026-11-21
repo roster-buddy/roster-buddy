@@ -1460,11 +1460,6 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                       weekIndex: selectedBlock,
                     );
 
-                    // Automatically prepare the following year's +5 allocation.
-                    await _annualLeaveBlockService.ensureNextYearCycle(
-                      currentLeaveYear: _leaveYear,
-                    );
-
                     if (!sheetContext.mounted) {
                       return;
                     }
@@ -2580,7 +2575,8 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
             subtitle: Text(
               _blockCycle == null
                   ? 'Block allocation not set'
-                  : 'Block ${_blockCycle!.weekIndex} • $_leaveYear',
+                  : 'Block ${_blockCycle!.weekIndex} • $_leaveYear'
+                        '${_blockCycle!.source == 'calculated' ? ' (projected)' : ''}',
             ),
             trailing: IconButton(
               tooltip: _blockCycle == null

@@ -17,18 +17,28 @@ class AnnualLeaveBlockService {
   Future<AnnualLeaveBlockCycle?> getCycleForYear(int leaveYear) async {
     final User user = _requireUser();
 
-    final Map<String, dynamic>? row = await _supabase
+    final List<Map<String, dynamic>> rows = await _supabase
         .from(_cycleTable)
         .select('leave_year, week_index, source')
         .eq('user_id', user.id)
-        .eq('leave_year', leaveYear)
-        .maybeSingle();
+        .lte('leave_year', leaveYear)
+        .order('leave_year', ascending: false);
 
-    if (row == null) {
-      return null;
-    }
+    if (rows.isEmpty) return null;
 
-    return AnnualLeaveBlockCycle.fromMap(row);
+    // Older versions saved a calculated row for just the following year.
+    // Use the most recent actual allocation so those rows cannot mask edits.
+    final anchor = AnnualLeaveBlockCycle.fromMap(
+      rows.firstWhere((row) => row['source'] != 'calculated',
+          orElse: () => rows.first),
+    );
+    if (anchor.leaveYear == leaveYear) return anchor;
+
+    return AnnualLeaveBlockCycle(
+      leaveYear: leaveYear,
+      weekIndex: anchor.weekIndexForYear(leaveYear),
+      source: 'calculated',
+    );
   }
 
   Future<AnnualLeaveBlockCycle> saveCycleForYear({
@@ -61,34 +71,6 @@ class AnnualLeaveBlockService {
     }
 
     return saved;
-  }
-
-  Future<AnnualLeaveBlockCycle> ensureNextYearCycle({
-    required int currentLeaveYear,
-  }) async {
-    final AnnualLeaveBlockCycle? current = await getCycleForYear(
-      currentLeaveYear,
-    );
-
-    if (current == null) {
-      throw const AnnualLeaveBlockException(
-        'Set the current block week before calculating next year.',
-      );
-    }
-
-    final int nextYear = currentLeaveYear + 1;
-
-    final AnnualLeaveBlockCycle? existing = await getCycleForYear(nextYear);
-
-    if (existing != null) {
-      return existing;
-    }
-
-    return saveCycleForYear(
-      leaveYear: nextYear,
-      weekIndex: current.nextYearWeekIndex,
-      source: 'calculated',
-    );
   }
 
   Future<List<AnnualLeaveBlockOverride>> getOverridesForYear(

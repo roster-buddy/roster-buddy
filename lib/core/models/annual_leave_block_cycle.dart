@@ -17,7 +17,10 @@ class AnnualLeaveBlockCycle {
   /// 11 -> 3
   int get nextYearWeekIndex => advanceWeekIndex(weekIndex);
 
-  static int advanceWeekIndex(int currentWeekIndex) {
+  int weekIndexForYear(int year) =>
+      advanceWeekIndex(weekIndex, years: year - leaveYear);
+
+  static int advanceWeekIndex(int currentWeekIndex, {int years = 1}) {
     if (currentWeekIndex < 1 || currentWeekIndex > 13) {
       throw ArgumentError.value(
         currentWeekIndex,
@@ -26,7 +29,7 @@ class AnnualLeaveBlockCycle {
       );
     }
 
-    return ((currentWeekIndex - 1 + 5) % 13) + 1;
+    return ((currentWeekIndex - 1 + 5 * years) % 13) + 1;
   }
 
   factory AnnualLeaveBlockCycle.fromMap(Map<String, dynamic> row) {

@@ -24,6 +24,19 @@ void main() {
       expect(week, 1);
     });
 
+    test('projects directly from a saved year across missing years', () {
+      const anchor = AnnualLeaveBlockCycle(
+        leaveYear: 2027,
+        weekIndex: 9,
+        source: 'manual',
+      );
+      expect(anchor.weekIndexForYear(2027), 9);
+      expect(anchor.weekIndexForYear(2028), 1);
+      expect(anchor.weekIndexForYear(2029), 6);
+      expect(anchor.weekIndexForYear(2030), 11);
+      expect(anchor.weekIndexForYear(2031), 3);
+    });
+
     test('rejects values outside 1 to 13', () {
       expect(
         () => AnnualLeaveBlockCycle.advanceWeekIndex(0),
