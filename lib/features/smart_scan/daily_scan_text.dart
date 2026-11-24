@@ -69,6 +69,18 @@ class DailyScanText {
     r"^\s*[:/\\|]*\s*([A-Za-z][A-Za-z .’'-]+?)\s+(\d{4})\s+([A-Za-z]{2,5})\b",
   );
 
+  static bool _samePrintedName(String original, String reread) {
+    final first = ParserUtils.normaliseWhitespace(original).toUpperCase();
+    final second = ParserUtils.normaliseWhitespace(reread).toUpperCase();
+    if (first == second) return true;
+
+    // The initial and surname are printed in separate cells. OCR may omit
+    // the initial in one reading, but two different initials are a conflict.
+    final initials = RegExp(r'^[A-Z]{1,3}\.? ');
+    return first.replaceFirst(initials, '') == second ||
+        second.replaceFirst(initials, '') == first;
+  }
+
   static String _recoverIncompleteRows(
     String primary,
     ParseResult original,
@@ -105,8 +117,7 @@ class DailyScanText {
       final candidateText = duty.rawText;
       final candidate = candidateText == null ? null : _namedRow.firstMatch(candidateText);
       if (candidate == null ||
-          ParserUtils.normaliseWhitespace(candidate[1]!).toUpperCase() !=
-              ParserUtils.normaliseWhitespace(row[1]!).toUpperCase() ||
+          !_samePrintedName(row[1]!, candidate[1]!) ||
           candidate[3]!.toUpperCase() != row[3]!.toUpperCase() ||
           duty.turnNumber == null || duty.bookOn == null || duty.bookOff == null) {
         continue;
