@@ -63,6 +63,9 @@ class SmartScanEngine {
       // payroll rows. It never joins a time from one driver to another.
       return SmartScanResult(
         fullText: cloudResult.fullText,
+        alternateText: localResult.alternateText.isEmpty
+            ? localResult.fullText
+            : localResult.alternateText,
         lines: localResult.lines.isEmpty ? cloudResult.lines : localResult.lines,
         confidence: localResult.confidence ?? cloudResult.confidence,
       );
