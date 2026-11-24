@@ -493,6 +493,17 @@ class DailyAmendmentParser implements BaseParser {
       rawText: ' $tail ',
       hasTimes: clocks.length >= 2 || recoveredClocks != null,
     );
+    // A repeated code occupies both the amendment and turn columns on
+    // printed reports (for example TT TT). Preserve the printed turn.
+    if (turn == null &&
+        clocks.length == 2 &&
+        code != null &&
+        definition != null &&
+        tokens.length >= 2 &&
+        tokens[tokens.length - 2] == code &&
+        tokens.last == code) {
+      turn = code;
+    }
     final nonWorking =
         type == DutyType.annualLeave ||
         type == DutyType.restDay ||
