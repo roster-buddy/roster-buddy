@@ -1018,18 +1018,22 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}, retryU
         const {data: pageData} = await worker.recognize(image, {}, {text: true, blocks: true});
         check();
         const pageResult = normaliseRecognition(pageData);
-        if (!needsDetailedRosterPass(pageResult.fullText)) {
-          image.width = 1; image.height = 1;
-          return [pageResult];
-        }
         try {
+          const dailyReport = /\b(?:Daily\s+Roster\s+Report|Report\s+for\s+(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday))\b/i
+            .test(pageResult.fullText);
+          if (dailyReport) {
+            await worker.setParameters({tessedit_pageseg_mode: '6'});
+            const {data} = await worker.recognize(image, {}, {text: true});
+            check();
+            pageResult.alternateText = data.text || '';
+          }
+          if (!needsDetailedRosterPass(pageResult.fullText)) return [pageResult];
           const first = Math.round(image.height * 0.16);
           const step = Math.round(image.width * 0.28);
           const pad = Math.round(image.width * 0.07);
           const bounds = [0, first];
           while (bounds.at(-1) < image.height) bounds.push(Math.min(image.height, bounds.at(-1) + step));
           const results = [];
-          const dailyReport = /\bDaily\s+Roster\s+Report\b/i.test(pageResult.fullText);
           session.sections = true;
           await worker.setParameters({tessedit_pageseg_mode: '6'});
           for (let i=0; i<bounds.length-1; i++) {
@@ -1060,7 +1064,7 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}, retryU
           // reading as positioned lines. DailyScanText validates both parses,
           // merges complementary payroll rows, and never joins clocks across
           // different drivers.
-          return [{fullText:pageResult.fullText,lines:results.flatMap(r=>r.lines),
+          return [{...pageResult,lines:results.flatMap(r=>r.lines),
             confidence:results.reduce((n,r)=>n+r.confidence,0)/results.length}];
         } finally {image.width=1;image.height=1;}
       }

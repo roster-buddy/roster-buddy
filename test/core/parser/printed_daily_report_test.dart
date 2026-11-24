@@ -2,11 +2,54 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:roster_buddy/core/models/document_type.dart';
 import 'package:roster_buddy/core/models/duty_type.dart';
 import 'package:roster_buddy/core/parser/daily_amendment_parser.dart';
+import 'package:roster_buddy/features/smart_scan/daily_scan_text.dart';
+import 'package:roster_buddy/features/smart_scan/smart_scan_result.dart';
 
 void main() {
   final parser = DailyAmendmentParser(
     documentType: DocumentType.sevenDayAmendment,
   );
+  test('leading OCR punctuation preserves a complete overnight turn', () async {
+    final result = await parser.parse(pageText: const [
+      'Report for Monday 30/11/26 in All Links\n'
+          ': B Example 3100 WOD ALLOC 212 15:25 00:06 8.45 Amended Turn',
+    ]);
+
+    expect(result.canImport, isTrue);
+    final duty = result.duties.single;
+    expect(duty.turnNumber, '212');
+    expect(duty.bookOn, '15:25');
+    expect(duty.bookOff, '00:06');
+    expect(duty.remarks, contains('Amended Turn'));
+  });
+
+  test('reread recovers an incomplete spare turn for the same driver', () async {
+    const heading = 'Report for Tuesday 01/12/26 in All Links';
+    const primary = '$heading\nS Example 2335 WOD ALLOC';
+    const retry = '$heading\nS Example 2335 WOD ALLOC SP 05:30 14:15 8.45';
+
+    final pages = await DailyScanText.bestPages(
+      const [SmartScanResult(fullText: primary, alternateText: retry, lines: [])],
+      DocumentType.sevenDayAmendment,
+    );
+    final result = await parser.parse(pageText: pages);
+    expect(result.canImport, isTrue);
+    final duty = result.duties.single;
+    expect(duty.turnNumber, 'SP');
+    expect(duty.bookOn, '05:30');
+    expect(duty.bookOff, '14:15');
+
+    final mismatched = await DailyScanText.bestPages(
+      [SmartScanResult(
+        fullText: primary,
+        alternateText: retry.replaceFirst('S Example', 'A Different'),
+        lines: const [],
+      )],
+      DocumentType.sevenDayAmendment,
+    );
+    expect((await parser.parse(pageText: mismatched)).canImport, isFalse);
+  });
+
   test(
     'wrapped printed headings do not turn payroll or codes into times',
     () async {

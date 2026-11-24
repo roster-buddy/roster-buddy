@@ -20,11 +20,13 @@ class SmartScanResult {
     required this.lines,
     this.confidence,
     this.documentHeading = '',
+    this.alternateText = '',
   });
 
   final String documentHeading;
   final double? confidence;
   final String fullText;
+  final String alternateText;
   final List<SmartScanTextLine> lines;
 
   bool get hasText => fullText.trim().isNotEmpty;

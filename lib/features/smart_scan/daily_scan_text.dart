@@ -64,6 +64,66 @@ class DailyScanText {
     });
   }
 
+  static final _namedRow = RegExp(
+    r"^\s*[:/\\|]*\s*([A-Za-z][A-Za-z .’'-]+?)\s+(\d{4})\s+([A-Za-z]{2,5})\b",
+  );
+
+  static Future<String> _recoverIncompleteRows(
+    SmartScanResult page,
+    DailyAmendmentParser parser,
+  ) async {
+    final primary = page.fullText;
+    if (page.alternateText.trim().isEmpty) return primary;
+    final original = await parser.parse(pageText: [primary]);
+    if (!original.hasBlockingWarnings || original.identifiedDates.length != 1) {
+      return primary;
+    }
+
+    final retry = await parser.parse(pageText: [page.alternateText]);
+    if (retry.identifiedDates.length != 1 ||
+        retry.identifiedDates.first != original.identifiedDates.first) {
+      return primary;
+    }
+
+    final lines = primary.split(RegExp(r'\r?\n'));
+    final originalPayrolls = original.duties.map((duty) => duty.payrollNumber).toSet();
+    final counts = <String, int>{};
+    for (final line in lines) {
+      final payroll = _namedRow.firstMatch(line)?[2];
+      if (payroll != null) counts.update(payroll, (count) => count + 1, ifAbsent: () => 1);
+    }
+
+    for (var index = 0; index < lines.length; index++) {
+      final row = _namedRow.firstMatch(lines[index]);
+      final payroll = row?[2];
+      if (row == null || counts[payroll] != 1 || originalPayrolls.contains(payroll)) {
+        continue;
+      }
+
+      final matches = retry.duties.where((duty) => duty.payrollNumber == payroll);
+      if (matches.length != 1) continue;
+      final duty = matches.single;
+      final candidateText = duty.rawText;
+      final candidate = candidateText == null ? null : _namedRow.firstMatch(candidateText);
+      if (candidate == null ||
+          candidate[1]!.toUpperCase() != row[1]!.toUpperCase() ||
+          candidate[3]!.toUpperCase() != row[3]!.toUpperCase() ||
+          duty.turnNumber == null || duty.bookOn == null || duty.bookOff == null) {
+        continue;
+      }
+
+      // Any surviving clock must agree with the reread. Replace the whole
+      // row so fields from different OCR readings cannot be combined.
+      final clocks = RegExp(r'\b(?:[01]?\d|2[0-3])[:;][0-5]\d\b')
+          .allMatches(lines[index])
+          .map((match) => match[0]!.replaceAll(';', ':').padLeft(5, '0'));
+      if (clocks.every((clock) => clock == duty.bookOn || clock == duty.bookOff)) {
+        lines[index] = candidateText!;
+      }
+    }
+    return lines.join('\n');
+  }
+
   static Future<List<String>> bestPages(
     List<SmartScanResult> pages, DocumentType type,
   ) async {
@@ -71,9 +131,9 @@ class DailyScanText {
     final selected = <String>[];
     for (final page in pages) {
       final rebuilt = SmartScanPageTextReconstructor.reconstruct(page);
-      final native = page.fullText;
+      final native = await _recoverIncompleteRows(page, parser);
       if (page.lines.isEmpty || native.trim().isEmpty || native == rebuilt) {
-        selected.add(rebuilt);
+        selected.add(page.lines.isEmpty ? native : rebuilt);
         continue;
       }
       final nativeResult = await parser.parse(pageText: [native]);

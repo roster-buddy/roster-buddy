@@ -75,6 +75,7 @@ class SmartScanEngine {
             final page = value as Map<String, dynamic>;
             return SmartScanResult(
               fullText: page['fullText'] as String,
+              alternateText: (page['alternateText'] as String?) ?? '',
               confidence: (page['confidence'] as num?)?.toDouble(),
               lines: (page['lines'] as List<dynamic>)
                   .map((dynamic value) {
