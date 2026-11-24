@@ -2,6 +2,7 @@ import '../../core/models/document_type.dart';
 import '../../core/models/duty.dart';
 import '../../core/models/parse_result.dart';
 import '../../core/parser/daily_amendment_parser.dart';
+import '../../core/parser/parser_utils.dart';
 import '../../core/services/printed_roster_identity.dart';
 import 'smart_scan_page_text_reconstructor.dart';
 import 'smart_scan_result.dart';
@@ -68,18 +69,16 @@ class DailyScanText {
     r"^\s*[:/\\|]*\s*([A-Za-z][A-Za-z .’'-]+?)\s+(\d{4})\s+([A-Za-z]{2,5})\b",
   );
 
-  static Future<String> _recoverIncompleteRows(
-    SmartScanResult page,
-    DailyAmendmentParser parser,
-  ) async {
-    final primary = page.fullText;
-    if (page.alternateText.trim().isEmpty) return primary;
-    final original = await parser.parse(pageText: [primary]);
+  static String _recoverIncompleteRows(
+    String primary,
+    ParseResult original,
+    ParseResult? retry,
+  ) {
+    if (retry == null) return primary;
     if (!original.hasBlockingWarnings || original.identifiedDates.length != 1) {
       return primary;
     }
 
-    final retry = await parser.parse(pageText: [page.alternateText]);
     if (retry.identifiedDates.length != 1 ||
         retry.identifiedDates.first != original.identifiedDates.first) {
       return primary;
@@ -106,7 +105,8 @@ class DailyScanText {
       final candidateText = duty.rawText;
       final candidate = candidateText == null ? null : _namedRow.firstMatch(candidateText);
       if (candidate == null ||
-          candidate[1]!.toUpperCase() != row[1]!.toUpperCase() ||
+          ParserUtils.normaliseWhitespace(candidate[1]!).toUpperCase() !=
+              ParserUtils.normaliseWhitespace(row[1]!).toUpperCase() ||
           candidate[3]!.toUpperCase() != row[3]!.toUpperCase() ||
           duty.turnNumber == null || duty.bookOn == null || duty.bookOff == null) {
         continue;
@@ -131,12 +131,19 @@ class DailyScanText {
     final selected = <String>[];
     for (final page in pages) {
       final rebuilt = SmartScanPageTextReconstructor.reconstruct(page);
-      final native = await _recoverIncompleteRows(page, parser);
-      if (page.lines.isEmpty || native.trim().isEmpty || native == rebuilt) {
-        selected.add(page.lines.isEmpty ? native : rebuilt);
+      final retry = page.alternateText.trim().isEmpty
+          ? null
+          : await parser.parse(pageText: [page.alternateText]);
+      final rawNative = page.fullText;
+      var nativeResult = await parser.parse(pageText: [rawNative]);
+      final native = _recoverIncompleteRows(rawNative, nativeResult, retry);
+      if (native != rawNative) {
+        nativeResult = await parser.parse(pageText: [native]);
+      }
+      if (page.lines.isEmpty || native == rebuilt) {
+        selected.add(native);
         continue;
       }
-      final nativeResult = await parser.parse(pageText: [native]);
       var rebuiltText = rebuilt;
       var rebuiltResult = await parser.parse(pageText: [rebuiltText]);
       final rebuiltOriginallyHasDate =
@@ -154,6 +161,11 @@ class DailyScanText {
             '${date.month.toString().padLeft(2, '0')}/'
             '${(date.year % 100).toString().padLeft(2, '0')}';
         rebuiltText = '$heading\n$rebuilt';
+        rebuiltResult = await parser.parse(pageText: [rebuiltText]);
+      }
+      final recovered = _recoverIncompleteRows(rebuiltText, rebuiltResult, retry);
+      if (recovered != rebuiltText) {
+        rebuiltText = recovered;
         rebuiltResult = await parser.parse(pageText: [rebuiltText]);
       }
       final nativeByKey = {for (final d in nativeResult.duties) _key(d): d};

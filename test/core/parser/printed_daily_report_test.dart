@@ -25,7 +25,7 @@ void main() {
 
   test('reread recovers an incomplete spare turn for the same driver', () async {
     const heading = 'Report for Tuesday 01/12/26 in All Links';
-    const primary = '$heading\nS Example 2335 WOD ALLOC';
+    const primary = '$heading\nS     Example   2335 WOD ALLOC';
     const retry = '$heading\nS Example 2335 WOD ALLOC SP 05:30 14:15 8.45';
 
     final pages = await DailyScanText.bestPages(
@@ -38,6 +38,33 @@ void main() {
     expect(duty.turnNumber, 'SP');
     expect(duty.bookOn, '05:30');
     expect(duty.bookOff, '14:15');
+
+    // Cloud text may contain only the heading while the incomplete payroll
+    // row is present in the positioned reading.
+    final positioned = await DailyScanText.bestPages(
+      const [
+        SmartScanResult(
+          fullText: heading,
+          alternateText: retry,
+          lines: [
+            SmartScanTextLine(
+              text: heading, left: 10, top: 10, right: 300, bottom: 20,
+            ),
+            SmartScanTextLine(
+              text: 'S', left: 10, top: 40, right: 18, bottom: 50,
+            ),
+            SmartScanTextLine(
+              text: 'Example 2335 WOD ALLOC',
+              left: 30, top: 40, right: 230, bottom: 50,
+            ),
+          ],
+        ),
+      ],
+      DocumentType.sevenDayAmendment,
+    );
+    final recovered = await parser.parse(pageText: positioned);
+    expect(recovered.canImport, isTrue);
+    expect(recovered.duties.single.turnNumber, 'SP');
 
     final mismatched = await DailyScanText.bestPages(
       [SmartScanResult(
