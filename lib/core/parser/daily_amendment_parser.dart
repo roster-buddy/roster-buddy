@@ -427,7 +427,7 @@ class DailyAmendmentParser implements BaseParser {
         : null;
     if (named == null && payrollOnly == null) return null;
     final name = named?.group(1)
-        ?.replaceFirst(RegExp(r'^[/\\|]+\s*'), '')
+        ?.replaceFirst(RegExp(r'^[:/\\|]+\s*'), '')
         .trim();
     if (name != null &&
         (!RegExp(r'[A-Za-z]{2,}').hasMatch(name) ||
@@ -484,6 +484,7 @@ class DailyAmendmentParser implements BaseParser {
         turn = token.replaceFirst(RegExp(r'^WO'), '');
       } else if (token == 'ALLOC' || DutyCodeLibrary.contains(token)) {
         code ??= token;
+        if (token == 'SP' && clocks.length == 2 && turn == null) turn = token;
       }
     }
     final definition = DutyCodeLibrary.find(code);
@@ -533,7 +534,13 @@ class DailyAmendmentParser implements BaseParser {
       amendmentCode: code,
       pageNumber: row.pageNumber,
       rawText: row.rawText,
-      remarks: definition?.preferredMeaning,
+      remarks: _buildRemarks(
+        codeMeaning: definition?.preferredMeaning,
+        printedRemarks: RegExp(
+          r'\b(?:Amended|Special) Turn$',
+          caseSensitive: false,
+        ).stringMatch(tail),
+      ),
     );
   }
 
