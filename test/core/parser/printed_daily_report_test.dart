@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:roster_buddy/core/models/document_type.dart';
 import 'package:roster_buddy/core/models/duty_type.dart';
+import 'package:roster_buddy/core/models/parse_result.dart';
 import 'package:roster_buddy/core/parser/daily_amendment_parser.dart';
 import 'package:roster_buddy/features/smart_scan/daily_scan_text.dart';
 import 'package:roster_buddy/features/smart_scan/smart_scan_result.dart';
@@ -21,6 +22,30 @@ void main() {
     expect(duty.bookOn, '15:25');
     expect(duty.bookOff, '00:06');
     expect(duty.remarks, contains('Amended Turn'));
+  });
+
+  test('reread recovers a lettered turn when OCR omits the initial', () async {
+    const heading = 'Report for Tuesday 01/12/26 in All Links';
+    const retry = '$heading\nA Example 3280 WOD TT TT 06:00 14:45 8.45';
+
+    Future<ParseResult> read(String name) async {
+      final pages = await DailyScanText.bestPages([
+        SmartScanResult(
+          fullText: '$heading\n$name 3280 WOD TT TT',
+          alternateText: retry,
+          lines: const [],
+        ),
+      ], DocumentType.sevenDayAmendment);
+      return parser.parse(pageText: pages);
+    }
+
+    final result = await read('Example');
+    expect(result.canImport, isTrue);
+    final duty = result.duties.single;
+    expect(duty.turnNumber, 'TT');
+    expect(duty.bookOn, '06:00');
+    expect(duty.bookOff, '14:45');
+    expect((await read('B Example')).canImport, isFalse);
   });
 
   test('reread recovers an incomplete spare turn for the same driver', () async {
