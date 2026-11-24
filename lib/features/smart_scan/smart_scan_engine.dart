@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'smart_scan_cloud_client.dart';
 import 'smart_scan_local_engine.dart' as local;
 import 'smart_scan_quality.dart';
+import 'smart_scan_page_text_reconstructor.dart';
 import 'smart_scan_result.dart';
 
 class SmartScanException implements Exception {
@@ -39,9 +40,17 @@ class SmartScanEngine {
       cloudError = error;
     }
 
+    final isDailyReport = cloudResult != null &&
+        RegExp(r'\b(?:Daily\s+Roster\s+Report|Report\s+for\s+(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday))\b',
+          caseSensitive: false,
+        ).hasMatch(cloudResult.fullText);
     if (cloudResult != null &&
-        (!SmartScanQuality.needsLocalRescue(cloudResult.fullText) ||
-            !local.SmartScanEngine.isSupported)) {
+        (!local.SmartScanEngine.isSupported ||
+            (!SmartScanQuality.needsLocalRescue(cloudResult.fullText) &&
+                !(isDailyReport &&
+                    SmartScanQuality.needsLocalRescue(
+                      SmartScanPageTextReconstructor.reconstruct(cloudResult),
+                    ))))) {
       return cloudResult;
     }
 
@@ -66,8 +75,12 @@ class SmartScanEngine {
         alternateText: localResult.alternateText.isEmpty
             ? localResult.fullText
             : localResult.alternateText,
-        lines: localResult.lines.isEmpty ? cloudResult.lines : localResult.lines,
-        confidence: localResult.confidence ?? cloudResult.confidence,
+        lines: isDailyReport && cloudResult.lines.isNotEmpty || localResult.lines.isEmpty
+            ? cloudResult.lines
+            : localResult.lines,
+        confidence: isDailyReport
+            ? cloudResult.confidence
+            : localResult.confidence ?? cloudResult.confidence,
       );
     } on local.SmartScanException catch (error) {
       if (cloudResult != null) return cloudResult;
