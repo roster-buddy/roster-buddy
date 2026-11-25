@@ -57,24 +57,56 @@ const _rdwRequestType = 'TYPE=Rest day work request';
 bool _isRdwRequest(ShiftSwap request) =>
     request.notes?.split('\n').first == _rdwRequestType;
 
-Future<void> _completeRdwRequest(DateTime date) async {
+Future<void> _updateRdwRequestStatus(DateTime date, String status) async {
   final client = Supabase.instance.client;
   final user = client.auth.currentUser;
-  if (user == null) return;
+  if (user == null) throw StateError('Sign in to update RDW requests.');
+
+  final dateKey = DateTime(date.year, date.month, date.day)
+      .toIso8601String()
+      .split('T')
+      .first;
+  await client.from('shift_swaps')
+      .update({'status': status})
+      .eq('user_id', user.id)
+      .eq('original_date', dateKey)
+      .eq('status', 'pending')
+      .like('notes', '$_rdwRequestType\n%');
+}
+
+Future<void> _completeRdwRequest(DateTime date) async {
   try {
-    final dateKey = DateTime(date.year, date.month, date.day)
-        .toIso8601String()
-        .split('T')
-        .first;
-    await client.from('shift_swaps')
-        .update({'status': 'approved'})
-        .eq('user_id', user.id)
-        .eq('original_date', dateKey)
-        .eq('status', 'pending')
-        .like('notes', '$_rdwRequestType\n%');
+    await _updateRdwRequestStatus(date, 'approved');
   } catch (_) {
     // The allocated duty has already been saved.
   }
+}
+
+Future<bool> _removeRdwRequest(BuildContext context, DateTime date) async {
+  final confirmed = await showRosterDecisionSheet<bool>(
+    context: context,
+    builder: (dialogContext) => RosterDecisionSheet(
+      title: const Text('Remove RDW request?'),
+      content: Text(
+        'Remove the pending request for ${displayDate(date)} from Roster Buddy. '
+        'If you already emailed Rosters, contact them to withdraw it.',
+      ),
+      actions: [
+        CupertinoDialogAction(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: const Text('Keep request'),
+        ),
+        CupertinoDialogAction(
+          isDestructiveAction: true,
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: const Text('Remove request'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) return false;
+  await _updateRdwRequestStatus(date, 'cancelled');
+  return true;
 }
 
 Uri _rosterBuddyMailUri({required String subject, required String body}) {
@@ -1566,6 +1598,21 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
           leading: const Icon(Icons.schedule_outlined),
           title: const Text('RDW request pending approval'),
           subtitle: Text(_dateLabel(swap.originalDate)),
+          trailing: IconButton(
+            tooltip: 'Remove RDW request',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () async {
+              try {
+                final removed = await _removeRdwRequest(context, swap.originalDate);
+                if (!removed || !mounted) return;
+                widget.onChanged();
+                await _load();
+                if (mounted) _showMessage('RDW request removed.');
+              } catch (_) {
+                if (mounted) _showMessage('Could not remove the RDW request.');
+              }
+            },
+          ),
         ),
       );
     }
@@ -8218,12 +8265,24 @@ class _CalendarPageState extends State<_CalendarPage> {
                     ],
                   ],
                   if (duty != null && duty.dutyType == DutyType.restDay) ...[
-                    if (_pendingRdwDates.contains(_dateKey(date)))
+                    if (_pendingRdwDates.contains(_dateKey(date))) ...[
                       const ListTile(
                         leading: Icon(Icons.schedule_outlined),
                         title: Text('RDW request pending approval'),
-                      )
-                    else
+                      ),
+                      OutlinedButton(
+                        onPressed: () {
+                          Navigator.of(sheetContext).pop();
+                          _handleDayAction(
+                            date: date,
+                            duty: duty,
+                            action: _CalendarDayAction.removeRestDayWork,
+                            resolveFresh: false,
+                          );
+                        },
+                        child: const Text('Remove RDW request'),
+                      ),
+                    ] else
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton(
@@ -8422,7 +8481,8 @@ class _CalendarPageState extends State<_CalendarPage> {
                         Navigator.of(popupContext).pop(action);
                       },
                       isDestructiveAction:
-                          action == _CalendarDayAction.moveRestDayHere,
+                          action == _CalendarDayAction.moveRestDayHere ||
+                          action == _CalendarDayAction.removeRestDayWork,
                       child: Text(_dayActionLabel(action)),
                     ),
                   )
@@ -8454,7 +8514,9 @@ class _CalendarPageState extends State<_CalendarPage> {
 
     if (duty.dutyType == DutyType.restDay) {
       return <_CalendarDayAction>[
-        if (!_pendingRdwDates.contains(_dateKey(duty.date)))
+        if (_pendingRdwDates.contains(_dateKey(duty.date)))
+          _CalendarDayAction.removeRestDayWork
+        else
           _CalendarDayAction.requestRestDayWork,
         _CalendarDayAction.allocateShift,
         _CalendarDayAction.moveRestDays,
@@ -8637,6 +8699,19 @@ class _CalendarPageState extends State<_CalendarPage> {
         }
 
         _showManageAnnualLeaveDialog(date: date, request: leaveRequest);
+        return;
+
+      case _CalendarDayAction.removeRestDayWork:
+        try {
+          final removed = await _removeRdwRequest(context, date);
+          if (!removed || !mounted) return;
+          setState(() => _pendingRdwDates.remove(_dateKey(date)));
+          widget.onRosterChanged();
+          await _loadMonth();
+          _showCalendarMessage('RDW request removed.');
+        } catch (_) {
+          _showCalendarMessage('Could not remove the RDW request.');
+        }
         return;
 
       case _CalendarDayAction.requestRestDayWork:
@@ -9754,6 +9829,8 @@ class _CalendarPageState extends State<_CalendarPage> {
         return 'Allocate shift – RDW';
       case _CalendarDayAction.requestRestDayWork:
         return 'Apply for rest day work';
+      case _CalendarDayAction.removeRestDayWork:
+        return 'Remove RDW request';
       case _CalendarDayAction.makeSundayAvailable:
         return 'Make myself available';
     }
@@ -10973,6 +11050,7 @@ enum _CalendarDayAction {
   manageAnnualLeave,
   allocateShift,
   requestRestDayWork,
+  removeRestDayWork,
   makeSundayAvailable,
   viewDay,
 }
