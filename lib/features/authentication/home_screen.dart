@@ -6933,24 +6933,7 @@ class _CalendarPageState extends State<_CalendarPage> {
         _showCalendarMessage('Roster Buddy could not open your email app.');
         return;
       }
-      if (!mounted) return;
-      final sent = await showRosterDecisionSheet<bool>(
-        context: context,
-        builder: (dialogContext) => RosterDecisionSheet(
-          title: const Text('Did you send the RDW email?'),
-          actions: [
-            CupertinoDialogAction(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Not yet'),
-            ),
-            CupertinoDialogAction(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Mark pending approval'),
-            ),
-          ],
-        ),
-      );
-      if (sent == true && mounted) await _recordPendingRdw(dates);
+      await _recordPendingRdw(dates);
     } catch (_) {
       _showCalendarMessage(
         'Could not prepare your rest day work email. Please try again.',
