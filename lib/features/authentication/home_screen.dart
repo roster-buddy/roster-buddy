@@ -6835,10 +6835,18 @@ class _CalendarPageState extends State<_CalendarPage> {
           ? null
           : await supabase
               .from('driver_profiles')
-              .select('depot, payroll_number')
+              .select('display_name, depot, payroll_number')
               .eq('user_id', user.id)
               .maybeSingle();
       final metadata = user?.userMetadata;
+      final profileName = (profile?['display_name'] ?? '').toString().trim();
+      final registrationName = [
+        metadata?['first_name'],
+        metadata?['last_name'],
+      ].whereType<String>().map((name) => name.trim()).where(
+        (name) => name.isNotEmpty,
+      ).join(' ');
+      final name = profileName.isEmpty ? registrationName : profileName;
       final payrollNumber =
           (profile?['payroll_number'] ?? metadata?['payroll_number'] ?? '')
               .toString()
@@ -6851,9 +6859,15 @@ class _CalendarPageState extends State<_CalendarPage> {
         if (depot.isNotEmpty) depot,
       ];
       final dateList = dates.map(_fullDate).join('\n');
-      final subject = dates.length == 1
-          ? 'Rest Day Work Request - ${_fullDate(dates.first)}'
-          : 'Rest Day Work Request - ${dates.length} dates';
+      final depotCode = depot.isEmpty || depot.toLowerCase() == 'wolverhampton'
+          ? 'WVH'
+          : depot.toUpperCase();
+      final subject = [
+        if (name.isNotEmpty) name,
+        if (payrollNumber.isNotEmpty) payrollNumber,
+        depotCode,
+        'RDW Request',
+      ].join(' ');
       final body = 'Please can I apply for rest day work on:\n\n'
           '$dateList\n\n${details.join('\n')}';
 
