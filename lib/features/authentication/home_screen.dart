@@ -5512,11 +5512,11 @@ class _CalendarPageState extends State<_CalendarPage> {
   Completer<List<Duty>?>? _restDayPicker;
   Map<String, Duty> _restDayChoices = <String, Duty>{};
   final Set<String> _restDaySelected = <String>{};
-  int _restDayRequired = 0;
+  int? _restDayRequired;
   String _restDaySelectionTitle = '';
 
   Future<List<Duty>?> _pickRestDayDates(
-    String title, List<Duty> duties, int count, Duty? initial,
+    String title, List<Duty> duties, int? count, Duty? initial,
   ) {
     if (_restDayPicker != null) _finishRestDaySelection(false);
     final completer = Completer<List<Duty>?>();
@@ -5547,21 +5547,34 @@ class _CalendarPageState extends State<_CalendarPage> {
     picker.complete(selected);
   }
 
-  void _toggleRestDayDate(DateTime date) {
+  bool _canSelectRestDay(DateTime date, Duty? duty) {
+    return _restDayRequired == null
+        ? duty?.dutyType == DutyType.restDay
+        : _restDayChoices.containsKey(_dateKey(date));
+  }
+
+  void _toggleRestDayDate(DateTime date, Duty? duty) {
     final key = _dateKey(date);
-    if (!_restDayChoices.containsKey(key)) return;
+    if (!_canSelectRestDay(date, duty)) return;
+    final requiredCount = _restDayRequired;
     setState(() {
       if (_restDaySelected.contains(key)) {
         _restDaySelected.remove(key);
-      } else if (_restDaySelected.length < _restDayRequired) {
+      } else if (requiredCount == null || _restDaySelected.length < requiredCount) {
+        if (requiredCount == null) _restDayChoices[key] = duty!;
         _restDaySelected.add(key);
       }
     });
   }
 
   Widget _buildRestDaySelectionBar() {
+    final requiredCount = _restDayRequired;
+    final selectedCount = _restDaySelected.length;
+    final canConfirm = requiredCount == null
+        ? selectedCount >= 2
+        : selectedCount == requiredCount;
     return Material(
-      color: const Color(0xFFF4F7FA),
+      color: Theme.of(context).colorScheme.surface,
       elevation: 4,
       child: SafeArea(top: false, child: Padding(
         padding: const EdgeInsets.all(12),
@@ -5575,9 +5588,10 @@ class _CalendarPageState extends State<_CalendarPage> {
             )),
             const SizedBox(width: 12),
             Expanded(child: FilledButton(
-              onPressed: _restDaySelected.length == _restDayRequired
-                  ? () => _finishRestDaySelection(true) : null,
-              child: Text('Confirm (${_restDaySelected.length}/$_restDayRequired)'),
+              onPressed: canConfirm ? () => _finishRestDaySelection(true) : null,
+              child: Text(requiredCount == null
+                  ? 'Open email ($selectedCount)'
+                  : 'Confirm ($selectedCount/$requiredCount)'),
             )),
           ]),
         ]),
@@ -6767,6 +6781,98 @@ class _CalendarPageState extends State<_CalendarPage> {
     await _loadMonth();
   }
 
+  Future<void> _chooseRestDayWorkScope(Duty duty) async {
+    final multiple = await showCupertinoModalPopup<bool>(
+      context: context,
+      builder: (popupContext) => CupertinoActionSheet(
+        title: const Text('Apply for rest day work'),
+        message: Text(_fullDate(duty.date)),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(popupContext).pop(false),
+            child: const Text('Just this date'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(popupContext).pop(true),
+            child: const Text('Multiple dates'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(popupContext).pop(),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+    if (!mounted || multiple == null) return;
+
+    if (multiple) widget.onOpenCalendar();
+    final selected = multiple
+        ? await _pickRestDayDates(
+            'Select at least two rest days',
+            [duty],
+            null,
+            duty,
+          )
+        : [duty];
+    if (!mounted || selected == null) return;
+
+    final dates = selected.map((duty) => duty.date).toList()..sort();
+    try {
+      final resolved = await _dutyResolver.getResolvedDutiesForRange(
+        dates.first,
+        dates.last,
+      );
+      for (final date in dates) {
+        if (resolved[_dateKey(date)]?.dutyType != DutyType.restDay) {
+          _showCalendarMessage('${_fullDate(date)} is no longer a rest day.');
+          return;
+        }
+      }
+
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+      final profile = user == null
+          ? null
+          : await supabase
+              .from('driver_profiles')
+              .select('depot, payroll_number')
+              .eq('user_id', user.id)
+              .maybeSingle();
+      final metadata = user?.userMetadata;
+      final payrollNumber =
+          (profile?['payroll_number'] ?? metadata?['payroll_number'] ?? '')
+              .toString()
+              .trim();
+      final depot =
+          (profile?['depot'] ?? metadata?['depot'] ?? '').toString().trim();
+      final details = [
+        await driverNumberEmailLine(),
+        if (payrollNumber.isNotEmpty) 'Payroll Number: $payrollNumber',
+        if (depot.isNotEmpty) depot,
+      ];
+      final dateList = dates.map(_fullDate).join('\n');
+      final subject = dates.length == 1
+          ? 'Rest Day Work Request - ${_fullDate(dates.first)}'
+          : 'Rest Day Work Request - ${dates.length} dates';
+      final body = 'Please can I apply for rest day work on:\n\n'
+          '$dateList\n\n${details.join('\n')}';
+
+      if (!mounted) return;
+      final opened = await launchUrl(
+        _rosterBuddyMailUri(subject: subject, body: body),
+        mode: LaunchMode.platformDefault,
+        webOnlyWindowName: '_self',
+      );
+      if (!opened) {
+        _showCalendarMessage('Roster Buddy could not open your email app.');
+      }
+    } catch (_) {
+      _showCalendarMessage(
+        'Could not prepare your rest day work email. Please try again.',
+      );
+    }
+  }
+
   Future<void> _chooseAnnualLeaveRequestScope({
     required DateTime date,
     required Duty duty,
@@ -6922,6 +7028,9 @@ class _CalendarPageState extends State<_CalendarPage> {
     final bool isSelectedAnnualLeaveCancellationDate =
         _selectedAnnualLeaveCancellationDateKeys.contains(_dateKey(date));
 
+    final selectableRestDayDuty =
+        isGrantedAnnualLeave && _restDayRequired == null ? null : duty;
+
     return Opacity(
       opacity: belongsToDisplayedMonth ? 1 : 0.42,
       child: Material(
@@ -6934,7 +7043,7 @@ class _CalendarPageState extends State<_CalendarPage> {
           borderRadius: BorderRadius.circular(11),
           onTap: () {
             if (_restDayPicker != null) {
-              _toggleRestDayDate(date);
+              _toggleRestDayDate(date, selectableRestDayDuty);
               return;
             }
             if (_isSelectingAnnualLeaveCancellationDates) {
@@ -7028,12 +7137,12 @@ class _CalendarPageState extends State<_CalendarPage> {
                         ),
                       ),
                     ),)),
-                    if (_restDayPicker != null && _restDayChoices.containsKey(_dateKey(date)))
+                    if (_restDayPicker != null && _canSelectRestDay(date, selectableRestDayDuty))
                       SizedBox(width: 22, height: 22, child: Checkbox(
                         value: _restDaySelected.contains(_dateKey(date)),
                         fillColor: const WidgetStatePropertyAll(Colors.white),
                         checkColor: railwayBlue,
-                        onChanged: (_) => _toggleRestDayDate(date),
+                        onChanged: (_) => _toggleRestDayDate(date, selectableRestDayDuty),
                       )),
                     if (isSelectedAnnualLeaveDate ||
                         isSelectedAnnualLeaveCancellationDate)
@@ -8001,6 +8110,21 @@ class _CalendarPageState extends State<_CalendarPage> {
                   if (duty != null && duty.dutyType == DutyType.restDay) ...[
                     SizedBox(
                       width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.of(sheetContext).pop();
+                          _handleDayAction(
+                            date: date,
+                            duty: duty,
+                            action: _CalendarDayAction.requestRestDayWork,
+                          );
+                        },
+                        child: const Text('Apply for rest day work'),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
                       child: FilledButton.icon(
                         onPressed: () {
                           Navigator.of(sheetContext).pop();
@@ -8214,6 +8338,7 @@ class _CalendarPageState extends State<_CalendarPage> {
 
     if (duty.dutyType == DutyType.restDay) {
       return <_CalendarDayAction>[
+        _CalendarDayAction.requestRestDayWork,
         _CalendarDayAction.allocateShift,
         _CalendarDayAction.moveRestDays,
         if (duty.source == RosterSource.manual)
@@ -8395,6 +8520,14 @@ class _CalendarPageState extends State<_CalendarPage> {
         }
 
         _showManageAnnualLeaveDialog(date: date, request: leaveRequest);
+        return;
+
+      case _CalendarDayAction.requestRestDayWork:
+        if (effectiveDuty == null || effectiveDuty.dutyType != DutyType.restDay) {
+          _showCalendarMessage('You can only apply for work on a rest day.');
+          return;
+        }
+        await _chooseRestDayWorkScope(effectiveDuty);
         return;
 
       case _CalendarDayAction.allocateShift:
@@ -9502,6 +9635,8 @@ class _CalendarPageState extends State<_CalendarPage> {
         return 'Manage annual leave';
       case _CalendarDayAction.allocateShift:
         return 'Allocate shift – RDW';
+      case _CalendarDayAction.requestRestDayWork:
+        return 'Apply for rest day work';
       case _CalendarDayAction.makeSundayAvailable:
         return 'Make myself available';
     }
@@ -10719,6 +10854,7 @@ enum _CalendarDayAction {
   requestAnnualLeave,
   manageAnnualLeave,
   allocateShift,
+  requestRestDayWork,
   makeSundayAvailable,
   viewDay,
 }
