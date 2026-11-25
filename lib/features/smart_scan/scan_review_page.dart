@@ -281,6 +281,18 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
     }
   }
 
+  Future<void> _checkDocumentType(DocumentType type) async {
+    if (_busy || _completed) return;
+    setState(() {
+      if (_type != type) _activation = null;
+      _type = type;
+      _parsed = null;
+      _excludeUnreadable = false;
+      _error = null;
+    });
+    await _prepare(automatic: true);
+  }
+
   Future<void> _prepare({bool automatic = false, bool editActivation = false}) async {
     if (_type == DocumentType.baseRoster && (_activation == null || editActivation)) {
       final activation = await Navigator.of(context).push<BaseRosterActivation>(
@@ -456,44 +468,24 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
         ),
         const SizedBox(height: 12),
         const Text(
-          'Choose the document type, then check the rows. Complete shift sheets are applied automatically; anything unclear stays here for correction.',
+          'Tap the document type to check and apply the scan. '
+          'Unclear rows stay here for correction.',
         ),
-        const SizedBox(height: 16),
-        DropdownButtonFormField<DocumentType>(
-          key: ValueKey(_type),
-          initialValue: _type == DocumentType.unknown ? null : _type,
-          decoration: const InputDecoration(
-            labelText: 'Document type',
-            border: OutlineInputBorder(),
-          ),
-          items: DocumentType.values
-              .where((type) => type != DocumentType.unknown)
-              .map(
-                (type) =>
-                    DropdownMenuItem(value: type, child: Text(type.scanLabel)),
-              )
-              .toList(),
-          onChanged: (type) {
-            if (type != null) {
-              setState(() {
-                _type = type;
-                _parsed = null;
-                _excludeUnreadable = false;
-                _activation = null;
-                _error = null;
-              });
-              if (type == DocumentType.baseRoster) {
-                _prepare();
-              }
-            }
-          },
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            for (final type in DocumentType.values)
+              if (type != DocumentType.unknown)
+                FilledButton.tonal(
+                  onPressed: _parsed != null && _type == type
+                      ? null
+                      : () => _checkDocumentType(type),
+                  child: Text(type.scanLabel),
+                ),
+          ],
         ),
-        if (_type == DocumentType.unknown) ...[
-          const SizedBox(height: 12),
-          const Text(
-            'Choose which kind of roster or document you are uploading.',
-          ),
-        ],
         if (_pages!.any((p) => p.confidence != null && p.confidence! < 65))
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
@@ -756,33 +748,27 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
                       child: Text(_busy ? 'Cancel scan' : 'Cancel'),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed:
-                          _busy ||
-                              _pages == null ||
-                              _type == DocumentType.unknown
-                          ? null
-                          : parsed == null
-                          ? () => _prepare(automatic: true)
-                          : !parsed.canImport
-                          ? null
-                          : () => Navigator.pop(
-                              context,
-                              ReviewedDocument(_type,
-                                ScanImportPolicy.allRowsRead(parsed, _pages!)
-                                    ? parsed.copyWith(allRowsRead: true) : parsed,
-                                _activation, baseRosterPages: _baseRosterPages),
-                            ),
-                      child: Text(
-                        parsed != null ? 'Import records'
-                            : _type == DocumentType.baseRoster
-                                ? 'Set publish date'
-                            : 'Check and apply',
+                  if (!_busy && parsed != null) ...[
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: !parsed.canImport
+                            ? null
+                            : () => Navigator.pop(
+                                context,
+                                ReviewedDocument(
+                                  _type,
+                                  ScanImportPolicy.allRowsRead(parsed, _pages!)
+                                      ? parsed.copyWith(allRowsRead: true)
+                                      : parsed,
+                                  _activation,
+                                  baseRosterPages: _baseRosterPages,
+                                ),
+                              ),
+                        child: const Text('Import records'),
                       ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),

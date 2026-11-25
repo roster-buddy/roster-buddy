@@ -21,9 +21,9 @@ const pages = [
 ];
 
 Future<void> chooseType(WidgetTester tester, String label) async {
-  await tester.tap(find.byType(DropdownButtonFormField<DocumentType>));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text(label).last);
+  final button = find.widgetWithText(FilledButton, label);
+  await tester.ensureVisible(button);
+  await tester.tap(button);
   await tester.pumpAndSettle();
 }
 
@@ -87,10 +87,8 @@ void main() {
     await tester.tap(find.text('Upload'));
     await tester.pumpAndSettle();
     expect(confirmed, isNull);
-    expect(find.text('48-Hour Amendment'), findsNothing);
+    expect(find.widgetWithText(FilledButton, '48-Hour Amendment'), findsOneWidget);
     await chooseType(tester, '48-Hour Amendment');
-    await tester.tap(find.text('Check and apply'));
-    await tester.pumpAndSettle();
     expect(find.text('1 records found'), findsOneWidget);
     expect(find.textContaining('records to review'), findsNothing);
     expect(confirmed, isNull);
@@ -122,7 +120,7 @@ void main() {
     expect(find.text('Mutual permanent swap'), findsNothing);
     await tester.pageBack();
     await tester.pumpAndSettle();
-    expect(find.text('Set publish date'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Base Roster'), findsOneWidget);
   });
 
   testWidgets('blocking parser warnings prevent import', (tester) async {
@@ -144,8 +142,6 @@ void main() {
     );
     await tester.pumpAndSettle();
     await chooseType(tester, '48-Hour Amendment');
-    await tester.tap(find.text('Check and apply'));
-    await tester.pumpAndSettle();
     expect(find.text('Date is ambiguous'), findsOneWidget);
     expect(
       tester
@@ -181,7 +177,7 @@ void main() {
     expect(find.text('Retry scan'), findsOneWidget);
     await tester.tap(find.text('Retry scan'));
     await tester.pumpAndSettle();
-    expect(find.text('48-Hour Amendment'), findsNothing);
+    expect(find.widgetWithText(FilledButton, '48-Hour Amendment'), findsOneWidget);
     expect(scans, 2);
     expect(parses, 0);
   });
@@ -199,14 +195,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('No readable text'), findsOneWidget);
-    expect(
-      tester
-          .widget<FilledButton>(
-            find.widgetWithText(FilledButton, 'Check and apply'),
-          )
-          .onPressed,
-      isNull,
-    );
+    expect(find.widgetWithText(FilledButton, '48-Hour Amendment'), findsNothing);
+    expect(find.text('Import records'), findsNothing);
   });
   testWidgets('unreadable rows require an explicit exclusion choice', (
     tester,
@@ -230,8 +220,6 @@ void main() {
     );
     await tester.pumpAndSettle();
     await chooseType(tester, '48-Hour Amendment');
-    await tester.tap(find.text('Check and apply'));
-    await tester.pumpAndSettle();
     expect(
       tester
           .widget<FilledButton>(
@@ -274,8 +262,6 @@ void main() {
     );
     await tester.pumpAndSettle();
     await chooseType(tester, '48-Hour Amendment');
-    await tester.tap(find.text('Check and apply'));
-    await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Add missing shift'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Add missing shift'));
@@ -316,8 +302,6 @@ void main() {
     expect(confirmed, isNull);
     expect(parses, 0);
     await chooseType(tester, '7-Day Amendment');
-    await tester.tap(find.text('Check and apply'));
-    await tester.pumpAndSettle();
     expect(confirmed, isNotNull);
     expect(confirmed!.result.allRowsRead, isTrue);
     expect(confirmed!.type, DocumentType.sevenDayAmendment);
@@ -335,8 +319,6 @@ void main() {
     )));
     await tester.pumpAndSettle();
     await chooseType(tester, '7-Day Amendment');
-    await tester.tap(find.text('Check and apply'));
-    await tester.pumpAndSettle();
     expect(find.text('Tap to correct this row'), findsOneWidget);
     expect(tester.widget<FilledButton>(
       find.widgetWithText(FilledButton, 'Import records')).onPressed, isNull);
@@ -377,8 +359,6 @@ void main() {
     )));
     await tester.pumpAndSettle();
     await chooseType(tester, '7-Day Amendment');
-    await tester.tap(find.text('Check and apply'));
-    await tester.pumpAndSettle();
     expect(find.textContaining('1 rows need correction'), findsOneWidget);
     expect(find.textContaining('D Guest 3685 WOD NDNA'), findsOneWidget);
     expect(find.textContaining('S Rees · Payroll 0184'), findsNothing);
