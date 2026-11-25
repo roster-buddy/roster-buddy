@@ -52,6 +52,31 @@ import '../upload/upload_service.dart';
 import '../smart_scan/scan_review_page.dart';
 import '../settings/settings_page.dart';
 
+const _rdwRequestType = 'TYPE=Rest day work request';
+
+bool _isRdwRequest(ShiftSwap request) =>
+    request.notes?.split('\n').first == _rdwRequestType;
+
+Future<void> _completeRdwRequest(DateTime date) async {
+  final client = Supabase.instance.client;
+  final user = client.auth.currentUser;
+  if (user == null) return;
+  try {
+    final dateKey = DateTime(date.year, date.month, date.day)
+        .toIso8601String()
+        .split('T')
+        .first;
+    await client.from('shift_swaps')
+        .update({'status': 'approved'})
+        .eq('user_id', user.id)
+        .eq('original_date', dateKey)
+        .eq('status', 'pending')
+        .like('notes', '$_rdwRequestType\n%');
+  } catch (_) {
+    // The allocated duty has already been saved.
+  }
+}
+
 Uri _rosterBuddyMailUri({required String subject, required String body}) {
   return Uri.parse(
     'mailto:drivers.rosters@wmtrains.co.uk'
@@ -1535,6 +1560,15 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
   }
 
   Widget _buildShiftSwapCard(ShiftSwap swap) {
+    if (_isRdwRequest(swap)) {
+      return Card(
+        child: ListTile(
+          leading: const Icon(Icons.schedule_outlined),
+          title: const Text('RDW request pending approval'),
+          subtitle: Text(_dateLabel(swap.originalDate)),
+        ),
+      );
+    }
     if (swap.notes?.startsWith('TYPE=Rest day move') == true) {
       final pairs = restDayMovePairs(swap.notes!);
       return Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(
@@ -2393,7 +2427,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                     Icon(Icons.swap_horiz_outlined, color: Color(0xFF1769AA)),
                     SizedBox(width: 8),
                     Text(
-                      'Mutual shift swaps',
+                      'Shift swaps and rest day work',
                       style: TextStyle(color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 17,
                         fontWeight: FontWeight.w900,
@@ -2403,7 +2437,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Shift swaps waiting for a decision from Rosters / DTCM.',
+                  'Requests waiting for a decision from Rosters / DTCM.',
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 12),
@@ -2417,7 +2451,7 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                           SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              'No pending mutual shift swaps.',
+                              'No pending shift swap or rest day work requests.',
                               style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ),
                           ),
@@ -4583,6 +4617,7 @@ class _DashboardPageState extends State<_DashboardPage> {
                       bookOff: bookOff,
                       originalDuty: originalDuty,
                     );
+                    await _completeRdwRequest(date);
 
                     if (!mounted || !sheetContext.mounted) {
                       return;
@@ -5488,6 +5523,7 @@ class _CalendarPage extends StatefulWidget {
 class _CalendarPageState extends State<_CalendarPage> {
   final ScrollController _calendarScrollController = ScrollController();
   List<ShiftSwap> _restDayMoves = <ShiftSwap>[];
+  Set<String> _pendingRdwDates = <String>{};
 
   @override
   void dispose() {
@@ -5549,7 +5585,8 @@ class _CalendarPageState extends State<_CalendarPage> {
 
   bool _canSelectRestDay(DateTime date, Duty? duty) {
     return _restDayRequired == null
-        ? duty?.dutyType == DutyType.restDay
+        ? duty?.dutyType == DutyType.restDay &&
+            !_pendingRdwDates.contains(_dateKey(date))
         : _restDayChoices.containsKey(_dateKey(date));
   }
 
@@ -5809,6 +5846,11 @@ class _CalendarPageState extends State<_CalendarPage> {
       setState(() {
         _loadedMonthKey = monthKey;
         _restDayMoves = moves.where((move) => move.status == ShiftSwapStatus.pending && move.notes?.startsWith('TYPE=Rest day move') == true).toList();
+        _pendingRdwDates = moves
+            .where((request) =>
+                request.status == ShiftSwapStatus.pending && _isRdwRequest(request))
+            .map((request) => _dateKey(request.originalDate))
+            .toSet();
         _dutiesByDate = dutiesByDate;
         _leaveRequestsByDate = leaveRequestsByDate;
         _advanceLeaveDateKeys = scheduledDateKeys;
@@ -6782,19 +6824,23 @@ class _CalendarPageState extends State<_CalendarPage> {
   }
 
   Future<void> _chooseRestDayWorkScope(Duty duty) async {
-    final multiple = await showCupertinoModalPopup<bool>(
+    final scope = await showCupertinoModalPopup<String>(
       context: context,
       builder: (popupContext) => CupertinoActionSheet(
         title: const Text('Apply for rest day work'),
         message: Text(_fullDate(duty.date)),
         actions: [
           CupertinoActionSheetAction(
-            onPressed: () => Navigator.of(popupContext).pop(false),
+            onPressed: () => Navigator.of(popupContext).pop('single'),
             child: const Text('Just this date'),
           ),
           CupertinoActionSheetAction(
-            onPressed: () => Navigator.of(popupContext).pop(true),
+            onPressed: () => Navigator.of(popupContext).pop('multiple'),
             child: const Text('Multiple dates'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(popupContext).pop('sent'),
+            child: const Text('Already sent for this date'),
           ),
         ],
         cancelButton: CupertinoActionSheetAction(
@@ -6803,8 +6849,9 @@ class _CalendarPageState extends State<_CalendarPage> {
         ),
       ),
     );
-    if (!mounted || multiple == null) return;
+    if (!mounted || scope == null) return;
 
+    final multiple = scope == 'multiple';
     if (multiple) widget.onOpenCalendar();
     final selected = multiple
         ? await _pickRestDayDates(
@@ -6827,6 +6874,11 @@ class _CalendarPageState extends State<_CalendarPage> {
           _showCalendarMessage('${_fullDate(date)} is no longer a rest day.');
           return;
         }
+      }
+
+      if (scope == 'sent') {
+        await _recordPendingRdw(dates);
+        return;
       }
 
       final supabase = Supabase.instance.client;
@@ -6879,10 +6931,64 @@ class _CalendarPageState extends State<_CalendarPage> {
       );
       if (!opened) {
         _showCalendarMessage('Roster Buddy could not open your email app.');
+        return;
       }
+      if (!mounted) return;
+      final sent = await showRosterDecisionSheet<bool>(
+        context: context,
+        builder: (dialogContext) => RosterDecisionSheet(
+          title: const Text('Did you send the RDW email?'),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Not yet'),
+            ),
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Mark pending approval'),
+            ),
+          ],
+        ),
+      );
+      if (sent == true && mounted) await _recordPendingRdw(dates);
     } catch (_) {
       _showCalendarMessage(
         'Could not prepare your rest day work email. Please try again.',
+      );
+    }
+  }
+
+  Future<void> _recordPendingRdw(List<DateTime> dates) async {
+    try {
+      final client = Supabase.instance.client;
+      final user = client.auth.currentUser;
+      if (user == null) throw StateError('Sign in to save RDW requests.');
+
+      final pending = (await _shiftSwapService.getRequests())
+          .where((request) =>
+              request.status == ShiftSwapStatus.pending && _isRdwRequest(request))
+          .map((request) => _dateKey(request.originalDate))
+          .toSet();
+      final createdAt = DateTime.now().toUtc().toIso8601String();
+      final rows = [
+        for (final date in dates)
+          if (!pending.contains(_dateKey(date)))
+            {
+              'user_id': user.id,
+              'original_date': _dateKey(date),
+              'requested_date': _dateKey(date),
+              'status': 'pending',
+              'notes': '$_rdwRequestType\nCREATED_AT=$createdAt',
+            },
+      ];
+      if (rows.isNotEmpty) await client.from('shift_swaps').insert(rows);
+      if (!mounted) return;
+      widget.onRosterChanged();
+      await _loadMonth();
+      _showCalendarMessage('Rest day work request pending approval.');
+    } catch (_) {
+      _showCalendarMessage(
+        'Could not save the pending request. Use Already sent for this date to retry.',
       );
     }
   }
@@ -7240,7 +7346,14 @@ class _CalendarPageState extends State<_CalendarPage> {
                     RosterJobSummary(duty: duty!, foreground: foreground, fontSize: 10)
                   else ...[
                   Text(
-                    isGrantedAnnualLeave ? 'Leave' : duty?.remarks?.contains('awaiting allocation') == true ? 'Allocate duty' : _shortDutyLabel(duty!),
+                    isGrantedAnnualLeave
+                        ? 'Leave'
+                        : duty?.dutyType == DutyType.restDay &&
+                              _pendingRdwDates.contains(_dateKey(date))
+                        ? 'RDW pending'
+                        : duty?.remarks?.contains('awaiting allocation') == true
+                        ? 'Allocate duty'
+                        : _shortDutyLabel(duty!),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -8122,20 +8235,26 @@ class _CalendarPageState extends State<_CalendarPage> {
                     ],
                   ],
                   if (duty != null && duty.dutyType == DutyType.restDay) ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        onPressed: () {
-                          Navigator.of(sheetContext).pop();
-                          _handleDayAction(
-                            date: date,
-                            duty: duty,
-                            action: _CalendarDayAction.requestRestDayWork,
-                          );
-                        },
-                        child: const Text('Apply for rest day work'),
+                    if (_pendingRdwDates.contains(_dateKey(date)))
+                      const ListTile(
+                        leading: Icon(Icons.schedule_outlined),
+                        title: Text('RDW request pending approval'),
+                      )
+                    else
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: () {
+                            Navigator.of(sheetContext).pop();
+                            _handleDayAction(
+                              date: date,
+                              duty: duty,
+                              action: _CalendarDayAction.requestRestDayWork,
+                            );
+                          },
+                          child: const Text('Apply for rest day work'),
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 10),
                     SizedBox(
                       width: double.infinity,
@@ -8352,7 +8471,8 @@ class _CalendarPageState extends State<_CalendarPage> {
 
     if (duty.dutyType == DutyType.restDay) {
       return <_CalendarDayAction>[
-        _CalendarDayAction.requestRestDayWork,
+        if (!_pendingRdwDates.contains(_dateKey(duty.date)))
+          _CalendarDayAction.requestRestDayWork,
         _CalendarDayAction.allocateShift,
         _CalendarDayAction.moveRestDays,
         if (duty.source == RosterSource.manual)
@@ -10503,6 +10623,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                   bookOff: bookOff,
                   originalDuty: originalDuty,
                 );
+                await _completeRdwRequest(date);
 
                 if (!sheetContext.mounted) {
                   return;
