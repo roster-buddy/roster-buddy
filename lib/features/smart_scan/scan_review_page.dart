@@ -473,7 +473,7 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
         ),
         const SizedBox(height: 12),
         Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             for (final type in DocumentType.values)
               if (type != DocumentType.unknown)
