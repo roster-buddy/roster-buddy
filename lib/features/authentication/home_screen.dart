@@ -7333,7 +7333,7 @@ class _CalendarPageState extends State<_CalendarPage> {
                         ? 'Leave'
                         : duty?.dutyType == DutyType.restDay &&
                               _pendingRdwDates.contains(_dateKey(date))
-                        ? 'RDW pending'
+                        ? 'RDW?'
                         : duty?.remarks?.contains('awaiting allocation') == true
                         ? 'Allocate duty'
                         : _shortDutyLabel(duty!),
