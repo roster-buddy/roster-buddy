@@ -472,9 +472,8 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
           'Unclear rows stay here for correction.',
         ),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 4,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             for (final type in DocumentType.values)
               if (type != DocumentType.unknown)
