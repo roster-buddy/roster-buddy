@@ -2636,6 +2636,8 @@ class _DashboardPageState extends State<_DashboardPage> {
   Map<String, AnnualLeaveRequest> _thisWeekLeaveRequests =
       <String, AnnualLeaveRequest>{};
   Set<String> _dashboardPersonalNoteDateKeys = <String>{};
+  Set<String> _dashboardPendingRdwDates = <String>{};
+  int _dashboardLoadGeneration = 0;
 
   bool _isLoading = true;
   String? _loadError;
@@ -2656,6 +2658,7 @@ class _DashboardPageState extends State<_DashboardPage> {
   }
 
   Future<void> _loadDashboardDuties() async {
+    final generation = ++_dashboardLoadGeneration;
     setState(() {
       _isLoading = true;
       _hidden18Result = null;
@@ -2687,11 +2690,20 @@ class _DashboardPageState extends State<_DashboardPage> {
               .getNoteDates(today, fatigueRangeEnd)
               .catchError((_) => <String>{});
 
+      final swapRequestsFuture = ShiftSwapService()
+          .getRequests()
+          .catchError((_) => const <ShiftSwap>[]);
+
       final Map<String, Duty> fatigueRangeDuties = await dutiesFuture;
       final Map<String, AnnualLeaveRequest> thisWeekLeaveRequests =
           await leaveRequestsFuture;
       final Set<String> dashboardPersonalNoteDateKeys =
           await personalNoteDatesFuture;
+      final pendingRdwDates = (await swapRequestsFuture)
+          .where((request) =>
+              request.status == ShiftSwapStatus.pending && _isRdwRequest(request))
+          .map((request) => _dashboardDateKey(request.originalDate))
+          .toSet();
 
       final Map<String, Duty> thisWeekDuties = <String, Duty>{
         for (final DateTime date in nextSevenDates)
@@ -2742,7 +2754,7 @@ class _DashboardPageState extends State<_DashboardPage> {
 
       final Duty? todayDuty = fatigueRangeDuties[_dashboardDateKey(today)];
 
-      if (!mounted) {
+      if (!mounted || generation != _dashboardLoadGeneration) {
         return;
       }
 
@@ -2752,11 +2764,12 @@ class _DashboardPageState extends State<_DashboardPage> {
         _thisWeekDuties = thisWeekDuties;
         _thisWeekLeaveRequests = thisWeekLeaveRequests;
         _dashboardPersonalNoteDateKeys = dashboardPersonalNoteDateKeys;
+        _dashboardPendingRdwDates = pendingRdwDates;
         _hidden18Result = hidden18Result;
         _isLoading = false;
       });
     } catch (error) {
-      if (!mounted) {
+      if (!mounted || generation != _dashboardLoadGeneration) {
         return;
       }
 
@@ -2766,6 +2779,7 @@ class _DashboardPageState extends State<_DashboardPage> {
         _thisWeekDuties = <String, Duty>{};
         _thisWeekLeaveRequests = <String, AnnualLeaveRequest>{};
         _dashboardPersonalNoteDateKeys = <String>{};
+        _dashboardPendingRdwDates = <String>{};
         _isLoading = false;
         _loadError = error is DutyResolverException
             ? error.message
@@ -3118,6 +3132,8 @@ class _DashboardPageState extends State<_DashboardPage> {
     final bool isToday = _sameDashboardDate(date, DateTime.now());
     final bool isGrantedAnnualLeave =
         leaveRequest?.status == AnnualLeaveRequestStatus.granted;
+    final bool hasPendingRdw = duty?.dutyType == DutyType.restDay &&
+        _dashboardPendingRdwDates.contains(_dashboardDateKey(date));
     final bool hasPersonalNote = _dashboardPersonalNoteDateKeys.contains(
       _dashboardDateKey(date),
     );
@@ -3187,6 +3203,8 @@ class _DashboardPageState extends State<_DashboardPage> {
               Text(
                 isGrantedAnnualLeave
                     ? 'Leave'
+                    : hasPendingRdw
+                    ? 'RDW?'
                     : duty == null
                     ? '—'
                     : _dashboardWeekStatus(duty),
