@@ -11,7 +11,12 @@ class RosterUpdateCard extends StatelessWidget {
     padding: const EdgeInsets.all(16),
     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Text(notice.title,
-        style: TextStyle(fontWeight: FontWeight.w800, color: notice.needsInvestigation ? const Color(0xFFD64545) : const Color(0xFF102A43))),
+        style: TextStyle(
+          fontWeight: FontWeight.w800,
+          color: notice.needsInvestigation
+              ? Theme.of(context).colorScheme.error
+              : Theme.of(context).colorScheme.onSurface,
+        )),
       const SizedBox(height: 8),
       if (notice.needsInvestigation)
         const Text('You have annual leave recorded, but this sheet lists you working. Your annual leave has been kept.'),
