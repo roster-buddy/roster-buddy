@@ -1053,6 +1053,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
       showDragHandle: true,
       isScrollControlled: true,
       builder: (BuildContext sheetContext) {
+        final colours = Theme.of(sheetContext).colorScheme;
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
@@ -1063,7 +1064,7 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                 Text(
                   '$_leaveYear floating leave',
                   style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
+                    color: colours.onSurface,
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
                   ),
@@ -1071,14 +1072,14 @@ class _AnnualLeaveSettingsPageState extends State<AnnualLeaveSettingsPage> {
                 const SizedBox(height: 6),
                 Text(
                   'Allowance breakdown',
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  style: TextStyle(color: colours.onSurfaceVariant),
                 ),
                 const SizedBox(height: 20),
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: railwayBlue.withValues(alpha: 0.07),
+                    color: colours.surfaceContainer,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
@@ -3969,13 +3970,14 @@ class _AnnualLeaveSummaryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colours = Theme.of(context).colorScheme;
     return Row(
       children: [
         Expanded(
           child: Text(
             label,
             style: TextStyle(
-              color: const Color(0xFF52667A),
+              color: bold ? colours.onSurface : colours.onSurfaceVariant,
               fontWeight: bold ? FontWeight.w800 : FontWeight.w500,
             ),
           ),
@@ -3983,7 +3985,7 @@ class _AnnualLeaveSummaryRow extends StatelessWidget {
         Text(
           value,
           style: TextStyle(
-            color: const Color(0xFF102A43),
+            color: colours.onSurface,
             fontWeight: bold ? FontWeight.w900 : FontWeight.w700,
           ),
         ),
