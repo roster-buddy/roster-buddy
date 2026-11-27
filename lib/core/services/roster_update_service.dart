@@ -30,7 +30,13 @@ class RosterUpdateNotice {
       remarks: 'Allocated from uploaded $source sheet after reviewing annual leave conflict');
   }
 
-  String get detail => RosterNotificationText.detail(source, start, finish, turn);
+  bool get sheetShowsWorking =>
+      const {'working', 'training', 'medical'}.contains(dutyType);
+
+  String get sheetDutyLabel => RosterNotificationText.label(amendmentCode, dutyType);
+  String get detail => kind == 'leave_confirmed'
+      ? '$source confirms your annual leave'
+      : RosterNotificationText.detail(source, start, finish, turn);
 }
 
 class RosterUpdateService {
@@ -47,7 +53,8 @@ class RosterUpdateService {
     final cutoff = since ?? DateTime.now().subtract(const Duration(days: 30));
     final historyStart = profile?['roster_history_start_date'] as String?;
     final query = client.from('document_duties')
-        .select('duty_date, source, payroll_number, duty_type, document_id, book_on, book_off, turn_number, amendment_code, created_at')
+        .select('duty_date, source, payroll_number, duty_type, document_id, book_on, book_off, turn_number, amendment_code, created_at, roster_documents!inner(processing_status)')
+        .eq('roster_documents.processing_status', 'processed')
         .like('payroll_number', '%$key')
         .inFilter('source', ['10_day', '7_day', '48_hour'])
         .gt('created_at', cutoff.toUtc().toIso8601String());
@@ -58,10 +65,16 @@ class RosterUpdateService {
     final dates = rows.map((row) => DateTime.tryParse(row['duty_date']?.toString() ?? ''))
         .whereType<DateTime>().toList()..sort();
     final annualLeaveDates = <String>{};
+    final manualLeaveDates = <String>{};
     if (dates.isNotEmpty) {
       final resolved = await DutyResolver().getResolvedDutiesForRange(dates.first, dates.last);
       for (final entry in resolved.entries) {
-        if (entry.value.dutyType == DutyType.annualLeave) annualLeaveDates.add(entry.key);
+        if (entry.value.dutyType == DutyType.annualLeave) {
+          annualLeaveDates.add(entry.key);
+          if (entry.value.source == RosterSource.manual) {
+            manualLeaveDates.add(entry.key);
+          }
+        }
       }
     }
     if (dates.isNotEmpty) {
@@ -82,7 +95,7 @@ class RosterUpdateService {
     final viewed = await client.from('roster_update_views').select('notice_key')
         .eq('user_id', user.id)
         .gt('received_at', cutoff.toUtc().toIso8601String());
-    return fromRows(rows, viewedKeys: viewed.map((row) => row['notice_key'] as String).toSet(), payrollNumber: payroll, since: cutoff, annualLeaveDates: annualLeaveDates, eventKinds: kinds, seenAt: DateTime.tryParse(profile?['roster_updates_seen_at']?.toString() ?? ''));
+    return fromRows(rows, viewedKeys: viewed.map((row) => row['notice_key'] as String).toSet(), payrollNumber: payroll, since: cutoff, annualLeaveDates: annualLeaveDates, manualLeaveDates: manualLeaveDates, eventKinds: kinds, seenAt: DateTime.tryParse(profile?['roster_updates_seen_at']?.toString() ?? ''));
   }
 
   Future<void> markViewed(List<RosterUpdateNotice> viewed) async {
@@ -101,12 +114,18 @@ class RosterUpdateService {
   static List<RosterUpdateNotice> fromRows(List<Map<String, dynamic>> rows, {
     required String? payrollNumber, required DateTime since,
     Set<String> annualLeaveDates = const {},
+    Set<String> manualLeaveDates = const {},
     Map<String, String> eventKinds = const {},
     DateTime? seenAt,
     Set<String> viewedKeys = const {},
   }) {
     final notices = <String, RosterUpdateNotice>{};
     const labels = {'10_day': '10D', '7_day': '7D', '48_hour': '48HR'};
+    const priority = {'10D': 1, '7D': 2, '48HR': 3};
+    const nonLeaveTypes = {
+      'working', 'training', 'medical', 'rest_day', 'sick',
+      'unavailable', 'public_holiday',
+    };
     String clock(dynamic value) {
       final text = value?.toString() ?? '';
       return text.length >= 5 ? text.substring(0, 5) : '—';
@@ -117,15 +136,27 @@ class RosterUpdateService {
       final date = row['duty_date']?.toString() ?? '';
       final source = labels[row['source']];
       if (received == null || !received.isAfter(since) || source == null || DateTime.tryParse(date) == null) continue;
+      final type = row['duty_type']?.toString();
+      final manualLeave = manualLeaveDates.contains(date);
       final notice = RosterUpdateNotice(date, received, source, clock(row['book_on']), clock(row['book_off']), row['turn_number']?.toString() ?? '',
         documentId: row['document_id']?.toString(),
-        dutyType: row['duty_type']?.toString() ?? 'working',
+        dutyType: type ?? 'working',
         amendmentCode: row['amendment_code']?.toString(),
-        kind: eventKinds['${row['document_id']}|$date'] ?? 'allocated',
-        needsInvestigation: annualLeaveDates.contains(date) && ['working', 'training', 'medical'].contains(row['duty_type']),
+        kind: manualLeave && type == 'annual_leave'
+            ? 'leave_confirmed'
+            : eventKinds['${row['document_id']}|$date'] ?? 'allocated',
+        needsInvestigation: manualLeave
+            ? nonLeaveTypes.contains(type)
+            : annualLeaveDates.contains(date) &&
+                const {'working', 'training', 'medical'}.contains(type),
       );
-      final key = '$date|$source';
-      if (notices[key] == null || received.isAfter(notices[key]!.receivedAt)) notices[key] = notice;
+      final key = manualLeave ? date : '$date|$source';
+      final previous = notices[key];
+      if (previous == null ||
+          priority[source]! > priority[previous.source]! ||
+          (source == previous.source && received.isAfter(previous.receivedAt))) {
+        notices[key] = notice;
+      }
     }
     return notices.values.where((notice) => notice.needsInvestigation ||
         !((seenAt != null && !notice.receivedAt.isAfter(seenAt)) ||

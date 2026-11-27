@@ -46,6 +46,38 @@ void main() {
       since: DateTime.utc(2026, 11, 2)).single.needsInvestigation, isFalse);
   });
 
+  test('manual leave checks all three amendment sources', () {
+    for (final source in ['10_day', '7_day', '48_hour']) {
+      final sheet = row('2319', '2026-11-02T12:00:00Z', source: source);
+      RosterUpdateNotice notice(String type) => RosterUpdateService.fromRows(
+        [{...sheet, 'duty_type': type}],
+        payrollNumber: '52319',
+        since: DateTime.utc(2026, 11, 2),
+        manualLeaveDates: {'2026-11-05'},
+      ).single;
+
+      expect(notice('annual_leave').title, 'Annual leave granted on 5/11/26');
+      expect(notice('annual_leave').needsInvestigation, isFalse);
+      for (final type in ['working', 'rest_day']) {
+        expect(notice(type).title, 'Annual leave not shown on 5/11/26');
+        expect(notice(type).needsInvestigation, isTrue);
+      }
+      expect(notice('unknown').needsInvestigation, isFalse);
+    }
+  });
+
+  test('the highest-priority amendment settles an older manual leave conflict', () {
+    final notices = RosterUpdateService.fromRows([
+      {...row('2319', '2026-11-02T12:00:00Z', source: '7_day'),
+        'duty_type': 'working'},
+      {...row('2319', '2026-11-02T11:00:00Z', source: '48_hour'),
+        'duty_type': 'annual_leave'},
+    ], payrollNumber: '52319', since: DateTime.utc(2026, 11, 2),
+       manualLeaveDates: {'2026-11-05'});
+    expect(notices.single.source, '48HR');
+    expect(notices.single.kind, 'leave_confirmed');
+  });
+
   test('allocating a conflict retains the sheet type, turn and overnight hours', () {
     final notice = RosterUpdateNotice('2026-11-05', DateTime.utc(2026, 11, 2), '7D',
       '16:53', '01:11', '213', dutyType: 'training');

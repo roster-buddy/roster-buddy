@@ -22,7 +22,7 @@ void main() {
   });
   test('leave conflicts stay explicit and incomplete clocks are not shown as times', () {
     expect(RosterNotificationText.title('2026-10-07', 'TS', 'training', 'leave_conflict'),
-      'Annual leave conflict on 7/10/26');
+      'Annual leave not shown on 7/10/26');
     expect(RosterNotificationText.detail('10D', '—', '12:00', '215'), '10D T215');
   });
 }

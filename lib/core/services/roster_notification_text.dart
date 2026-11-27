@@ -22,7 +22,8 @@ class RosterNotificationText {
   static String title(String date, String? code, String type, String kind) {
     final day = DateTime.parse(date);
     final shortDate = '${day.day}/${day.month}/${(day.year % 100).toString().padLeft(2, '0')}';
-    if (kind == 'leave_conflict') return 'Annual leave conflict on $shortDate';
+    if (kind == 'leave_conflict') return 'Annual leave not shown on $shortDate';
+    if (kind == 'leave_confirmed') return 'Annual leave granted on $shortDate';
     return '${label(code, type)} ${kind == 'changed' ? 'updated' : 'allocated'} on $shortDate';
   }
 

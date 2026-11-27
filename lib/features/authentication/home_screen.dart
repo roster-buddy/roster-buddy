@@ -352,9 +352,12 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted && rosterUpdates.isNotEmpty) {
         final latest = rosterUpdates.first.receivedAt;
         if ((!_noticesInitialised || _lastRosterNotice == null || latest.isAfter(_lastRosterNotice!))) {
+          final leaveUpdate = rosterUpdates.where((notice) =>
+              notice.receivedAt == latest &&
+              (notice.needsInvestigation || notice.kind == 'leave_confirmed')).firstOrNull;
           _rosterBanner.show(context,
-            message: rosterUpdates.any((notice) => notice.needsInvestigation)
-                ? 'Annual leave conflict: a roster sheet lists you working. Open the bell to review.'
+            message: leaveUpdate != null
+                ? '${leaveUpdate.title}. ${leaveUpdate.needsInvestigation ? 'Open the bell to follow up.' : 'Open the bell for details.'}'
                 : 'Roster update: ${rosterUpdates.length} duty record(s) received. Open the bell for details.',
             onView: _openPendingActions,
           );
@@ -493,6 +496,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     if (!uploaded || !mounted) return;
     setState(() { _dashboardRefreshVersion++; _selectedIndex = 0; });
+    await _refreshPendingActionCount();
   }
 
   Future<void> _openDepotDocuments() => Navigator.of(context).push<void>(
@@ -852,6 +856,24 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
           content: Text('Could not open the uploaded sheet. Please retry.')));
       }
     }
+  }
+
+  Future<void> _followUpOnLeave(RosterUpdateNotice notice) async {
+    try {
+      final date = displayStoredDate(notice.date);
+      final driver = await driverNumberEmailLine();
+      if (!mounted) return;
+      final uri = _rosterBuddyMailUri(
+        subject: 'Annual leave follow-up - $date',
+        body: 'Please can you confirm my annual leave for $date?\n\n'
+            'The ${notice.source} sheet shows ${notice.sheetDutyLabel.toLowerCase()} '
+            'for this date.\n\n$driver',
+      );
+      if (await launchUrl(uri, webOnlyWindowName: '_self')) return;
+    } catch (_) {
+      // The user can retry from the notice.
+    }
+    if (mounted) _showMessage('Roster Buddy could not open your email app.');
   }
 
   Future<void> _useRosteredShift(RosterUpdateNotice notice) async {
@@ -2349,7 +2371,8 @@ class _PendingActionsPageState extends State<_PendingActionsPage> {
                 for (final notice in _rosterUpdates.where((notice) => notice.needsInvestigation))
                   RosterUpdateCard(notice: notice,
                     onOpenDocument: () => _openRosterDocument(notice),
-                    onUseShift: () => _useRosteredShift(notice)),
+                    onUseShift: () => _useRosteredShift(notice),
+                    onFollowUp: () => _followUpOnLeave(notice)),
                 const SizedBox(height: 16),
               ],
               for (final reminder in _dueLeaveReminders)
