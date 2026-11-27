@@ -56,7 +56,7 @@ void main() {
         manualLeaveDates: {'2026-11-05'},
       ).single;
 
-      expect(notice('annual_leave').title, 'Annual leave granted on 5/11/26');
+      expect(notice('annual_leave').title, 'Annual leave confirmed on 5/11/26');
       expect(notice('annual_leave').needsInvestigation, isFalse);
       for (final type in ['working', 'rest_day']) {
         expect(notice(type).title, 'Annual leave not shown on 5/11/26');
