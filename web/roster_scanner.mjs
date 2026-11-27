@@ -953,7 +953,7 @@ export function cancelScan() {
   active?.cancel();
 }
 
-export async function scanDocument(bytes, name, isPdf, report = () => {}, retryUpsideDown = false) {
+export async function scanDocument(bytes, name, isPdf, report = () => {}, retryUpsideDown = false, detailedDailyReport = false) {
   if (active) throw new Error('A document is already being scanned.');
   if (!bytes.length) throw new Error('The selected document is empty.');
   if (bytes.length > 40 * 1024 * 1024) throw new Error('Choose a document smaller than 40 MB.');
@@ -1006,20 +1006,20 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}, retryU
     check();
     if (!isPdf) {
       const image = await imageCanvas(bytes, name);
-      if (image.rosterPrepared) {
+      if (image.rosterPrepared && !detailedDailyReport) {
         await worker.setParameters({tessedit_pageseg_mode: '6'});
         return [await recognise(image, 1, 1)];
       }
       // Prefer page-layout OCR for roster tables. It keeps narrow columns
       // (turn, book-on, book-off and hours) separate. The old portrait-band
       // pass uses single-block OCR and can fuse them into one unreadable token.
-      if (image.height > 1000 && image.height > image.width * 1.15) {
+      if (detailedDailyReport || (image.height > 1000 && image.height > image.width * 1.15)) {
         await worker.setParameters({tessedit_pageseg_mode: '3'});
         const {data: pageData} = await worker.recognize(image, {}, {text: true, blocks: true});
         check();
         const pageResult = normaliseRecognition(pageData);
         try {
-          const dailyReport = /\b(?:Daily\s+Roster\s+Report|Report\s+for\s+(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday))\b/i
+          const dailyReport = detailedDailyReport || /\b(?:Daily\s+Roster\s+Report|Report\s+for\s+(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday))\b/i
             .test(pageResult.fullText);
           if (dailyReport) {
             await worker.setParameters({tessedit_pageseg_mode: '6'});
@@ -1027,7 +1027,7 @@ export async function scanDocument(bytes, name, isPdf, report = () => {}, retryU
             check();
             pageResult.alternateText = data.text || '';
           }
-          if (!needsDetailedRosterPass(pageResult.fullText)) return [pageResult];
+          if (!detailedDailyReport && !needsDetailedRosterPass(pageResult.fullText)) return [pageResult];
           const first = Math.round(image.height * 0.16);
           const step = Math.round(image.width * 0.28);
           const pad = Math.round(image.width * 0.07);

@@ -22,6 +22,7 @@ class SmartScanEngine {
     required Uint8List bytes,
     required String fileName,
     void Function(String, double?)? onProgress,
+    bool detailedDailyReport = false,
   }) {
     throw const SmartScanException(
       'OCR is currently supported only on iPhone and Android.',

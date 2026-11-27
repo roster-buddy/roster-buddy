@@ -65,6 +65,7 @@ class SmartScanEngine {
         bytes: bytes,
         fileName: fileName,
         onProgress: onProgress,
+        detailedDailyReport: isDailyReport,
       );
       if (cloudResult == null) return localResult;
       // The daily parser validates the secure service's natural reading
@@ -75,6 +76,12 @@ class SmartScanEngine {
         alternateText: localResult.alternateText.isEmpty
             ? localResult.fullText
             : localResult.alternateText,
+        additionalReadings: isDailyReport
+            ? [
+                localResult.fullText,
+                SmartScanPageTextReconstructor.reconstruct(localResult),
+              ]
+            : const [],
         lines: isDailyReport && cloudResult.lines.isNotEmpty || localResult.lines.isEmpty
             ? cloudResult.lines
             : localResult.lines,

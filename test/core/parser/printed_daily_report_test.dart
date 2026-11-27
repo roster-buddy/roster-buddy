@@ -102,6 +102,44 @@ void main() {
     expect((await parser.parse(pageText: mismatched)).canImport, isFalse);
   });
 
+  test('detailed reread recovers two incomplete overnight payroll rows', () async {
+    const heading = 'Report for Monday 30/11/26 in All Links';
+    const primary = '$heading\nA Driver 2001 WOD CAN\nB Driver 4267 WOD DI';
+    const detailed = '$heading\n'
+        'A Driver 2001 WOD CAN SP 15:11 00:56 9.45\n'
+        'B Driver 4267 WOD DI DI 15:15 00:00 8.45';
+    Future<ParseResult> read(List<String> details) async {
+      final pages = await DailyScanText.bestPages([
+        SmartScanResult(
+          fullText: primary,
+          alternateText: '$heading\nA Driver 2001 WOD CAN SP',
+          additionalReadings: details,
+          lines: const [],
+        ),
+      ], DocumentType.sevenDayAmendment);
+      return parser.parse(pageText: pages);
+    }
+
+    final recovered = await read([detailed]);
+    expect(recovered.canImport, isTrue);
+    final byPayroll = {
+      for (final duty in recovered.duties) duty.payrollNumber: duty,
+    };
+    expect(byPayroll['2001']?.turnNumber, 'SP');
+    expect(byPayroll['2001']?.bookOn, '15:11');
+    expect(byPayroll['2001']?.bookOff, '00:56');
+    expect(byPayroll['4267']?.turnNumber, 'DI');
+    expect(byPayroll['4267']?.bookOn, '15:15');
+    expect(byPayroll['4267']?.bookOff, '00:00');
+
+    final conflicting = await read([
+      detailed,
+      detailed.replaceFirst('15:15 00:00', '15:16 00:00'),
+    ]);
+    expect(conflicting.canImport, isFalse);
+    expect(conflicting.duties.map((duty) => duty.payrollNumber), ['2001']);
+  });
+
   test(
     'wrapped printed headings do not turn payroll or codes into times',
     () async {

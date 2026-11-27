@@ -84,17 +84,17 @@ class DailyScanText {
   static String _recoverIncompleteRows(
     String primary,
     ParseResult original,
-    ParseResult? retry,
+    List<ParseResult> retries,
   ) {
-    if (retry == null) return primary;
+    if (retries.isEmpty) return primary;
     if (!original.hasBlockingWarnings || original.identifiedDates.length != 1) {
       return primary;
     }
 
-    if (retry.identifiedDates.length != 1 ||
-        retry.identifiedDates.first != original.identifiedDates.first) {
-      return primary;
-    }
+    final datedRetries = retries.where(
+      (retry) => retry.identifiedDates.length == 1 &&
+          retry.identifiedDates.first == original.identifiedDates.first,
+    );
 
     final lines = primary.split(RegExp(r'\r?\n'));
     final originalPayrolls = original.duties.map((duty) => duty.payrollNumber).toSet();
@@ -111,15 +111,24 @@ class DailyScanText {
         continue;
       }
 
-      final matches = retry.duties.where((duty) => duty.payrollNumber == payroll);
-      if (matches.length != 1) continue;
-      final duty = matches.single;
-      final candidateText = duty.rawText;
-      final candidate = candidateText == null ? null : _namedRow.firstMatch(candidateText);
-      if (candidate == null ||
-          !_samePrintedName(row[1]!, candidate[1]!) ||
-          candidate[3]!.toUpperCase() != row[3]!.toUpperCase() ||
-          duty.turnNumber == null || duty.bookOn == null || duty.bookOff == null) {
+      final candidates = <Duty>[];
+      for (final retry in datedRetries) {
+        final matches = retry.duties.where((duty) => duty.payrollNumber == payroll);
+        if (matches.length != 1) continue;
+        final duty = matches.single;
+        final candidate = _namedRow.firstMatch(duty.rawText ?? '');
+        if (candidate != null &&
+            _samePrintedName(row[1]!, candidate[1]!) &&
+            candidate[3]!.toUpperCase() == row[3]!.toUpperCase() &&
+            duty.turnNumber != null && duty.bookOn != null && duty.bookOff != null) {
+          candidates.add(duty);
+        }
+      }
+      if (candidates.isEmpty) continue;
+      final duty = candidates.first;
+      if (!candidates.every((candidate) =>
+          _agrees(duty, candidate) &&
+          duty.amendmentCode == candidate.amendmentCode)) {
         continue;
       }
 
@@ -129,7 +138,7 @@ class DailyScanText {
           .allMatches(lines[index])
           .map((match) => match[0]!.replaceAll(';', ':').padLeft(5, '0'));
       if (clocks.every((clock) => clock == duty.bookOn || clock == duty.bookOff)) {
-        lines[index] = candidateText!;
+        lines[index] = duty.rawText!;
       }
     }
     return lines.join('\n');
@@ -142,12 +151,14 @@ class DailyScanText {
     final selected = <String>[];
     for (final page in pages) {
       final rebuilt = SmartScanPageTextReconstructor.reconstruct(page);
-      final retry = page.alternateText.trim().isEmpty
-          ? null
-          : await parser.parse(pageText: [page.alternateText]);
+      final retries = <ParseResult>[
+        for (final text in {page.alternateText, ...page.additionalReadings})
+          if (text.trim().isNotEmpty && text != page.fullText)
+            await parser.parse(pageText: [text]),
+      ];
       final rawNative = page.fullText;
       var nativeResult = await parser.parse(pageText: [rawNative]);
-      final native = _recoverIncompleteRows(rawNative, nativeResult, retry);
+      final native = _recoverIncompleteRows(rawNative, nativeResult, retries);
       if (native != rawNative) {
         nativeResult = await parser.parse(pageText: [native]);
       }
@@ -174,7 +185,7 @@ class DailyScanText {
         rebuiltText = '$heading\n$rebuilt';
         rebuiltResult = await parser.parse(pageText: [rebuiltText]);
       }
-      final recovered = _recoverIncompleteRows(rebuiltText, rebuiltResult, retry);
+      final recovered = _recoverIncompleteRows(rebuiltText, rebuiltResult, retries);
       if (recovered != rebuiltText) {
         rebuiltText = recovered;
         rebuiltResult = await parser.parse(pageText: [rebuiltText]);

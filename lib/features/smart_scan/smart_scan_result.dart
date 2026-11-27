@@ -21,12 +21,14 @@ class SmartScanResult {
     this.confidence,
     this.documentHeading = '',
     this.alternateText = '',
+    this.additionalReadings = const [],
   });
 
   final String documentHeading;
   final double? confidence;
   final String fullText;
   final String alternateText;
+  final List<String> additionalReadings;
   final List<SmartScanTextLine> lines;
 
   bool get hasText => fullText.trim().isNotEmpty;

@@ -115,6 +115,20 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
     );
   }
 
+  static final _warningPayrollPattern = RegExp(
+    r'\b([0-9]{4})\s+[A-Za-z]{2,5}\b',
+  );
+
+  bool _sameWarningRow(ParseWarning first, ParseWarning second) {
+    if (first.pageNumber != second.pageNumber) return false;
+    final firstText = _warningRowText(first);
+    final secondText = _warningRowText(second);
+    if (firstText == secondText) return true;
+    final firstPayroll = _warningPayrollPattern.firstMatch(firstText)?.group(1);
+    final secondPayroll = _warningPayrollPattern.firstMatch(secondText)?.group(1);
+    return firstPayroll != null && firstPayroll == secondPayroll;
+  }
+
   Future<void> _editRecord([int? index, ParseWarning? warning]) async {
     final parsed = _parsed!;
     final parser = DailyAmendmentParser(documentType: _type);
@@ -451,13 +465,14 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
     final reviewReasons = parsed == null || !_daily
         ? const <String>[]
         : ScanImportPolicy.reviewReasons(parsed, _pages!);
+    final unreadableRows = _daily
+        ? _parsed?.warnings.where(_unreadable).toList() ?? const <ParseWarning>[]
+        : const <ParseWarning>[];
     final unmatchedRows = parsed == null || !_daily
         ? const <ParseWarning>[]
         : ScanImportPolicy.unmatchedRows(parsed, _pages!)
-            .where((row) => !parsed.warnings.any((warning) =>
-                _unreadable(warning) &&
-                warning.pageNumber == row.pageNumber &&
-                _warningRowText(warning) == _warningRowText(row)))
+            .where((row) =>
+                !unreadableRows.any((warning) => _sameWarningRow(warning, row)))
             .toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -528,10 +543,10 @@ class _ScanReviewPageState extends State<ScanReviewPage> {
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Text('Review needed: $reason'),
               ),
-          if (unmatchedRows.isNotEmpty) ...[
+          if (unmatchedRows.isNotEmpty || unreadableRows.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
-              '${unmatchedRows.length} rows need correction. '
+              '${unmatchedRows.length + unreadableRows.length} rows need correction. '
               'The ${parsed.duties.length} correctly read rows are kept and hidden below.',
             ),
             for (final warning in unmatchedRows)
