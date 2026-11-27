@@ -2642,7 +2642,6 @@ class _DashboardPageState extends State<_DashboardPage> {
   static const Color workingGreen = Color(0xFF2E7D32);
   static const Color restYellow = Color(0xFFFFD54F);
   static const Color leaveRed = Color(0xFFD64545);
-  static const Color warningOrange = Color(0xFFF59E0B);
   static const Color textGrey = Color(0xFF52667A);
 
   final DutyResolver _dutyResolver = DutyResolver();
@@ -2654,6 +2653,7 @@ class _DashboardPageState extends State<_DashboardPage> {
       PersonalDayNoteService();
 
   Hidden18Result? _hidden18Result;
+  String? _hidden18ReviewMessage;
   Duty? _todayDuty;
   Map<String, Duty> _thisWeekDuties = <String, Duty>{};
   Map<String, AnnualLeaveRequest> _thisWeekLeaveRequests =
@@ -2775,6 +2775,20 @@ class _DashboardPageState extends State<_DashboardPage> {
         rollingSevenDayMinutes: currentRollingResult.rollingSevenDayMinutes,
       );
 
+      final missingTimes = fatigueRangeDuties.values.where(
+        (duty) => !duty.date.isBefore(currentRollingStart) &&
+            duty.dutyType.countsAsWorking &&
+            !duty.hasTimes,
+      ).firstOrNull;
+      final missingRoster = [today, ...nextSevenDates].where((date) {
+        final duty = fatigueRangeDuties[_dashboardDateKey(date)];
+        return duty == null || duty.dutyType == DutyType.unknown;
+      }).firstOrNull;
+      final reviewMessage = missingTimes != null
+          ? 'Check booking times for ${displayDate(missingTimes.date)}.'
+          : missingRoster != null
+          ? 'Check roster information for ${displayDate(missingRoster)}.'
+          : null;
       final Duty? todayDuty = fatigueRangeDuties[_dashboardDateKey(today)];
 
       if (!mounted || generation != _dashboardLoadGeneration) {
@@ -2789,6 +2803,7 @@ class _DashboardPageState extends State<_DashboardPage> {
         _dashboardPersonalNoteDateKeys = dashboardPersonalNoteDateKeys;
         _dashboardPendingRdwDates = pendingRdwDates;
         _hidden18Result = hidden18Result;
+        _hidden18ReviewMessage = reviewMessage;
         _isLoading = false;
       });
     } catch (error) {
@@ -2812,229 +2827,131 @@ class _DashboardPageState extends State<_DashboardPage> {
   }
 
   Widget _buildHidden18StatusCard() {
-    final Hidden18Result? result = _hidden18Result;
-    final bool hasBreach = result?.hasWarnings == true;
+    final result = _hidden18Result;
+    final theme = Theme.of(context);
+    final colours = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+    final reviewMessage = _hidden18ReviewMessage;
 
-    final Color statusColour = hasBreach ? leaveRed : workingGreen;
+    final (status, icon, accent, message) = switch (result) {
+      null when _isLoading => (
+        'Checking', Icons.hourglass_empty, colours.onSurfaceVariant,
+        'Checking your roster…',
+      ),
+      null => (
+        'Review', Icons.warning_amber_rounded,
+        dark ? const Color(0xFFFFD166) : const Color(0xFF805300),
+        'Roster information is unavailable.',
+      ),
+      Hidden18Result(:final hasWarnings) when hasWarnings => (
+        'Breach detected', Icons.error_outline, colours.error,
+        'Check the flagged duties below.',
+      ),
+      _ when reviewMessage != null => (
+        'Review', Icons.warning_amber_rounded,
+        dark ? const Color(0xFFFFD166) : const Color(0xFF805300),
+        reviewMessage,
+      ),
+      _ => (
+        'Clear', Icons.check_circle_outline,
+        dark ? const Color(0xFF66DF9B) : const Color(0xFF236B42),
+        'No breaches detected through the next 7 days.',
+      ),
+    };
 
-    final String title;
-    final String subtitle;
-
-    if (_isLoading || result == null) {
-      title = 'Checking Hidden 18…';
-      subtitle = 'Fatigue status is loading.';
-    } else if (hasBreach) {
-      final int count = result.warnings.length;
-      title = '$count Hidden 18 breach${count == 1 ? '' : 'es'}';
-      subtitle =
-          'A rule is breached today or forecast to be breached within '
-          'the next 7 days. Tap to review.';
-    } else {
-      title = 'Hidden 18 clear';
-      subtitle =
-          'No Hidden 18 rule breaches detected today or within the next '
-          '7 days.';
-    }
+    Widget metric(String value, String label) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(value, style: theme.textTheme.titleLarge?.copyWith(
+          color: colours.onSurface, fontWeight: FontWeight.w800,
+        )),
+        Text(label, style: TextStyle(color: colours.onSurfaceVariant)),
+      ],
+    );
 
     return Card(
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: _showHidden18Check,
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border(left: BorderSide(color: statusColour, width: 6)),
-          ),
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: statusColour.withValues(alpha: 0.12),
-                child: Icon(
-                  hasBreach
-                      ? Icons.warning_amber_rounded
-                      : Icons.check_circle_outline,
-                  color: statusColour,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: hasBreach ? leaveRed : Theme.of(context).colorScheme.onSurface,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.35),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right, color: textGrey),
-            ],
-          ),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(left: BorderSide(color: accent, width: 6)),
         ),
-      ),
-    );
-  }
-
-  Future<void> _showHidden18Check() async {
-    final Hidden18Result? result = _hidden18Result;
-
-    if (_isLoading || result == null) {
-      showMessage(context, 'Fatigue information is still loading.');
-      return;
-    }
-
-    if (!result.hasWarnings) {
-      await showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        builder: (BuildContext sheetContext) {
-          return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: double.infinity,
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                spacing: 10,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.check_circle_outline, color: workingGreen),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Hidden 18 check',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                          ),
+                      Icon(icon, color: accent),
+                      const SizedBox(width: 10),
+                      Flexible(child: Text(
+                        'Hidden 18',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: colours.onSurface, fontWeight: FontWeight.w900,
                         ),
-                      ),
+                      )),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No Hidden 18 warnings are currently detected in the '
-                    'roster period checked.',
-                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.4),
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    'Current consecutive working days: '
-                    '${result.consecutiveDaysWorked}',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface,
-                      fontWeight: FontWeight.w700,
+                  Container(
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    'Current rolling 7-day total: '
-                    '${_formatHidden18Minutes(result.rollingSevenDayMinutes)}',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    child: Text(status, style: TextStyle(
+                      color: accent, fontWeight: FontWeight.w800,
+                    )),
                   ),
                 ],
               ),
             ),
-          );
-        },
-      );
-      return;
-    }
-
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (BuildContext sheetContext) {
-        return SafeArea(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.75,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: EdgeInsets.fromLTRB(20, 4, 20, 12),
-                  child: Row(
-                    children: [
-                      Icon(Icons.warning_amber_rounded, color: warningOrange),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Hidden 18 warnings',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: result.warnings.length,
-                    separatorBuilder: (BuildContext context, int index) =>
-                        const Divider(height: 1),
-                    itemBuilder: (BuildContext context, int index) {
-                      final Hidden18Warning warning = result.warnings[index];
-
-                      return ListTile(
-                        leading: const Icon(
-                          Icons.warning_amber_rounded,
-                          color: warningOrange,
-                        ),
-                        title: Text(
-                          _hidden18WarningTitle(warning.type),
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        subtitle: Text(
-                          '${_displayHidden18Date(warning.date)}\n'
-                          '${warning.message}',
-                        ),
-                        isThreeLine: true,
-                      );
-                    },
-                  ),
-                ),
-                const Divider(height: 1),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-                  child: Text(
-                    '${result.warnings.length} warning'
-                    '${result.warnings.length == 1 ? '' : 's'} detected.',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w700,
+            if (result != null) ...[
+              const SizedBox(height: 14),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: metric(
+                    '${result.consecutiveDaysWorked} '
+                    '${result.consecutiveDaysWorked == 1 ? 'day' : 'days'}',
+                    'Consecutive work days',
+                  )),
+                  const SizedBox(width: 12),
+                  Expanded(child: Container(
+                    decoration: BoxDecoration(
+                      border: Border(left: BorderSide(color: colours.outlineVariant)),
                     ),
-                  ),
+                    padding: const EdgeInsets.only(left: 12),
+                    child: metric(
+                      _formatHidden18Minutes(result.rollingSevenDayMinutes),
+                      'Rolling 7-day total',
+                    ),
+                  )),
+                ],
+              ),
+            ],
+            const SizedBox(height: 12),
+            Text(message, style: TextStyle(color: colours.onSurfaceVariant)),
+            if (result != null)
+              for (final warning in result.warnings) ...[
+                const Divider(height: 20),
+                Text(
+                  '${displayDate(warning.date)} · ${_hidden18WarningTitle(warning.type)}',
+                  style: TextStyle(color: colours.onSurface, fontWeight: FontWeight.w800),
                 ),
+                const SizedBox(height: 3),
+                Text(warning.message, style: TextStyle(color: colours.onSurfaceVariant)),
               ],
-            ),
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
 
@@ -3056,10 +2973,6 @@ class _DashboardPageState extends State<_DashboardPage> {
     final int remainder = minutes % 60;
 
     return '${hours}h ${remainder.toString().padLeft(2, '0')}m';
-  }
-
-  static String _displayHidden18Date(DateTime date) {
-    return displayDate(date);
   }
 
   @override
